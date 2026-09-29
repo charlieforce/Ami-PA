@@ -8,7 +8,10 @@ from datetime import datetime
 import os
 
 class Database:
-    def __init__(self, db_path="data/ami_memory.db"):
+    def __init__(self, db_path=None):
+        import os as _os
+        if db_path is None:
+            db_path = _os.getenv("AMI_DB_PATH", "data/ami_memory.db")
         self.db_path = db_path
         # Create data folder if it doesn't exist
         os.makedirs(os.path.dirname(db_path), exist_ok=True)

@@ -45,6 +45,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 from flask_cors import CORS
 
+
+import os as _os_db
+AMI_DB = _os_db.getenv("AMI_DB_PATH", "data/ami_memory.db")
+
 # GLOBAL CONSTANTS FOR LOCATION/COUNTRY MAPPING
 KNOWN_LOCATIONS = {
     'nairobi': 'Africa/Nairobi',
@@ -215,7 +219,7 @@ def note_gemini_tokens(response):
 scheduler = BackgroundScheduler(job_defaults={'misfire_grace_time': 10800, 'coalesce': True})
 
 def get_user_timezone():
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute("SELECT value FROM user_settings WHERE key = 'timezone'")
     result = c.fetchone()
@@ -225,7 +229,7 @@ def get_user_timezone():
 def generate_and_store_briefing(briefing_type):
     '''Generate briefing and store in database'''
     briefing_text = generate_morning_briefing_text()
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now()
     today = now.strftime('%Y-%m-%d')
@@ -796,7 +800,7 @@ def schedule_evening_briefing():
 
 def schedule_delete_old_briefings():
     '''Delete briefings older than today at 7 AM'''
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     today = datetime.now().strftime('%Y-%m-%d')
     c.execute("DELETE FROM briefings WHERE date < ?", (today,))
@@ -942,7 +946,7 @@ def get_all_todos():
 @require_password
 def get_today_todos():
     """Get today + tomorrow's TODOs (from todos table + tasks)"""
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         today = datetime.now().strftime('%Y-%m-%d')
@@ -6321,7 +6325,7 @@ def get_tasks_analysis():
 def get_projects():
     """Get all projects - supports ?venture_id filter"""
     from flask import request
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         venture_id = request.args.get('venture_id')
@@ -6461,7 +6465,7 @@ def create_project():
     if not name:
         return {'error': 'Project name required'}, 400
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         c.execute('INSERT INTO projects (name, color) VALUES (?, ?)', (name, color))
@@ -6511,7 +6515,7 @@ def get_project_tasks(project_id):
 # ATTACHMENTS ENDPOINT
 @app.route('/api/tags', methods=['GET'])
 def get_tags():
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT id, name, color FROM tags ORDER BY name')
     tags = [{'id': r[0], 'name': r[1], 'color': r[2]} for r in c.fetchall()]
@@ -6527,7 +6531,7 @@ def create_tag():
     if not name:
         return {'error': 'Tag name required'}, 400
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         c.execute('INSERT INTO tags (name, color) VALUES (?, ?)', (name, color))
@@ -6550,7 +6554,7 @@ def update_tag(tag_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.get_json()
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     try:
@@ -6567,7 +6571,7 @@ def delete_tag(tag_id):
     if request.headers.get('X-Ami-Password') != AMI_PASSWORD:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     try:
@@ -6622,7 +6626,7 @@ def upload_task_file(task_id):
     filepath = os.path.join(upload_dir, unique_name)
     file.save(filepath)
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('INSERT INTO task_attachments (task_id, filename, file_type, uploaded_at) VALUES (?, ?, ?, datetime("now"))',
               (task_id, file.filename, file.content_type or 'application/octet-stream'))
@@ -6634,7 +6638,7 @@ def upload_task_file(task_id):
 
 @app.route('/api/tasks/<int:task_id>/attachments', methods=['GET'])
 def list_task_files(task_id):
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT id, filename, uploaded_at FROM task_attachments WHERE task_id = ? ORDER BY uploaded_at DESC', (task_id,))
     atts = [{'id': r[0], 'filename': r[1], 'uploaded_at': r[2]} for r in c.fetchall()]
@@ -6643,7 +6647,7 @@ def list_task_files(task_id):
 
 @app.route('/api/attachments/<int:attachment_id>', methods=['GET'])
 def download_task_file(attachment_id):
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT filename FROM task_attachments WHERE id = ?', (attachment_id,))
     result = c.fetchone()
@@ -6978,7 +6982,7 @@ def create_from_chat(text):
 def handle_task_command(command_text):
     """Parse and execute task commands from Ami"""
     cmd = command_text.lower().strip()
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     try:
@@ -7112,7 +7116,7 @@ def get_weather_endpoint(city):
 @require_password
 def midnight_carryover():
     """Move incomplete TODOs to tomorrow and save daily stats"""
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         today = datetime.now().strftime('%Y-%m-%d')
@@ -7167,7 +7171,7 @@ def midnight_carryover():
 @require_password
 def get_todo_stats():
     """Get TODO stats and streaks"""
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         c.execute('SELECT date, completed, total, progress FROM daily_stats ORDER BY date DESC LIMIT 7')
@@ -7274,7 +7278,7 @@ def get_ami_context():
 @require_password
 def get_ami_suggestion():
     """Get Ami's suggestion for today's priorities - NO Gemini needed!"""
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
         today = datetime.now().strftime('%Y-%m-%d')
@@ -7311,7 +7315,7 @@ def get_ami_suggestion():
 def handle_todo_command(command_text):
     """Parse and execute TODO commands from Ami"""
     cmd = command_text.lower().strip()
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     try:
@@ -7492,7 +7496,7 @@ def handle_reminder_command(command_text):
     """Parse and execute reminder commands from Ami"""
     from datetime import datetime, timedelta
     cmd = command_text.lower().strip()
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     try:
@@ -7583,7 +7587,7 @@ def create_note():
     analysis = None  # Skip analysis in create_note
     all_projects = list(set((analysis or {}).get("projects", []) + data.get("linked_projects", [])))
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     
@@ -7639,7 +7643,7 @@ def get_notes_list():
     if password != 'charlie':
         return {"error": "Unauthorized"}, 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute("SELECT id, title, content, capture_type, created_at, summary, sentiment, priority, linked_projects FROM notes ORDER BY created_at DESC LIMIT 50")
     
@@ -7659,7 +7663,7 @@ def get_single_note(note_id):
     if password != 'charlie':
         return {"error": "Unauthorized"}, 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT * FROM notes WHERE id = ?', (note_id,))
     row = c.fetchone()
@@ -7736,7 +7740,7 @@ def update_note(note_id):
     memoir_would_repeat = data.get('memoir_would_repeat')
     memoir_privacy = data.get('memoir_privacy')
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     
@@ -7753,7 +7757,7 @@ def delete_single_note(note_id):
     if password != 'charlie':
         return {"error": "Unauthorized"}, 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('DELETE FROM notes WHERE id = ?', (note_id,))
     conn.commit()
@@ -7788,7 +7792,7 @@ def upload_attachment(note_id):
     file_size = os.path.getsize(file_path)
     file_type = file.filename.split('.')[-1].lower()
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     
@@ -7806,7 +7810,7 @@ def get_attachments(note_id):
     if password != 'charlie':
         return {"error": "Unauthorized"}, 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT id, filename, file_type, file_size, created_at FROM attachments WHERE note_id = ? ORDER BY created_at DESC', (note_id,))
     
@@ -7832,7 +7836,7 @@ def delete_attachment(note_id, attachment_id):
     if password != 'charlie':
         return {"error": "Unauthorized"}, 401
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT file_path FROM attachments WHERE id = ? AND note_id = ?', (attachment_id, note_id))
     row = c.fetchone()
@@ -8147,7 +8151,7 @@ def create_task_from_note():
     data = request.json
     title = data.get('title', 'Untitled Task')
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     
@@ -8185,7 +8189,7 @@ def create_todo_from_note():
     data = request.json
     title = data.get('title', 'Untitled TODO')
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     
@@ -8259,7 +8263,7 @@ def create_reminder_from_note():
     title = data.get('title', 'Untitled Reminder')
     
     from datetime import datetime, timedelta
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     now = datetime.now().isoformat()
     due_date = (data.get('due_date') or '').strip()
@@ -8331,7 +8335,7 @@ def search_notes():
     sort_by = request.args.get('sort', 'created_at')
     order = request.args.get('order', 'DESC')
     
-    conn = sqlite3.connect('data/ami_memory.db')
+    conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     
     sql = 'SELECT * FROM notes WHERE 1=1'
@@ -14917,7 +14921,7 @@ def export_note_docx(note_id):
         if password != 'charlie':
             return {"error": "Unauthorized"}, 401
         
-        conn = sqlite3.connect('data/ami_memory.db')
+        conn = sqlite3.connect(AMI_DB)
         c = conn.cursor()
         c.execute('SELECT * FROM notes WHERE id = ?', (note_id,))
         row = c.fetchone()
@@ -15210,7 +15214,7 @@ def sync_tasks_to_todos_scheduled():
         today = datetime.now().strftime("%Y-%m-%d")
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
         
-        conn = sqlite3.connect('data/ami_memory.db')
+        conn = sqlite3.connect(AMI_DB)
         c = conn.cursor()
         tasks = c.execute("""
             SELECT id, title, priority, due_date 
@@ -15242,7 +15246,7 @@ def sync_calendar_to_todos_scheduled():
         today = datetime.now().strftime("%Y-%m-%d")
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
         
-        conn = sqlite3.connect('data/ami_memory.db')
+        conn = sqlite3.connect(AMI_DB)
         c = conn.cursor()
         events = c.execute("""
             SELECT id, title, start_time FROM calendar 
@@ -15270,7 +15274,7 @@ def sync_calendar_to_todos_scheduled():
 def check_snoozed_reminders():
     """Scheduled task: check if snoozed reminders are ready to return to pending"""
     try:
-        conn = sqlite3.connect('data/ami_memory.db')
+        conn = sqlite3.connect(AMI_DB)
         c = conn.cursor()
         now = datetime.now().isoformat()
         
@@ -15296,7 +15300,7 @@ def process_recurring_reminders():
     """Scheduled task: create new instances of recurring reminders"""
     try:
         from datetime import datetime, timedelta
-        conn = sqlite3.connect('data/ami_memory.db')
+        conn = sqlite3.connect(AMI_DB)
         c = conn.cursor()
         today = datetime.now().strftime("%Y-%m-%d")
         
