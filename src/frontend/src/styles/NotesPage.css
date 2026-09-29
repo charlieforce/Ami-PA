@@ -1,0 +1,324 @@
+.notes-page {
+  padding: 20px 16px;
+  max-width: 100%;
+}
+
+.notes-header {
+  margin-bottom: 25px;
+}
+
+.notes-header h2 {
+  font-size: 1.8rem;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+
+.notes-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* Mode Selector */
+.mode-selector {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  padding: 10px 16px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--secondary);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.mode-btn.active {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Capture Section */
+.capture-section {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
+.capture-header {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 15px;
+}
+
+.capture-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.note-title-input,
+.note-content-input {
+  padding: 12px 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.note-content-input {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.capture-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.mic-btn,
+.save-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mic-btn {
+  border: 2px solid var(--accent);
+  background-color: rgba(255, 107, 107, 0.1);
+  color: var(--accent);
+}
+
+.save-btn {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+}
+
+/* Notes Section */
+.notes-section {
+  margin-bottom: 30px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.section-header h3 {
+  font-size: 1.2rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.count {
+  background-color: rgba(255, 107, 107, 0.1);
+  color: var(--accent);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+/* Notes Grid - MOBILE FIRST (1 column) */
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Note Card Mobile */
+.note-card-mobile {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-card-mobile:active {
+  border-color: var(--accent);
+  background-color: rgba(255, 107, 107, 0.05);
+}
+
+/* Card Header Mobile */
+.note-card-header-mobile {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.note-header-left {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  align-items: flex-start;
+}
+
+.note-mode-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.note-title-mobile {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.note-time-mobile {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 3px 0 0 0;
+}
+
+/* Summary Mobile */
+.note-summary-mobile {
+  color: var(--text);
+  margin: 0;
+  padding: 12px;
+  background-color: var(--primary);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* Metadata Mobile */
+.note-meta-mobile {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.meta-badge {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.meta-badge.mood {
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #FFC107;
+}
+
+.meta-badge.people {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+}
+
+.meta-badge.project {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+}
+
+.meta-badge.status {
+  margin-left: auto;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Action Buttons Mobile */
+.note-actions-mobile {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.action-btn-mobile {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: var(--text);
+  font-size: 1.3rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-btn-mobile:active {
+  background-color: rgba(255, 107, 107, 0.1);
+  border-color: var(--accent);
+}
+
+/* Encouragement */
+.notes-encouragement {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  background-color: rgba(255, 107, 107, 0.05);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 10px;
+  text-align: center;
+  margin-top: 20px;
+}
+
+.ami-small {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.ami-label {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.notes-encouragement p {
+  color: var(--text);
+  margin: 0;
+}
+
+.notes-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  color: var(--text-secondary);
+}

@@ -1,0 +1,193 @@
+
+.reminders-list {
+  padding: 20px 16px;
+  max-width: 100%;
+}
+
+.reminders-header {
+  margin-bottom: 25px;
+}
+
+.reminders-header h2 {
+  font-size: 1.8rem;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+
+.reminders-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.reminders-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.reminder-card {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.reminder-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.15);
+}
+
+.reminder-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.reminder-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.priority-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.reminder-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reminder-title {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.reminder-time {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.reminder-person {
+  color: var(--accent);
+  font-size: 0.8rem;
+  margin: 0;
+  font-weight: 500;
+}
+
+.expand-icon {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 15px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+.action-btn.complete {
+  background-color: rgba(76, 175, 80, 0.1);
+  border-color: #4CAF50;
+  color: #4CAF50;
+}
+
+.action-btn.snooze {
+  background-color: rgba(33, 150, 243, 0.1);
+  border-color: #2196F3;
+  color: #2196F3;
+}
+
+.action-btn.delete {
+  background-color: rgba(255, 107, 107, 0.1);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.reminders-encouragement {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  background-color: rgba(255, 107, 107, 0.05);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.ami-small {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.ami-label {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.reminders-encouragement p {
+  color: var(--text);
+  margin: 0;
+}
+
+.reminders-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+@media (max-width: 600px) {
+  .reminder-actions {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    width: 100%;
+  }
+}

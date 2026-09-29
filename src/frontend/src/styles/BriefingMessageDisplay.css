@@ -1,0 +1,68 @@
+.briefing-message-display {
+  padding: 20px;
+  margin-bottom: 20px;
+  background-color: var(--secondary);
+  border-radius: 12px;
+  border-left: 4px solid var(--accent);
+}
+
+.ami-message {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.message-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.message-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-text {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-time {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.briefing-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .briefing-message-display {
+    margin: 0 0 20px 0;
+    border-radius: 8px;
+  }
+
+  .message-avatar {
+    width: 45px;
+    height: 45px;
+  }
+
+  .message-text {
+    font-size: 0.9rem;
+  }
+}

@@ -1,0 +1,72 @@
+/* Briefing Page Styles */
+
+.briefing-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.briefing-header {
+  font-size: 28px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 30px;
+  color: #333;
+}
+
+.briefing-section {
+  margin-bottom: 30px;
+}
+
+.briefing-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #667eea;
+  color: #333;
+}
+
+.briefing-item {
+  padding: 14px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 10px;
+  border: 1px solid #e0e0e0;
+}
+
+.briefing-item:hover {
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+.briefing-item.expanded {
+  border: 2px solid #667eea;
+  background: #f8f9fc;
+}
+
+.briefing-item-text {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.chat-button {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.chat-button:hover {
+  background: #5568d3;
+}

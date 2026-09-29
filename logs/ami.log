@@ -1,0 +1,2029 @@
+2026-08-23 00:07:02,067 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:07:02,074 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:07:02,074 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:13:26,294 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:13:26,300 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:13:26,300 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:13:50,657 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:13:50] "GET / HTTP/1.1" 200 -
+2026-08-23 00:13:50,659 - __main__ - WARNING - Empty message received
+2026-08-23 00:13:50,659 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:13:50] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:13:50,661 - __main__ - WARNING - Message too long: 3000 characters
+2026-08-23 00:13:50,661 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:13:50] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:13:50,662 - __main__ - INFO - Chat request #1: I am so happy!...
+2026-08-23 00:13:50,664 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:13:50,664 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 00:13:54,769 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:13:54,775 - __main__ - INFO - Response generated for turn 1
+2026-08-23 00:13:54,776 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:13:54] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:13:54,782 - __main__ - INFO - Chat request #2: I am excited...
+2026-08-23 00:13:54,784 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:13:57,468 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:13:57,473 - __main__ - INFO - Response generated for turn 2
+2026-08-23 00:13:57,473 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:13:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:13:57,479 - __main__ - INFO - Chat request #3: I am stressed...
+2026-08-23 00:13:57,481 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:00,499 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:00,503 - __main__ - INFO - Response generated for turn 3
+2026-08-23 00:14:00,504 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:00] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:00,510 - __main__ - INFO - Chat request #4: I am tired...
+2026-08-23 00:14:00,513 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:03,491 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:03,495 - __main__ - INFO - Response generated for turn 4
+2026-08-23 00:14:03,496 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:03] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:03,502 - __main__ - INFO - Chat request #5: I am sad...
+2026-08-23 00:14:03,504 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:06,538 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:06,543 - __main__ - INFO - Response generated for turn 5
+2026-08-23 00:14:06,543 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:06] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:06,549 - __main__ - INFO - Chat request #6: My brother Eric is a doctor...
+2026-08-23 00:14:06,554 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:09,694 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:09,700 - __main__ - INFO - Response generated for turn 6
+2026-08-23 00:14:09,701 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:09] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:09,708 - __main__ - INFO - Profile retrieved: 5 facts
+2026-08-23 00:14:09,708 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:09] "GET /api/profile HTTP/1.1" 200 -
+2026-08-23 00:14:09,712 - __main__ - INFO - Chat request #7: Hi!...
+2026-08-23 00:14:09,714 - __main__ - INFO - Timezone updated to Europe/London
+2026-08-23 00:14:09,716 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:12,582 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:12,587 - __main__ - INFO - Response generated for turn 7
+2026-08-23 00:14:12,588 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:12] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:12,595 - __main__ - INFO - Chat request #8: I work on GII Connect...
+2026-08-23 00:14:12,600 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:15,643 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:15,646 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 00:14:15,649 - __main__ - INFO - Response generated for turn 8
+2026-08-23 00:14:15,649 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:15] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:15,656 - __main__ - INFO - Chat request #9: I am exhausted...
+2026-08-23 00:14:15,658 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:19,619 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:19,622 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 00:14:19,625 - __main__ - INFO - Response generated for turn 9
+2026-08-23 00:14:19,625 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:19] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:19,631 - __main__ - INFO - Chat request #10: Hello Ami!...
+2026-08-23 00:14:19,633 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:14:22,857 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:14:22,864 - __main__ - INFO - Response generated for turn 10
+2026-08-23 00:14:22,864 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:14:22,870 - __main__ - ERROR - Invalid timezone INVALID/ZONE: 'INVALID/ZONE'
+2026-08-23 00:14:22,870 - __main__ - WARNING - Invalid timezone: INVALID/ZONE
+2026-08-23 00:14:22,871 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:22] "[31m[1mPOST /api/timezone HTTP/1.1[0m" 400 -
+2026-08-23 00:14:22,874 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:22] "GET /api/status HTTP/1.1" 200 -
+2026-08-23 00:14:22,877 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:14:22] "GET /api/history?limit=5 HTTP/1.1" 200 -
+2026-08-23 00:15:28,972 - __main__ - INFO - Chat request #11: I am so excited about this!...
+2026-08-23 00:15:28,974 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:15:33,128 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:15:33,134 - __main__ - INFO - Response generated for turn 11
+2026-08-23 00:15:33,135 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:15:33] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:17:55,430 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:17:55,437 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:17:55,437 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:18:12,651 - __main__ - INFO - Chat request #1: I am so excited!...
+2026-08-23 00:18:12,653 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:12,653 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 00:18:15,950 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:15,959 - __main__ - INFO - Response generated for turn 1
+2026-08-23 00:18:15,962 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:15] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:24,540 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:24] "GET / HTTP/1.1" 200 -
+2026-08-23 00:18:24,542 - __main__ - WARNING - Empty message received
+2026-08-23 00:18:24,542 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:24] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:18:24,544 - __main__ - WARNING - Message too long: 3000 characters
+2026-08-23 00:18:24,544 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:24] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:18:24,545 - __main__ - INFO - Chat request #2: I am so happy!...
+2026-08-23 00:18:24,546 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:28,736 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:28,741 - __main__ - INFO - Response generated for turn 2
+2026-08-23 00:18:28,742 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:28] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:28,748 - __main__ - INFO - Chat request #3: I am excited...
+2026-08-23 00:18:28,750 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:32,046 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:32,052 - __main__ - INFO - Response generated for turn 3
+2026-08-23 00:18:32,053 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:32] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:32,059 - __main__ - INFO - Chat request #4: I am stressed...
+2026-08-23 00:18:32,061 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:35,022 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:35,028 - __main__ - INFO - Response generated for turn 4
+2026-08-23 00:18:35,029 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:35] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:35,036 - __main__ - INFO - Chat request #5: I am tired...
+2026-08-23 00:18:35,038 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:37,990 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:37,996 - __main__ - INFO - Response generated for turn 5
+2026-08-23 00:18:37,997 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:37] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:38,003 - __main__ - INFO - Chat request #6: I am sad...
+2026-08-23 00:18:38,005 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:41,101 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:41,107 - __main__ - INFO - Response generated for turn 6
+2026-08-23 00:18:41,108 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:41] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:41,114 - __main__ - INFO - Chat request #7: My brother Eric is a doctor...
+2026-08-23 00:18:41,117 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:44,264 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:44,269 - __main__ - INFO - Response generated for turn 7
+2026-08-23 00:18:44,270 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:44] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:44,277 - __main__ - INFO - Profile retrieved: 5 facts
+2026-08-23 00:18:44,278 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:44] "GET /api/profile HTTP/1.1" 200 -
+2026-08-23 00:18:44,281 - __main__ - INFO - Chat request #8: Hi!...
+2026-08-23 00:18:44,283 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:47,452 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:47,458 - __main__ - INFO - Response generated for turn 8
+2026-08-23 00:18:47,459 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:47] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:47,465 - __main__ - INFO - Chat request #9: I work on GII Connect...
+2026-08-23 00:18:47,470 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:50,464 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:50,469 - __main__ - INFO - Response generated for turn 9
+2026-08-23 00:18:50,470 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:50] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:50,475 - __main__ - INFO - Chat request #10: I am exhausted...
+2026-08-23 00:18:50,477 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:54,224 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:54,230 - __main__ - INFO - Response generated for turn 10
+2026-08-23 00:18:54,230 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:54] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:54,237 - __main__ - INFO - Chat request #11: Hello Ami!...
+2026-08-23 00:18:54,239 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:18:57,405 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:18:57,409 - __main__ - INFO - Response generated for turn 11
+2026-08-23 00:18:57,410 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:18:57,416 - __main__ - ERROR - Invalid timezone INVALID/ZONE: 'INVALID/ZONE'
+2026-08-23 00:18:57,416 - __main__ - WARNING - Invalid timezone: INVALID/ZONE
+2026-08-23 00:18:57,417 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:57] "[31m[1mPOST /api/timezone HTTP/1.1[0m" 400 -
+2026-08-23 00:18:57,420 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:57] "GET /api/status HTTP/1.1" 200 -
+2026-08-23 00:18:57,424 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:18:57] "GET /api/history?limit=5 HTTP/1.1" 200 -
+2026-08-23 00:22:13,911 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:22:13,924 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:22:13,924 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:22:40,729 - __main__ - INFO - Chat request #1: I am so thrilled and cannot wait!...
+2026-08-23 00:22:40,733 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:22:40,733 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 00:22:45,669 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:22:45,676 - __main__ - INFO - Response generated for turn 1
+2026-08-23 00:22:45,678 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:22:45] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:22:58,463 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:22:58] "GET / HTTP/1.1" 200 -
+2026-08-23 00:22:58,465 - __main__ - WARNING - Empty message received
+2026-08-23 00:22:58,465 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:22:58] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:22:58,467 - __main__ - WARNING - Message too long: 3000 characters
+2026-08-23 00:22:58,467 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:22:58] "[31m[1mPOST /api/chat HTTP/1.1[0m" 400 -
+2026-08-23 00:22:58,469 - __main__ - INFO - Chat request #2: I am so happy!...
+2026-08-23 00:22:58,470 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:02,084 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:02,087 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 00:23:02,090 - __main__ - INFO - Response generated for turn 2
+2026-08-23 00:23:02,091 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:02] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:02,098 - __main__ - INFO - Chat request #3: I am excited...
+2026-08-23 00:23:02,100 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:05,059 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:05,065 - __main__ - INFO - Response generated for turn 3
+2026-08-23 00:23:05,065 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:05] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:05,071 - __main__ - INFO - Chat request #4: I am stressed...
+2026-08-23 00:23:05,072 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:08,636 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:08,646 - __main__ - INFO - Response generated for turn 4
+2026-08-23 00:23:08,647 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:08] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:08,652 - __main__ - INFO - Chat request #5: I am tired...
+2026-08-23 00:23:08,654 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:12,156 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:12,159 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 00:23:12,163 - __main__ - INFO - Response generated for turn 5
+2026-08-23 00:23:12,164 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:12] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:12,170 - __main__ - INFO - Chat request #6: I am sad...
+2026-08-23 00:23:12,172 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:15,200 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:15,206 - __main__ - INFO - Response generated for turn 6
+2026-08-23 00:23:15,207 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:15] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:15,213 - __main__ - INFO - Chat request #7: My brother Eric is a doctor...
+2026-08-23 00:23:15,217 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:18,505 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:18,510 - __main__ - INFO - Response generated for turn 7
+2026-08-23 00:23:18,511 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:18] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:18,518 - __main__ - INFO - Profile retrieved: 6 facts
+2026-08-23 00:23:18,519 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:18] "GET /api/profile HTTP/1.1" 200 -
+2026-08-23 00:23:18,522 - __main__ - INFO - Chat request #8: Hi!...
+2026-08-23 00:23:18,524 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:21,403 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:21,410 - __main__ - INFO - Response generated for turn 8
+2026-08-23 00:23:21,411 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:21] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:21,417 - __main__ - INFO - Chat request #9: I work on GII Connect...
+2026-08-23 00:23:21,423 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:24,582 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:24,588 - __main__ - INFO - Response generated for turn 9
+2026-08-23 00:23:24,588 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:24] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:24,594 - __main__ - INFO - Chat request #10: I am exhausted...
+2026-08-23 00:23:24,597 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:27,318 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:27,324 - __main__ - INFO - Response generated for turn 10
+2026-08-23 00:23:27,325 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:27] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:27,332 - __main__ - INFO - Chat request #11: Hello Ami!...
+2026-08-23 00:23:27,334 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:23:30,135 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:23:30,140 - __main__ - INFO - Response generated for turn 11
+2026-08-23 00:23:30,141 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:30] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:23:30,148 - __main__ - ERROR - Invalid timezone INVALID/ZONE: 'INVALID/ZONE'
+2026-08-23 00:23:30,148 - __main__ - WARNING - Invalid timezone: INVALID/ZONE
+2026-08-23 00:23:30,148 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:30] "[31m[1mPOST /api/timezone HTTP/1.1[0m" 400 -
+2026-08-23 00:23:30,152 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:30] "GET /api/status HTTP/1.1" 200 -
+2026-08-23 00:23:30,155 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:23:30] "GET /api/history?limit=5 HTTP/1.1" 200 -
+2026-08-23 00:33:12,787 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:33:12,795 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:33:12,795 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:33:27,573 - __main__ - INFO - Chat request #1: How is GII Connect doing? What should our strategy...
+2026-08-23 00:33:27,577 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 00:33:27,577 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:33:27,577 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 00:33:35,367 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:33:35,373 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:33:35,377 - __main__ - INFO - Response generated for turn 1 (engine: company)
+2026-08-23 00:33:35,378 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:33:35] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:33:35,402 - __main__ - INFO - Chat request #2: Man, I am so excited about Seahawks this season!...
+2026-08-23 00:33:35,405 - __main__ - INFO - Routed to SPORTS engine
+2026-08-23 00:33:35,406 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:33:40,253 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:33:40,256 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:33:40,259 - __main__ - INFO - Response generated for turn 2 (engine: sports)
+2026-08-23 00:33:40,260 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:33:40] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:33:40,284 - __main__ - INFO - Chat request #3: Teach me about product management...
+2026-08-23 00:33:40,286 - __main__ - INFO - Routed to TEACHING engine
+2026-08-23 00:33:40,286 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:33:48,267 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:33:48,271 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 00:33:48,274 - __main__ - INFO - Response generated for turn 3 (engine: teaching)
+2026-08-23 00:33:48,275 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:33:48] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:33:48,300 - __main__ - INFO - Chat request #4: Tell me about Sierra Leone history and Freetown...
+2026-08-23 00:33:48,302 - __main__ - INFO - Routed to HISTORY engine
+2026-08-23 00:33:48,302 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:33:58,301 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:33:58,305 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 00:33:58,309 - __main__ - INFO - Response generated for turn 4 (engine: history)
+2026-08-23 00:33:58,310 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:33:58] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:33:58,334 - __main__ - INFO - Chat request #5: What is the connection between consciousness and t...
+2026-08-23 00:33:58,336 - __main__ - INFO - Routed to METAPHYSICAL engine
+2026-08-23 00:33:58,336 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:34:06,284 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:34:06,288 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:34:06,292 - __main__ - INFO - Response generated for turn 5 (engine: metaphysical)
+2026-08-23 00:34:06,292 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:34:06] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:34:06,316 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:34:06] "GET /api/status HTTP/1.1" 200 -
+2026-08-23 00:57:02,128 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 00:57:02,135 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 00:57:02,135 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 00:57:42,710 - __main__ - INFO - Chat request #1: I have been having bad headaches and feeling dizzy...
+2026-08-23 00:57:42,714 - __main__ - INFO - Routed to MEDICAL engine
+2026-08-23 00:57:42,714 - __main__ - INFO - Using Google Search grounding for medical engine
+2026-08-23 00:57:42,714 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:57:42,714 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:57:42,714 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:57:42,714 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:57:42,715 - __main__ - INFO - Response generated for turn 1 (engine: medical, grounding: True)
+2026-08-23 00:57:42,715 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:57:42] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:57:42,729 - __main__ - INFO - Chat request #2: How should I price my SaaS product for GII Connect...
+2026-08-23 00:57:42,732 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 00:57:42,732 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:57:42,732 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 00:57:50,255 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:57:50,259 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:57:50,262 - __main__ - INFO - Response generated for turn 2 (engine: company, grounding: False)
+2026-08-23 00:57:50,263 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:57:50] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:57:50,286 - __main__ - INFO - Chat request #3: I am running 4 companies and feeling overwhelmed, ...
+2026-08-23 00:57:50,288 - __main__ - INFO - Routed to MENTAL_HEALTH engine
+2026-08-23 00:57:50,288 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:57:56,835 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:57:56,839 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:57:56,842 - __main__ - INFO - Response generated for turn 3 (engine: mental_health, grounding: False)
+2026-08-23 00:57:56,843 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:57:56] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:57:56,870 - __main__ - INFO - Chat request #4: How do I deal with a friend who keeps flaking on p...
+2026-08-23 00:57:56,872 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 00:57:56,872 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:02,439 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:02,446 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:02,449 - __main__ - INFO - Response generated for turn 4 (engine: productivity, grounding: False)
+2026-08-23 00:58:02,450 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:02] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:02,474 - __main__ - INFO - Chat request #5: I want to build muscle but I travel constantly, wh...
+2026-08-23 00:58:02,477 - __main__ - INFO - Routed to FITNESS engine
+2026-08-23 00:58:02,477 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:11,017 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:11,031 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:11,033 - __main__ - INFO - Response generated for turn 5 (engine: fitness, grounding: False)
+2026-08-23 00:58:11,033 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:11] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:11,055 - __main__ - INFO - Chat request #6: I am so stressed about everything and cannot sleep...
+2026-08-23 00:58:11,056 - __main__ - INFO - Routed to MEDICAL engine
+2026-08-23 00:58:11,057 - __main__ - INFO - Using Google Search grounding for medical engine
+2026-08-23 00:58:11,057 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:11,057 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:11,057 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:11,057 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:58:11,057 - __main__ - INFO - Response generated for turn 6 (engine: medical, grounding: True)
+2026-08-23 00:58:11,057 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:11] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:11,072 - __main__ - INFO - Chat request #7: I want to plan a trip to Egypt next month, help me...
+2026-08-23 00:58:11,075 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 00:58:11,075 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:19,839 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:19,842 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:19,846 - __main__ - INFO - Response generated for turn 7 (engine: productivity, grounding: False)
+2026-08-23 00:58:19,847 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:19] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:19,872 - __main__ - INFO - Chat request #8: What is a good Sierra Leone cassava leaf recipe?...
+2026-08-23 00:58:19,873 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 00:58:19,874 - __main__ - INFO - Using Google Search grounding for food engine
+2026-08-23 00:58:19,874 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,874 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,874 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,874 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:58:19,875 - __main__ - INFO - Response generated for turn 8 (engine: food, grounding: True)
+2026-08-23 00:58:19,875 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:19] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:19,892 - __main__ - INFO - Chat request #9: Recommend me some good movies and Afrobeats songs ...
+2026-08-23 00:58:19,893 - __main__ - INFO - Routed to ENTERTAINMENT engine
+2026-08-23 00:58:19,893 - __main__ - INFO - Using Google Search grounding for entertainment engine
+2026-08-23 00:58:19,893 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,893 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,893 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:19,893 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:58:19,893 - __main__ - INFO - Response generated for turn 9 (engine: entertainment, grounding: True)
+2026-08-23 00:58:19,893 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:19] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:19,908 - __main__ - INFO - Chat request #10: How do I hire the right tech talent for my startup...
+2026-08-23 00:58:19,910 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 00:58:19,911 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:26,709 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:26,712 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:26,715 - __main__ - INFO - Response generated for turn 10 (engine: company, grounding: False)
+2026-08-23 00:58:26,716 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:26] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:26,741 - __main__ - INFO - Chat request #11: Should I invest in property in Nairobi or Kampala?...
+2026-08-23 00:58:26,744 - __main__ - INFO - Routed to TEACHING engine
+2026-08-23 00:58:26,744 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:34,490 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:34,494 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:34,497 - __main__ - INFO - Response generated for turn 11 (engine: teaching, grounding: False)
+2026-08-23 00:58:34,498 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:34] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:34,522 - __main__ - INFO - Chat request #12: What do I need to know about business formation fo...
+2026-08-23 00:58:34,525 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 00:58:34,526 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 00:58:42,797 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 00:58:42,803 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 00:58:42,807 - __main__ - INFO - Response generated for turn 12 (engine: company, grounding: False)
+2026-08-23 00:58:42,808 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:42] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:42,833 - __main__ - INFO - Chat request #13: What is the best laptop for a developer in 2026?...
+2026-08-23 00:58:42,836 - __main__ - INFO - Routed to TECH engine
+2026-08-23 00:58:42,836 - __main__ - INFO - Using Google Search grounding for tech engine
+2026-08-23 00:58:42,836 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,836 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,836 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,836 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:58:42,837 - __main__ - INFO - Response generated for turn 13 (engine: tech, grounding: True)
+2026-08-23 00:58:42,837 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:42] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:42,854 - __main__ - INFO - Chat request #14: I want to build a bookshelf for my office, how do ...
+2026-08-23 00:58:42,856 - __main__ - INFO - Routed to ENTERTAINMENT engine
+2026-08-23 00:58:42,856 - __main__ - INFO - Using Google Search grounding for entertainment engine
+2026-08-23 00:58:42,856 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,856 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,856 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 00:58:42,856 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 00:58:42,856 - __main__ - INFO - Response generated for turn 14 (engine: entertainment, grounding: True)
+2026-08-23 00:58:42,856 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:42] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 00:58:42,872 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 00:58:42] "GET /api/status HTTP/1.1" 200 -
+2026-08-23 01:01:48,232 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:01:48] "GET / HTTP/1.1" 200 -
+2026-08-23 01:02:29,721 - __main__ - INFO - Chat request #15: I have been having bad headaches and feeling dizzy...
+2026-08-23 01:02:29,723 - __main__ - INFO - Routed to MEDICAL engine
+2026-08-23 01:02:29,723 - __main__ - INFO - Using Google Search grounding for medical engine
+2026-08-23 01:02:29,723 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:29,723 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:29,723 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:29,723 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 01:02:29,724 - __main__ - INFO - Response generated for turn 15 (engine: medical, grounding: True)
+2026-08-23 01:02:29,725 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:02:29] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:02:43,903 - __main__ - INFO - Chat request #16: How should I price my SaaS product?...
+2026-08-23 01:02:43,905 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 01:02:43,905 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:02:51,516 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:02:51,520 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:02:51,523 - __main__ - INFO - Response generated for turn 16 (engine: company, grounding: False)
+2026-08-23 01:02:51,524 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:02:51] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:02:51,547 - __main__ - INFO - Chat request #17: I want to plan a trip to Egypt...
+2026-08-23 01:02:51,550 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 01:02:51,551 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:02:57,353 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:02:57,356 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:02:57,359 - __main__ - INFO - Response generated for turn 17 (engine: productivity, grounding: False)
+2026-08-23 01:02:57,360 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:02:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:02:57,384 - __main__ - INFO - Chat request #18: What is a good Sierra Leone cassava leaf recipe?...
+2026-08-23 01:02:57,386 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 01:02:57,386 - __main__ - INFO - Using Google Search grounding for food engine
+2026-08-23 01:02:57,386 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:57,386 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:57,386 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:02:57,386 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 01:02:57,387 - __main__ - INFO - Response generated for turn 18 (engine: food, grounding: True)
+2026-08-23 01:02:57,387 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:02:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:07:26,536 - __main__ - INFO - Chat request #19: Tell me about Freetown and Sierra Leone history...
+2026-08-23 01:07:26,539 - __main__ - INFO - Routed to HISTORY engine
+2026-08-23 01:07:26,539 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:07:35,351 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:07:35,353 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:07:35,357 - __main__ - INFO - Response generated for turn 19 (engine: history, grounding: False)
+2026-08-23 01:07:35,357 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:07:35] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:07:58,192 - __main__ - INFO - Chat request #20: Teach me about Product Management frameworks...
+2026-08-23 01:07:58,195 - __main__ - INFO - Routed to TEACHING engine
+2026-08-23 01:07:58,195 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:08:07,559 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:08:07,562 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 01:08:07,566 - __main__ - INFO - Response generated for turn 20 (engine: teaching, grounding: False)
+2026-08-23 01:08:07,567 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:08:07] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:08:57,167 - __main__ - INFO - Chat request #21: Tell me about Freetown and Sierra Leone history...
+2026-08-23 01:08:57,169 - __main__ - INFO - Routed to HISTORY engine
+2026-08-23 01:08:57,169 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:09:07,474 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:09:07,477 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:09:07,481 - __main__ - INFO - Response generated for turn 21 (engine: history, grounding: False)
+2026-08-23 01:09:07,482 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:09:07] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:10:06,445 - __main__ - INFO - Chat request #22: Teach me about Product Management frameworks...
+2026-08-23 01:10:06,448 - __main__ - INFO - Routed to TEACHING engine
+2026-08-23 01:10:06,448 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:10:14,090 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:10:14,093 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:10:14,096 - __main__ - INFO - Response generated for turn 22 (engine: teaching, grounding: False)
+2026-08-23 01:10:14,097 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:10:14] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:10:24,013 - __main__ - INFO - Chat request #23: How do I maintain friendships when traveling and w...
+2026-08-23 01:10:24,017 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 01:10:24,017 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 01:10:32,504 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 01:10:32,507 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 01:10:32,511 - __main__ - INFO - Response generated for turn 23 (engine: relationships, grounding: False)
+2026-08-23 01:10:32,512 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:10:32] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 01:10:36,691 - __main__ - INFO - Chat request #24: Tell me about Seahawks and Newcastle this season...
+2026-08-23 01:10:36,696 - __main__ - INFO - Routed to SPORTS engine
+2026-08-23 01:10:36,696 - __main__ - INFO - Using Google Search grounding for sports engine
+2026-08-23 01:10:36,696 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:10:36,696 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:10:36,696 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 01:10:36,696 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 01:10:36,697 - __main__ - INFO - Response generated for turn 24 (engine: sports, grounding: True)
+2026-08-23 01:10:36,697 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 01:10:36] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:50:42,104 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 15:50:42,115 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 15:50:42,115 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 15:51:11,913 - __main__ - INFO - Chat request #1: Hello Ami...
+2026-08-23 15:51:11,915 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:51:11,915 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 15:51:15,761 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:51:15,769 - __main__ - INFO - Response generated for turn 1 (engine: general, grounding: False)
+2026-08-23 15:51:15,770 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:51:15] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:51:29,391 - __main__ - INFO - Chat request #2: I am so frustrated with this project!...
+2026-08-23 15:51:29,393 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 15:51:29,394 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:51:33,146 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:51:33,148 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 15:51:33,150 - __main__ - INFO - Response generated for turn 2 (engine: company, grounding: False)
+2026-08-23 15:51:33,151 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:51:33] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:51:44,307 - __main__ - INFO - Chat request #3: How should I structure GII for growth?...
+2026-08-23 15:51:44,312 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 15:51:44,312 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:51:51,712 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:51:51,715 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 15:51:51,719 - __main__ - INFO - Response generated for turn 3 (engine: company, grounding: False)
+2026-08-23 15:51:51,720 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:51:51] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:51:58,931 - __main__ - INFO - Chat request #4: Teach me about OKRs and JTBD...
+2026-08-23 15:51:58,934 - __main__ - INFO - Routed to TEACHING engine
+2026-08-23 15:51:58,934 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:52:07,372 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:52:07,382 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 15:52:07,384 - __main__ - INFO - Response generated for turn 4 (engine: teaching, grounding: False)
+2026-08-23 15:52:07,385 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:52:07] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:52:13,374 - __main__ - INFO - Chat request #5: Its Janes birthday today...
+2026-08-23 15:52:13,377 - __main__ - INFO - Routed to NEWS engine
+2026-08-23 15:52:13,377 - __main__ - INFO - Using Google Search grounding for news engine
+2026-08-23 15:52:13,377 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 15:52:13,377 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 15:52:13,377 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 15:52:13,377 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 15:52:13,378 - __main__ - INFO - Response generated for turn 5 (engine: news, grounding: True)
+2026-08-23 15:52:13,378 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:52:13] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:52:27,124 - __main__ - INFO - Chat request #6: I need to hire a developer for Fundi Connect...
+2026-08-23 15:52:27,129 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 15:52:27,129 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:52:33,890 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:52:33,894 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 15:52:33,900 - __main__ - INFO - Response generated for turn 6 (engine: company, grounding: False)
+2026-08-23 15:52:33,901 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:52:33] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:52:39,030 - __main__ - INFO - Chat request #7: i need to finalize the propsal for my boss...
+2026-08-23 15:52:39,033 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:52:43,149 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:52:43,151 - __main__ - WARNING - Response validation issues: ['repetitive', 'no_krio']
+2026-08-23 15:52:43,156 - __main__ - INFO - Response generated for turn 7 (engine: general, grounding: False)
+2026-08-23 15:52:43,157 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:52:43] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 15:52:52,180 - __main__ - INFO - Chat request #8: Who are you, Ami?...
+2026-08-23 15:52:52,183 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 15:52:56,437 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 15:52:56,438 - __main__ - WARNING - Response validation issues: ['repetitive']
+2026-08-23 15:52:56,442 - __main__ - INFO - Response generated for turn 8 (engine: general, grounding: False)
+2026-08-23 15:52:56,442 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 15:52:56] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 16:14:53,720 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:14:53,733 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:14:53,733 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:15:14,652 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:15:14,655 - __main__ - INFO - Routed to NEWS engine
+2026-08-23 16:15:14,655 - __main__ - INFO - Using Google Search grounding for news engine
+2026-08-23 16:15:14,655 - __main__ - WARNING - Gemini call attempt 1 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 16:15:14,655 - __main__ - WARNING - Gemini call attempt 2 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 16:15:14,655 - __main__ - WARNING - Gemini call attempt 3 failed: module 'google.genai' has no attribute 'protos'
+2026-08-23 16:15:14,655 - __main__ - ERROR - Gemini call failed after 3 attempts
+2026-08-23 16:15:14,656 - __main__ - INFO - Response generated for turn 1 (engine: news, grounding: True)
+2026-08-23 16:15:14,657 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:15:14] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 16:20:45,334 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:20:45,339 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:20:45,339 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:20:59,423 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:20:59,426 - __main__ - INFO - Routed to NEWS engine
+2026-08-23 16:20:59,426 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 564, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 405, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 16:20:59,428 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:20:59] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:27:14,846 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:27:14,852 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:27:14,852 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:27:27,253 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:27:27,256 - __main__ - ERROR - Chat error: name 'birthday_manager' is not defined
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 548, in chat
+    if name and hasattr(birthday_manager, 'handle_birthday_mention'):
+                        ^^^^^^^^^^^^^^^^
+NameError: name 'birthday_manager' is not defined
+2026-08-23 16:27:27,257 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:27:27] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:29:47,834 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:29:47,849 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:29:47,849 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:30:02,007 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:30:02,010 - __main__ - ERROR - Chat error: name 'birthday_manager' is not defined
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 549, in chat
+    if name and hasattr(birthday_manager, 'handle_birthday_mention'):
+                        ^^^^^^^^^^^^^^^^
+NameError: name 'birthday_manager' is not defined. Did you mean: 'BirthdayManager'?
+2026-08-23 16:30:02,012 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:30:02] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:36:55,971 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:36:55,977 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:36:55,977 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:37:14,319 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:37:14,323 - __main__ - ERROR - Chat error: 'TimeAwareness' object has no attribute 'get_date_str'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, time_awareness.get_date_str())
+                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TimeAwareness' object has no attribute 'get_date_str'
+2026-08-23 16:37:14,325 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:37:14] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:40:37,211 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:40:37,226 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:40:37,226 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:40:50,148 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:40:50,150 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'cursor'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 21, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    cursor = self.db.cursor()
+             ^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'cursor'
+2026-08-23 16:40:50,152 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:40:50] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:43:00,279 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:43:00,285 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:43:00,285 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:43:14,494 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:43:14,498 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'cursor'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 22, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 9, in find_birthday
+    cursor = self.db.cursor()
+             ^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'cursor'
+2026-08-23 16:43:14,499 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:43:14] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:47:53,317 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:47:53,323 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:47:53,323 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:48:05,819 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:48:05,823 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'find_birthday'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 14, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    return self.db.find_birthday(name)
+           ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'find_birthday'
+2026-08-23 16:48:05,824 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:48:05] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:49:05,171 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:49:05,182 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:49:05,182 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:49:18,018 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:49:18,022 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'find_birthday'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 14, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    return self.db.find_birthday(name)
+           ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'find_birthday'
+2026-08-23 16:49:18,023 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:49:18] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:51:48,675 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:51:48,681 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:51:48,681 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:52:03,508 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:52:03,511 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'find_birthday'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 14, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    return self.db.find_birthday(name)
+           ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'find_birthday'
+2026-08-23 16:52:03,513 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:52:03] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:52:56,785 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:52:56,791 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:52:56,791 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:53:19,798 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:53:19,802 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'find_birthday'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 14, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    return self.db.find_birthday(name)
+           ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'find_birthday'
+2026-08-23 16:53:19,803 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:53:19] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:54:48,127 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:54:48,133 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:54:48,133 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:55:05,409 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:55:05,413 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'find_birthday'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 551, in chat
+    result = birthday_manager.handle_birthday_mention(name, datetime.now().strftime('%m-%d'))
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 14, in handle_birthday_mention
+    results = self.find_birthday(name)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/birthday_manager.py", line 8, in find_birthday
+    return self.db.find_birthday(name)
+           ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'find_birthday'
+2026-08-23 16:55:05,414 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:55:05] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 16:58:14,686 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 16:58:14,692 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 16:58:14,693 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 16:58:30,034 - __main__ - INFO - Chat request #1: Its Janes birthday today...
+2026-08-23 16:58:30,038 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:58:30] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 16:59:14,196 - __main__ - INFO - Chat request #2: Its Jane birthday today...
+2026-08-23 16:59:14,201 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:59:14] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 16:59:28,492 - __main__ - INFO - Chat request #3: Its Jane birthday on 03-20...
+2026-08-23 16:59:28,497 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:59:28] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 16:59:39,371 - __main__ - INFO - Chat request #4: Its Sarah birthday today...
+2026-08-23 16:59:39,376 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 16:59:39] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:01:23,187 - __main__ - INFO - Chat request #5: I need to hire a developer for Fundi Connect...
+2026-08-23 17:01:23,191 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 17:01:23,191 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 606, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 407, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 17:01:23,192 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:01:23] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:01:47,741 - __main__ - INFO - Chat request #6: Remind me to finalize the proposal by end of week...
+2026-08-23 17:01:47,744 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 17:01:47,744 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 606, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 407, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 17:01:47,745 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:01:47] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:03:42,808 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:03:42,814 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:03:42,814 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:04:04,500 - __main__ - INFO - Chat request #1: I need to hire a developer for Fundi Connect...
+2026-08-23 17:04:04,505 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 17:04:04,505 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 606, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 407, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 17:04:04,506 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:04:04] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:08:03,967 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:08:03,974 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:08:03,974 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:08:17,592 - __main__ - INFO - Chat request #1: I need to hire a developer for Fundi Connect...
+2026-08-23 17:08:17,597 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 17:08:17,597 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 606, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 407, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 17:08:17,599 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:08:17] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:09:48,017 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:09:48,022 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:09:48,023 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:10:03,186 - __main__ - INFO - Chat request #1: I need to hire a developer...
+2026-08-23 17:10:03,191 - __main__ - INFO - Routed to CAREER engine
+2026-08-23 17:10:03,191 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 606, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 407, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 17:10:03,192 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:10:03] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:14:55,572 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:14:55,578 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:14:55,578 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:15:19,415 - __main__ - INFO - Chat request #1: I need to hire a developer...
+2026-08-23 17:15:19,421 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:15:19] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:16:09,848 - __main__ - INFO - Chat request #2: Remind me to finalize the proposal by end of week...
+2026-08-23 17:16:09,853 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:16:09] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:16:23,125 - __main__ - INFO - Chat request #3: I should reach out to the team about the strategy...
+2026-08-23 17:16:23,130 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:16:23] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:22:52,582 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:22:52,589 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:22:52,589 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:23:11,595 - __main__ - INFO - Chat request #1: I need to finalize the proposal...
+2026-08-23 17:23:11,598 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'add_task'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 545, in chat
+    task_id = task_manager.add_task(user_input, priority="medium")
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/task_manager.py", line 7, in add_task
+    task_id = self.db.add_task(title, description, "backend", priority, due_date, category)
+              ^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'add_task'
+2026-08-23 17:23:11,599 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:23:11] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:24:58,770 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:24:58,778 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:24:58,778 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:25:17,885 - __main__ - INFO - Chat request #1: I need to finalize the proposal...
+2026-08-23 17:25:17,889 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'add_task'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 545, in chat
+    task_id = task_manager.add_task(user_input, priority="medium")
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/task_manager.py", line 7, in add_task
+    task_id = self.db.add_task(title, description, "backend", priority, due_date, category)
+              ^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'add_task'
+2026-08-23 17:25:17,891 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:25:17] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:29:37,474 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:29:37,480 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:29:37,480 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:29:51,486 - __main__ - INFO - Chat request #1: I need to finalize the proposal...
+2026-08-23 17:29:51,489 - __main__ - ERROR - Chat error: 'Database' object has no attribute 'add_task'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 545, in chat
+    task_id = task_manager.add_task(user_input, priority="medium")
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/task_manager.py", line 7, in add_task
+    task_id = self.db.add_task(title, description, "backend", priority, due_date, category)
+              ^^^^^^^^^^^^^^^^
+AttributeError: 'Database' object has no attribute 'add_task'
+2026-08-23 17:29:51,491 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:29:51] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 17:32:29,503 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:32:29,511 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:32:29,511 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:32:54,501 - __main__ - INFO - Chat request #1: I need to finalize the proposal...
+2026-08-23 17:32:54,507 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:32:54] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:33:47,976 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:33:47] "GET /api/tasks HTTP/1.1" 200 -
+2026-08-23 17:34:02,341 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:34:02] "GET /api/tasks?status=backend HTTP/1.1" 200 -
+2026-08-23 17:34:16,044 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:34:16] "GET /api/tasks/1 HTTP/1.1" 200 -
+2026-08-23 17:34:27,678 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:34:27] "PUT /api/tasks/1 HTTP/1.1" 200 -
+2026-08-23 17:34:39,899 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:34:39] "PUT /api/tasks/1 HTTP/1.1" 200 -
+2026-08-23 17:34:51,538 - __main__ - INFO - Chat request #2: I need to call the client...
+2026-08-23 17:34:51,544 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:34:51] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:35:06,660 - __main__ - INFO - Chat request #3: Remind me to review the budget...
+2026-08-23 17:35:06,665 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:35:06] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:38:25,395 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:38:55,501 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:38:55,501 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:38:58,504 - __main__ - INFO - Chat request #1: Show me my tasks...
+2026-08-23 17:38:58,513 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:38:58] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:39:04,263 - __main__ - INFO - Chat request #2: I need to close the GII deal...
+2026-08-23 17:39:04,269 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:39:04] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:39:15,789 - __main__ - INFO - Chat request #3: What tasks do I have?...
+2026-08-23 17:39:15,794 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:39:15] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:48:33,650 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:49:03,664 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:49:03,665 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:49:44,697 - __main__ - INFO - Chat request #1: I need to close the GII deal by Friday...
+2026-08-23 17:49:44,704 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:49:44] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:49:57,462 - __main__ - INFO - Chat request #2: I need to call urgent client follow-up ASAP...
+2026-08-23 17:49:57,467 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:49:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:50:09,706 - __main__ - INFO - Chat request #3: I need to finalize Fundi Connect proposal by end o...
+2026-08-23 17:50:09,711 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:50:09] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:50:22,540 - __main__ - INFO - Chat request #4: What tasks do I have this week?...
+2026-08-23 17:50:22,544 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:50:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 17:50:34,735 - __main__ - WARNING - 404 Not found: /api/tasks/week/this
+2026-08-23 17:50:34,736 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:50:34] "[33mGET /api/tasks/week/this HTTP/1.1[0m" 404 -
+2026-08-23 17:50:34,751 - __main__ - WARNING - 404 Not found: /api/tasks/overdue
+2026-08-23 17:50:34,751 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:50:34] "[33mGET /api/tasks/overdue HTTP/1.1[0m" 404 -
+2026-08-23 17:50:34,762 - __main__ - WARNING - 404 Not found: /api/tasks/project/GII
+2026-08-23 17:50:34,763 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:50:34] "[33mGET /api/tasks/project/GII HTTP/1.1[0m" 404 -
+2026-08-23 17:52:31,122 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:53:01,135 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:53:01,135 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:53:19,290 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:53:19] "GET /api/tasks/week/this HTTP/1.1" 200 -
+2026-08-23 17:53:19,306 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:53:19] "GET /api/tasks/overdue HTTP/1.1" 200 -
+2026-08-23 17:56:14,701 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 17:56:44,714 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 17:56:44,714 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 17:57:06,693 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:57:06] "GET /api/tasks/week/this HTTP/1.1" 200 -
+2026-08-23 17:58:18,228 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:58:18] "GET /api/tasks/overdue HTTP/1.1" 200 -
+2026-08-23 17:58:33,806 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:58:33] "GET /api/tasks/project/GII HTTP/1.1" 200 -
+2026-08-23 17:58:47,555 - __main__ - INFO - Chat request #1: What tasks do I have this week?...
+2026-08-23 17:58:47,560 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 17:58:47] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:03:54,716 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:04:24,729 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:04:24,729 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:04:33,152 - __main__ - INFO - Chat request #1: What tasks do I have this week?...
+2026-08-23 18:04:33,156 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:04:33] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:06:14,828 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:06:44,840 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:06:44,841 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:06:55,555 - __main__ - INFO - Chat request #1: What tasks do I have this week?...
+2026-08-23 18:06:55,560 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:06:55] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:07:44,241 - __main__ - INFO - Chat request #2: What tasks do I have?...
+2026-08-23 18:07:44,245 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:07:44] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:07:44,259 - __main__ - INFO - Chat request #3: Tasks this week?...
+2026-08-23 18:07:44,260 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 18:07:44,260 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 682, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 410, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:07:44,261 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:07:44] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:07:44,274 - __main__ - INFO - Chat request #4: Any overdue tasks?...
+2026-08-23 18:07:44,275 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 18:07:44,275 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 682, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 410, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:07:44,275 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:07:44] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:07:44,288 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:07:44] "GET /api/tasks/project/Fundi%20Connect HTTP/1.1" 200 -
+2026-08-23 18:07:44,300 - __main__ - INFO - Chat request #5: I need to launch GII product beta urgent by next F...
+2026-08-23 18:07:44,302 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:07:44] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:08:17,679 - __main__ - INFO - Chat request #6: What tasks do I have?...
+2026-08-23 18:08:17,684 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:08:17] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:08:38,449 - __main__ - INFO - Chat request #7: Tasks this week?...
+2026-08-23 18:08:38,452 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 18:08:38,452 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 682, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 410, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:08:38,453 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:08:38] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:09:04,304 - __main__ - INFO - Chat request #8: Any overdue tasks?...
+2026-08-23 18:09:04,307 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 18:09:04,307 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 682, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 410, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:09:04,308 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:09:04] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:09:28,355 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:09:28] "GET /api/tasks/project/Fundi%20Connect HTTP/1.1" 200 -
+2026-08-23 18:09:48,465 - __main__ - INFO - Chat request #9: I need to launch GII product beta urgent by next F...
+2026-08-23 18:09:48,472 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:09:48] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:11:57,299 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:12:27,311 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:12:27,312 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:12:29,456 - __main__ - INFO - Chat request #1: Tasks this week?...
+2026-08-23 18:12:29,465 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:12:29] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:12:29,486 - __main__ - INFO - Chat request #2: Any overdue tasks?...
+2026-08-23 18:12:29,488 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:12:29] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:21:13,562 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:21:43,563 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:21:43,564 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:21:46,543 - __main__ - INFO - Chat request #1: I'm shopping: milk, eggs, bread, cheese, coffee...
+2026-08-23 18:21:46,550 - __main__ - ERROR - Chat error: no such table: todo_lists
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 592, in chat
+    list_id = todolist_manager.create_list(parsed["title"])
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/todolist_manager.py", line 9, in create_list
+    return self.db.create_todo_list(title)
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/database.py", line 386, in create_todo_list
+    c.execute('INSERT INTO todo_lists (title) VALUES (?)', (title,))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such table: todo_lists
+2026-08-23 18:21:46,552 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:21:46] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:22:14,700 - __main__ - INFO - Chat request #2: Meeting prep: review slides, prepare notes, call c...
+2026-08-23 18:22:14,703 - __main__ - ERROR - Chat error: no such table: todo_lists
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 592, in chat
+    list_id = todolist_manager.create_list(parsed["title"])
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/todolist_manager.py", line 9, in create_list
+    return self.db.create_todo_list(title)
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/database.py", line 386, in create_todo_list
+    c.execute('INSERT INTO todo_lists (title) VALUES (?)', (title,))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such table: todo_lists
+2026-08-23 18:22:14,704 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:22:14] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:22:34,117 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:22:34] "[35m[1mGET /api/todolists HTTP/1.1[0m" 500 -
+2026-08-23 18:22:45,859 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:22:45] "[35m[1mGET /api/todolists/1 HTTP/1.1[0m" 500 -
+2026-08-23 18:22:57,536 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:22:57] "[35m[1mPUT /api/todolists/1/items/1 HTTP/1.1[0m" 500 -
+2026-08-23 18:25:11,944 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:25:41,956 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:25:41,957 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:25:44,939 - __main__ - INFO - Chat request #1: I'm shopping: milk, eggs, bread, cheese, coffee...
+2026-08-23 18:25:44,952 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:25:44] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:26:32,552 - __main__ - INFO - Chat request #2: Meeting prep: review slides, prepare notes, call c...
+2026-08-23 18:26:32,559 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:26:32] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:26:48,664 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:26:48] "GET /api/todolists HTTP/1.1" 200 -
+2026-08-23 18:27:01,223 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:27:01] "GET /api/todolists/1 HTTP/1.1" 200 -
+2026-08-23 18:27:12,202 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:27:12] "PUT /api/todolists/1/items/1 HTTP/1.1" 200 -
+2026-08-23 18:27:23,675 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:27:23] "GET /api/todolists/1 HTTP/1.1" 200 -
+2026-08-23 18:27:37,164 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:27:37] "DELETE /api/todolists/1 HTTP/1.1" 200 -
+2026-08-23 18:40:40,244 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:41:10,259 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:41:10,260 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:41:16,551 - __main__ - INFO - Chat request #1: Show my shopping list...
+2026-08-23 18:41:16,555 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:41:16] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:41:28,373 - __main__ - INFO - Chat request #2: Add butter and milk to shopping list...
+2026-08-23 18:41:28,379 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:41:28] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:41:48,118 - __main__ - INFO - Chat request #3: I need: task1, task2...
+2026-08-23 18:41:48,121 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 18:41:48,121 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 826, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:41:48,123 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:41:48] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:41:59,361 - __main__ - INFO - Chat request #4: Rename I need to Daily Tasks...
+2026-08-23 18:41:59,368 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:41:59] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:42:09,630 - __main__ - INFO - Chat request #5: Give me a packing list template...
+2026-08-23 18:42:09,640 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:42:09] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:42:21,337 - __main__ - INFO - Chat request #6: Show my shopping list...
+2026-08-23 18:42:21,342 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:42:21] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:42:37,386 - __main__ - INFO - Chat request #7: Uncheck milk...
+2026-08-23 18:42:37,389 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 826, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:42:37,390 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:42:37] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:45:49,912 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:46:19,925 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:46:19,926 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:46:39,916 - __main__ - INFO - Chat request #1: Quick list: done...
+2026-08-23 18:46:39,919 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 872, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:46:39,921 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:46:39] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:47:04,588 - __main__ - INFO - Chat request #2: Rename shopping to Whole Foods...
+2026-08-23 18:47:04,592 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 18:47:04,592 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 872, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:47:04,593 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:47:04] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:47:20,915 - __main__ - INFO - Chat request #3: Uncheck butter...
+2026-08-23 18:47:20,921 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:47:20] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:52:21,225 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:52:51,240 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:52:51,240 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:52:57,555 - __main__ - INFO - Chat request #1: Rename shopping to Whole Foods...
+2026-08-23 18:52:57,561 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 18:52:57,561 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 1022, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:52:57,564 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:52:57] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:52:57,586 - __main__ - INFO - Chat request #2: Quick list: item1...
+2026-08-23 18:52:57,587 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 1022, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:52:57,588 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:52:57] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:52:57,603 - __main__ - INFO - Chat request #3: Give me a packing list template...
+2026-08-23 18:52:57,609 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:52:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 18:56:24,389 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 18:56:54,517 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 18:56:54,517 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 18:57:03,789 - __main__ - INFO - Chat request #1: Rename shopping to Whole Foods...
+2026-08-23 18:57:03,791 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 18:57:03,791 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 792, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:57:03,793 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:57:03] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:57:03,807 - __main__ - INFO - Chat request #2: Quick list: item1...
+2026-08-23 18:57:03,808 - __main__ - ERROR - Chat error: 'bool' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 792, in chat
+    use_grounding = should_use_grounding(detected_engine, user_input)
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 412, in should_use_grounding
+    return False.get(engine_name, False)
+           ^^^^^^^^^
+AttributeError: 'bool' object has no attribute 'get'
+2026-08-23 18:57:03,809 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:57:03] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 18:57:03,822 - __main__ - INFO - Chat request #3: Give me a packing template...
+2026-08-23 18:57:03,828 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 18:57:03] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:00:10,258 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:00:40,271 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:00:40,271 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:01:01,837 - __main__ - INFO - Chat request #1: Rename shopping to Whole Foods...
+2026-08-23 19:01:01,841 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 19:01:01,841 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:01:01,841 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:01:05,217 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:01:05,220 - __main__ - WARNING - Response validation issues: ['no_krio']
+2026-08-23 19:01:05,224 - __main__ - INFO - Response generated for turn 1 (engine: food, grounding: False)
+2026-08-23 19:01:05,229 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:01:05] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:01:05,250 - __main__ - INFO - Chat request #2: Quick list: item1...
+2026-08-23 19:01:05,252 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:01:07,921 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:01:07,930 - __main__ - INFO - Response generated for turn 2 (engine: general, grounding: False)
+2026-08-23 19:01:07,931 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:01:07] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:01:07,953 - __main__ - INFO - Chat request #3: Show my Whole Foods list...
+2026-08-23 19:01:07,956 - __main__ - INFO - Routed to FOOD engine
+2026-08-23 19:01:07,956 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:01:17,003 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:01:17,011 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 19:01:17,015 - __main__ - INFO - Response generated for turn 3 (engine: food, grounding: False)
+2026-08-23 19:01:17,016 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:01:17] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:02:18,567 - __main__ - INFO - Chat request #4: Done: task completed...
+2026-08-23 19:02:18,571 - __main__ - INFO - Routed to PRODUCTIVITY engine
+2026-08-23 19:02:18,571 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:02:23,246 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:02:23,248 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 19:02:23,253 - __main__ - INFO - Response generated for turn 4 (engine: productivity, grounding: False)
+2026-08-23 19:02:23,254 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:02:23] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:02:35,104 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:02:35] "PUT /api/todolists/7/items/6 HTTP/1.1" 200 -
+2026-08-23 19:17:57,031 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:18:27,047 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:18:27,048 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:18:36,794 - __main__ - INFO - Chat request #1: Good morning what is on my plate?...
+2026-08-23 19:18:36,801 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:18:36] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:27:42,746 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:27:42,751 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:27:42,751 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:27:42,752 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:27:42,752 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:27:42,752 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:27:42,752 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:27:42,770 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:28:12,784 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:28:12,784 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:28:22,374 - __main__ - INFO - Chat request #1: What is my week in review?...
+2026-08-23 19:28:22,382 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:28:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:28:22,398 - __main__ - INFO - Chat request #2: I just crushed the GII deal!...
+2026-08-23 19:28:22,407 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:28:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:28:22,423 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:28:22] "POST /api/preferences HTTP/1.1" 200 -
+2026-08-23 19:28:22,436 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:28:22] "GET /api/preferences HTTP/1.1" 200 -
+2026-08-23 19:32:47,357 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:32:47,358 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:32:47,374 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:33:17,388 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:33:17,388 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:33:25,923 - __main__ - INFO - Chat request #1: Your going to love this deal, it will effect your ...
+2026-08-23 19:33:25,929 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 19:33:25,929 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:33:25,929 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:33:30,610 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:33:30,618 - __main__ - INFO - Response generated for turn 1 (engine: company, grounding: False)
+2026-08-23 19:33:30,619 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:33:30] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:33:30,641 - __main__ - INFO - Chat request #2: We recieve the documents next week...
+2026-08-23 19:33:30,645 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 19:33:30,645 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:33:34,726 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:33:34,741 - __main__ - INFO - Response generated for turn 2 (engine: personal, grounding: False)
+2026-08-23 19:33:34,742 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:33:34] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:33:34,766 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:33:34] "POST /api/grammar/check HTTP/1.1" 200 -
+2026-08-23 19:33:34,784 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:33:34] "POST /api/grammar/preferences HTTP/1.1" 200 -
+2026-08-23 19:35:57,156 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:35:57,156 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:35:57,156 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:35:57,157 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:35:57,157 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:35:57,157 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:35:57,157 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:35:57,172 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:36:27,184 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:36:27,184 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:36:34,235 - __main__ - INFO - Chat request #1: Your going to love this amazing opportunity...
+2026-08-23 19:36:34,238 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 19:36:34,238 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:36:34,238 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:36:37,124 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:36:37,132 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 19:36:37,133 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:36:37] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:51:18,955 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:51:18,961 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:51:18,979 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:51:48,993 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:51:48,993 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:51:55,365 - __main__ - INFO - Chat request #1: Your going to love this...
+2026-08-23 19:51:55,371 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 19:51:55,371 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:51:55,371 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:52:01,333 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:52:01,341 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 19:52:01,342 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:52:01] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:53:50,559 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:53:50,560 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:53:50,578 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:54:20,591 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:54:20,591 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:54:29,037 - __main__ - INFO - Chat request #1: Your going to love this amazing opportunity...
+2026-08-23 19:54:29,044 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 19:54:29,044 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:54:29,044 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:54:31,961 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:54:31,969 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 19:54:31,970 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:54:31] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 19:58:22,485 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 19:58:22,488 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 19:58:22,507 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 19:58:52,520 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 19:58:52,520 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 19:59:00,021 - __main__ - INFO - Chat request #1: Your going to love this...
+2026-08-23 19:59:00,024 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 19:59:00,024 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 19:59:00,024 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 19:59:02,379 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 19:59:02,387 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 19:59:02,388 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 19:59:02] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:05:17,073 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:05:17,089 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:05:47,103 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:05:47,103 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:05:58,074 - __main__ - INFO - Chat request #1: Your going to love this opportunity, my brodda!...
+2026-08-23 20:05:58,078 - __main__ - ERROR - Chat error: name 'corrected_input' is not defined
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+2026-08-23 20:05:58,079 - app - ERROR - Exception on /api/chat [POST]
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+2026-08-23 20:05:58,082 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:05:58] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 20:05:58,090 - werkzeug - ERROR - Error on request:
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 371, in run_wsgi
+    execute(self.server.app)
+    ~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 332, in execute
+    application_iter = app(environ, start_response)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1478, in __call__
+    return self.wsgi_app(environ, start_response)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1458, in wsgi_app
+    response = self.handle_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 810, in handle_exception
+    server_error = self.ensure_sync(handler)(server_error)
+TypeError: get_tasks_this_week() takes 0 positional arguments but 1 was given
+2026-08-23 20:05:58,098 - __main__ - INFO - Chat request #2: I will recieve the documents next week...
+2026-08-23 20:05:58,099 - __main__ - ERROR - Chat error: name 'corrected_input' is not defined
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+2026-08-23 20:05:58,100 - app - ERROR - Exception on /api/chat [POST]
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+2026-08-23 20:05:58,101 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:05:58] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 20:05:58,103 - werkzeug - ERROR - Error on request:
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 371, in run_wsgi
+    execute(self.server.app)
+    ~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 332, in execute
+    application_iter = app(environ, start_response)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1478, in __call__
+    return self.wsgi_app(environ, start_response)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1458, in wsgi_app
+    response = self.handle_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 810, in handle_exception
+    server_error = self.ensure_sync(handler)(server_error)
+TypeError: get_tasks_this_week() takes 0 positional arguments but 1 was given
+2026-08-23 20:05:58,115 - __main__ - INFO - Chat request #3: I would of called earlier if I could...
+2026-08-23 20:05:58,116 - __main__ - ERROR - Chat error: name 'corrected_input' is not defined
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+2026-08-23 20:05:58,117 - app - ERROR - Exception on /api/chat [POST]
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+2026-08-23 20:05:58,118 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:05:58] "[35m[1mPOST /api/chat HTTP/1.1[0m" 500 -
+2026-08-23 20:05:58,120 - werkzeug - ERROR - Error on request:
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 896, in chat
+    detected_engine = engine_router.detect_engine(corrected_input)
+                                                  ^^^^^^^^^^^^^^^
+NameError: name 'corrected_input' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 869, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_limiter/_limits.py", line 326, in __inner
+    return cast(R, flask.current_app.ensure_sync(obj)(*a, **k))
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/src/app.py", line 981, in chat
+    if grammar_corrections and prefs.get('grammar_correction_enabled', 1):
+       ^^^^^^^^^^^^^^^^^^^
+NameError: name 'grammar_corrections' is not defined
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 371, in run_wsgi
+    execute(self.server.app)
+    ~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/werkzeug/serving.py", line 332, in execute
+    application_iter = app(environ, start_response)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1478, in __call__
+    return self.wsgi_app(environ, start_response)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 1458, in wsgi_app
+    response = self.handle_exception(e)
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/charliekb/Desktop/The Real Ami PA/venv/lib/python3.14/site-packages/flask/app.py", line 810, in handle_exception
+    server_error = self.ensure_sync(handler)(server_error)
+TypeError: get_tasks_this_week() takes 0 positional arguments but 1 was given
+2026-08-23 20:10:33,216 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:10:33,216 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:10:33,216 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:10:33,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:10:33,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:10:33,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:10:33,217 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:10:33,235 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:11:48,806 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:11:48,822 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:11:49,090 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:11:49,090 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:12:18,873 - __main__ - INFO - Chat request #1: Your going to love this opportunity...
+2026-08-23 20:12:18,880 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 20:12:18,880 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:12:18,880 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:12:22,288 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:12:22,295 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 20:12:22,295 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:12:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:15:05,805 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:15:05,821 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:15:05,829 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:15:05,829 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:15:18,518 - __main__ - INFO - Chat request #1: Your going to love this...
+2026-08-23 20:15:18,522 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 20:15:18,522 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:15:18,522 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:15:22,116 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:15:22,124 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 20:15:22,125 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:15:22] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:17:19,362 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:17:19,363 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:17:19,379 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:17:19,386 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:17:19,386 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:17:32,458 - __main__ - INFO - Chat request #1: Your going to love this...
+2026-08-23 20:17:32,461 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 20:17:32,461 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:17:32,461 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:17:35,361 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:17:35,368 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 20:17:35,369 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:17:35] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:25:12,912 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:25:12,913 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:25:12,932 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:25:12,942 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:25:12,942 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:25:27,281 - __main__ - INFO - Chat request #1: Your going to love this...
+2026-08-23 20:25:27,288 - __main__ - INFO - Routed to RELATIONSHIPS engine
+2026-08-23 20:25:27,288 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:25:27,288 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:25:30,641 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:25:30,649 - __main__ - INFO - Response generated for turn 1 (engine: relationships, grounding: False)
+2026-08-23 20:25:30,650 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:25:30] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:26:45,710 - __main__ - INFO - Chat request #2: I would of finished the deal if I had more time...
+2026-08-23 20:26:45,717 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:26:45] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:26:45,733 - __main__ - INFO - Chat request #3: Recieve the documents and file them properly...
+2026-08-23 20:26:45,735 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 20:26:45,735 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:26:50,023 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:26:50,031 - __main__ - INFO - Response generated for turn 3 (engine: personal, grounding: False)
+2026-08-23 20:26:50,032 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:26:50] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:26:50,052 - __main__ - INFO - Chat request #4: Its going to be amazing when their is a breakthrou...
+2026-08-23 20:26:50,054 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:26:53,922 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:26:53,934 - __main__ - INFO - Response generated for turn 4 (engine: general, grounding: False)
+2026-08-23 20:26:53,935 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:26:53] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:30:26,023 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:30:26,024 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:30:26,043 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:30:26,052 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:30:26,052 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:30:46,613 - __main__ - INFO - Chat request #1: Your going to love this deal with GII...
+2026-08-23 20:30:46,622 - __main__ - INFO - Routed to COMPANY engine
+2026-08-23 20:30:46,622 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:30:46,622 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:30:50,337 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:30:50,345 - __main__ - INFO - Response generated for turn 1 (engine: company, grounding: False)
+2026-08-23 20:30:50,346 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:30:50] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 20:45:13,399 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:45:13,405 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:45:13,405 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 20:45:13,406 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 20:45:13,406 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 20:45:13,406 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 20:45:13,406 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 20:45:13,428 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 20:45:13,438 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 20:45:13,438 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 20:45:35,059 - __main__ - INFO - Chat request #1: Tell me about my ventures and what I am currently ...
+2026-08-23 20:45:35,069 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 20:45:35,069 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 20:45:35,069 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 20:45:41,806 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 20:45:41,813 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 20:45:41,817 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 20:45:41,818 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 20:45:41] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 21:15:13,403 - apscheduler.executors.default - INFO - Running job "ReminderScheduler.check_reminders (trigger: interval[0:30:00], next run at: 2026-08-23 21:15:13 EAT)" (scheduled at 2026-08-23 21:15:13.399019+03:00)
+2026-08-23 21:15:13,409 - apscheduler.executors.default - INFO - Job "ReminderScheduler.check_reminders (trigger: interval[0:30:00], next run at: 2026-08-23 21:45:13 EAT)" executed successfully
+2026-08-23 21:25:36,523 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:25:36,527 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:25:36,527 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:25:36,527 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 21:25:36,527 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 21:25:36,528 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 21:25:36,528 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 21:25:36,553 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 21:25:36,565 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 21:25:36,565 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 21:25:50,419 - __main__ - INFO - Chat request #1: Tell me who I am and what I am building...
+2026-08-23 21:25:50,427 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 21:25:50,427 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 21:25:50,427 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 21:25:57,392 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 21:25:57,396 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 21:25:57,400 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 21:25:57,401 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 21:25:57] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 21:31:34,005 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 21:31:34,025 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 21:32:17,473 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 21:32:17,474 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 21:32:17,494 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 21:32:17,503 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 21:32:17,503 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 21:33:05,100 - __main__ - INFO - Chat request #1: Who am I and what am I building?...
+2026-08-23 21:33:05,106 - __main__ - INFO - Routed to DIY engine
+2026-08-23 21:33:05,106 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 21:33:05,106 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 21:33:12,287 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 21:33:12,292 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive', 'no_krio']
+2026-08-23 21:33:12,297 - __main__ - INFO - Response generated for turn 1 (engine: diy, grounding: False)
+2026-08-23 21:33:12,298 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 21:33:12] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:09:01,111 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:09:01,112 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:09:01,137 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:09:01,148 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:09:01,148 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:09:21,071 - __main__ - INFO - Chat request #1: Tell me who I am...
+2026-08-23 22:09:21,076 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 22:09:21,077 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:09:21,077 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:09:31,334 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:09:31,339 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 22:09:31,343 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 22:09:31,344 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:09:31] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:13:06,878 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:13:06,878 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:13:06,878 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:13:06,879 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:13:06,879 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:13:06,879 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:13:06,879 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:13:06,894 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:13:07,062 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:13:07,063 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:13:19,420 - __main__ - INFO - Chat request #1: Tell me about my family and my journey...
+2026-08-23 22:13:19,424 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 22:13:19,424 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:13:19,424 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:13:32,032 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:13:32,042 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 22:13:32,047 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 22:13:32,048 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:13:32] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:18:08,525 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:18:08,526 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:18:08,542 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:18:08,549 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:18:08,549 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:18:20,471 - __main__ - INFO - Chat request #1: Tell me everything you know about me - my whole jo...
+2026-08-23 22:18:20,475 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 22:18:20,475 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:18:20,475 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:18:41,614 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:18:41,627 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 22:18:41,632 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 22:18:41,633 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:18:41] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:21:07,207 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:21:07,208 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:21:07,224 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:21:07,231 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:21:07,231 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:21:16,700 - __main__ - INFO - Chat request #1: Tell me about my ancestral roots and family histor...
+2026-08-23 22:21:16,704 - __main__ - INFO - Routed to PERSONAL engine
+2026-08-23 22:21:16,704 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:21:16,704 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:21:28,027 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:21:28,031 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 22:21:28,036 - __main__ - INFO - Response generated for turn 1 (engine: personal, grounding: False)
+2026-08-23 22:21:28,036 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:21:28] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:23:52,796 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:23:52,796 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:23:52,796 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:23:52,796 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:23:52,797 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:23:52,797 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:23:52,797 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:23:52,813 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:23:52,820 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:23:52,820 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:24:05,261 - __main__ - INFO - Chat request #1: Actually Charlie, just to clarify - my ancestry is...
+2026-08-23 22:24:05,265 - __main__ - INFO - Routed to HISTORY engine
+2026-08-23 22:24:05,265 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:24:05,265 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:24:12,644 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:24:12,647 - __main__ - WARNING - Response validation issues: ['too_long', 'repetitive']
+2026-08-23 22:24:12,652 - __main__ - INFO - Response generated for turn 1 (engine: history, grounding: False)
+2026-08-23 22:24:12,653 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:24:12] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:26:25,753 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:26:25,754 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:26:25,770 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:26:25,778 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:26:25,778 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:26:42,679 - __main__ - INFO - Chat request #1: Not Guinea, it should be Equatorial Guinea in my a...
+2026-08-23 22:26:42,684 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:26:42,684 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:26:48,236 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:26:48,245 - __main__ - INFO - Response generated for turn 1 (engine: general, grounding: False)
+2026-08-23 22:26:48,246 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:26:48] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:28:20,778 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:28:20,795 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:28:20,803 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:28:20,804 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:35:07,216 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:35:07,217 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:35:07,233 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:35:07,241 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:35:07,241 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:35:20,375 - __main__ - INFO - Chat request #1: Actually, it should be Equatorial Guinea not Guine...
+2026-08-23 22:35:20,379 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:35:20,379 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:35:25,720 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:35:25,731 - __main__ - INFO - Response generated for turn 1 (engine: general, grounding: False)
+2026-08-23 22:35:25,732 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:35:25] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:37:48,972 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:37:48,973 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:37:48,989 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:37:48,996 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:37:48,996 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:38:01,517 - __main__ - INFO - Chat request #1: Actually, it should be Equatorial Guinea not Guine...
+2026-08-23 22:38:01,522 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:38:01,522 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:38:06,039 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:38:06,049 - __main__ - INFO - Response generated for turn 1 (engine: general, grounding: False)
+2026-08-23 22:38:06,050 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:38:06] "POST /api/chat HTTP/1.1" 200 -
+2026-08-23 22:39:25,038 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:39:25,038 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:39:25,038 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-08-23 22:39:25,039 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_reminders" to job store "default"
+2026-08-23 22:39:25,039 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_morning_briefing" to job store "default"
+2026-08-23 22:39:25,039 - apscheduler.scheduler - INFO - Added job "ReminderScheduler.check_weekly_digest" to job store "default"
+2026-08-23 22:39:25,039 - apscheduler.scheduler - INFO - Scheduler started
+2026-08-23 22:39:25,054 - __main__ - INFO - ✅ Gemini 3.7 Flash loaded successfully
+2026-08-23 22:39:25,061 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.100.18:8000
+2026-08-23 22:39:25,061 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-23 22:39:45,444 - __main__ - INFO - Chat request #1: Actually, it should be Equatorial Guinea not Guine...
+2026-08-23 22:39:45,449 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-08-23 22:39:45,449 - google_genai.models - WARNING - Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+2026-08-23 22:39:50,651 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent "HTTP/1.1 200 OK"
+2026-08-23 22:39:50,661 - __main__ - INFO - Response generated for turn 1 (engine: general, grounding: False)
+2026-08-23 22:39:50,662 - werkzeug - INFO - 127.0.0.1 - - [23/Aug/2026 22:39:50] "POST /api/chat HTTP/1.1" 200 -
