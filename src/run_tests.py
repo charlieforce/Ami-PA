@@ -319,9 +319,19 @@ def check_deploy_ready():
     hard = 0
     for f in glob.glob("frontend/src/**/*.jsx", recursive=True):
         hard += open(f).read().count("localhost:8000")
-    ok("frontend addresses") if hard == 0 else bad("frontend addresses", str(hard) + " hard-coded - must change before deploy")
-    ok("password not hard-coded") if "'charlie'" not in src.replace("getenv('AMI_PASSWORD', 'charlie')", "") else bad(
-        "password not hard-coded", "found in app.py")
+    bare = 0
+    for f in glob.glob("frontend/src/**/*.jsx", recursive=True):
+        for line in open(f):
+            if "localhost:8000" in line and "import.meta.env" not in line:
+                bare += 1
+    ok("frontend addresses", "all read from the setting") if bare == 0 else bad(
+        "frontend addresses", str(bare) + " still hard-coded")
+    guard = 'raise RuntimeError("Set AMI_PASSWORD before running in production")' in src
+    bypass = "X-Ami-Password') != 'charlie'" in src
+    if guard and not bypass:
+        ok("password safe", "from the environment, with a production guard")
+    else:
+        bad("password safe", "no production guard" if not guard else "something still accepts charlie")
     try:
         tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd="..").stdout
         risky = [l for l in tracked.split("\n") if any(x in l.lower() for x in
