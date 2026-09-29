@@ -185,6 +185,15 @@ function TasksPage({ amiImage }) {
               Show more ({dateTasks.length - showMore_dateTasks} more)
             </button>
           )}
+          {showMore_dateTasks > 15 && (
+            <button onClick={() => setShowMore_dateTasks(15)}
+                    style={{ width: '100%', padding: '9px', marginTop: '6px',
+                             background: 'transparent', color: '#6b6b7c',
+                             border: '1px solid #2c2c3a', borderRadius: '8px',
+                             fontSize: '12px', cursor: 'pointer' }}>
+              Show less
+            </button>
+          )}
             </div>
           ))}
         </div>

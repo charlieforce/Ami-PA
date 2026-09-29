@@ -257,6 +257,15 @@ const RemindersList = () => {
               Show more ({pendingReminders.length - showMore_pendingReminders} more)
             </button>
           )}
+          {showMore_pendingReminders > 12 && (
+            <button onClick={() => setShowMore_pendingReminders(12)}
+                    style={{ width: '100%', padding: '9px', marginTop: '6px',
+                             background: 'transparent', color: '#6b6b7c',
+                             border: '1px solid #2c2c3a', borderRadius: '8px',
+                             fontSize: '12px', cursor: 'pointer' }}>
+              Show less
+            </button>
+          )}
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexDirection: isMobile ? 'column' : 'row' }}>
               <button onClick={handleConfirmReminders} style={{ ...buttonStyle, background: '#10b981', color: '#fff', flex: 1 }}>✅ Confirm</button>
               <button onClick={handleCancelReminders} style={{ ...buttonStyle, background: '#ef4444', color: '#fff', flex: 1 }}>❌ Cancel</button>

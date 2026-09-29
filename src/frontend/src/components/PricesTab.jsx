@@ -424,6 +424,15 @@ export default function PricesTab() {
               Show more ({entries.length - priceShow} more)
             </button>
           )}
+          {priceShow > 15 && (
+            <button onClick={() => setPriceShow(15)}
+                    style={{ width: '100%', padding: '9px', marginTop: '6px',
+                             background: 'transparent', color: '#6b6b7c',
+                             border: '1px solid #2c2c3a', borderRadius: '8px',
+                             fontSize: '12px', cursor: 'pointer' }}>
+              Show less
+            </button>
+          )}
         </>
       )}
 
