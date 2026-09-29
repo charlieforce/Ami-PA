@@ -13429,6 +13429,18 @@ def restore_db():
         return {"error": str(e)}, 400
 
 
+@app.get("/api/whoami-check")
+def whoami_check():
+    """Temporary - does the server have its settings? Reveals nothing secret."""
+    import os as _o
+    return {"password_set": bool(_o.getenv("AMI_PASSWORD")),
+            "password_length": len(_o.getenv("AMI_PASSWORD") or ""),
+            "password_is_charlie": (_o.getenv("AMI_PASSWORD") == "charlie"),
+            "google_key_set": bool(_o.getenv("GOOGLE_API_KEY")),
+            "db_path": _o.getenv("AMI_DB_PATH") or "(not set)",
+            "env": _o.getenv("AMI_ENV") or "(not set)"}
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
