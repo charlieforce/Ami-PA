@@ -330,6 +330,11 @@ const RemindersList = () => {
             <option value="daily">📅 Daily</option>
             <option value="weekly">📅 Weekly</option>
             <option value="monthly">📅 Monthly</option>
+            <option value="yearly">📅 Yearly</option>
+            <option value="every_2_days">📅 Every other day</option>
+            <option value="twice_weekly">📅 Twice a week</option>
+            <option value="every_10_days">📅 Every 10 days</option>
+            <option value="every_14_days">📅 Every 2 weeks</option>
           </select>
 
           <input type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} style={{ ...formInputStyle, marginBottom: 0 }} />

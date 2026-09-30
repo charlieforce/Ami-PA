@@ -207,6 +207,8 @@ export default function FitnessTab() {
   const shown = area === 'all' ? ex : ex.filter(x => x.area === area);
   const day = todayName();
   const todayItems = (plan && plan.by_day && plan.by_day[day]) || [];
+  const planDays = plan && plan.by_day ? Object.keys(plan.by_day) : [];
+  const planHasAnything = planDays.length > 0;
   const doneToday = new Set(log.filter(l => String(l.done_on).slice(0, 10) === today()).map(l => l.exercise_name));
 
   const ExCard = (x, inPlan) => (
@@ -743,7 +745,7 @@ export default function FitnessTab() {
                   </div>
                 ))}
                 {!Object.keys(dayMap).length && (
-                  <div style={S.empty}>Nothing planned for week {cur}.</div>
+                  <div style={S.empty}>Nothing set for this day yet. Your plan runs by day - Monday's workout stays Monday's until you change it..</div>
                 )}
               </>
             );

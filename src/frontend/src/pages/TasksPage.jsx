@@ -3,6 +3,21 @@ import { getAllTasks, createTask, updateTask, deleteTask, getTasksStats } from '
 
 function TasksPage({ amiImage }) {
   const [showMore_dateTasks, setShowMore_dateTasks] = useState(15);
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [pageSize, setPageSize] = useState(20);
+
+  const bySource = (list) => (list || []).filter(t => {
+    const src = (t.source || t.origin || '').toLowerCase();
+    if (sourceFilter === 'ami') return src.includes('ami');
+    if (sourceFilter === 'notes') return src.includes('note');
+    if (sourceFilter === 'mine') return !src || src === 'manual' || src === 'me';
+    if (sourceFilter === 'late') {
+      const d = String(t.due_date || '').slice(0, 10);
+      return d && d < new Date().toISOString().slice(0, 10);
+    }
+    return true;
+  });
+
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -137,21 +152,34 @@ function TasksPage({ amiImage }) {
       </div>
 
       {/* KANBAN VIEW */}
+      {/* where did it come from */}
+      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '0 20px 12px' }}>
+        {[['all','Everything'],['late','Overdue'],['ami','From Ami'],['notes','From notes'],['mine','Mine']].map(([k, lbl]) => (
+          <button key={k} onClick={() => setSourceFilter(k)}
+                  style={{ padding: '7px 13px', minHeight: '34px', borderRadius: '16px',
+                           flexShrink: 0, cursor: 'pointer', fontSize: '12px',
+                           border: '1px solid ' + (sourceFilter === k ? '#4f46e5' : '#2c2c3a'),
+                           background: sourceFilter === k ? '#262040' : '#1a1a22',
+                           color: sourceFilter === k ? '#a78bfa' : '#8b8b9e' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
       {viewType === 'kanban' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', padding: '20px' }}>
           <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '16px', border: '2px solid #ef4444' }}>
             <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#fff', margin: '0 0 12px 0' }}>📋 Pending ({getPendingTasks().length})</h3>
-            {getPendingTasks().map(task => <TaskCard key={task.id} task={task} />)}
+            {bySource(getPendingTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
           </div>
 
           <div style={{ background: '#2a2a3a', borderRadius: '8px', padding: '16px', border: '2px solid #f59e0b' }}>
             <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#fff', margin: '0 0 12px 0' }}>🔄 In Progress ({getInProgressTasks().length})</h3>
-            {getInProgressTasks().map(task => <TaskCard key={task.id} task={task} />)}
+            {bySource(getInProgressTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
           </div>
 
           <div style={{ background: '#2a3a2a', borderRadius: '8px', padding: '16px', border: '2px solid #10b981' }}>
             <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#fff', margin: '0 0 12px 0' }}>✅ Completed ({getCompletedTasks().length})</h3>
-            {getCompletedTasks().map(task => <TaskCard key={task.id} task={task} />)}
+            {bySource(getCompletedTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
           </div>
         </div>
       )}
@@ -160,13 +188,13 @@ function TasksPage({ amiImage }) {
       {viewType === 'list' && (
         <div style={{ padding: '20px', maxWidth: '800px' }}>
           <h2 style={{ fontSize: '13px', fontWeight: '600', color: '#999', marginBottom: '12px' }}>PENDING</h2>
-          {getPendingTasks().map(task => <TaskCard key={task.id} task={task} />)}
+          {bySource(getPendingTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
 
           <h2 style={{ fontSize: '13px', fontWeight: '600', color: '#999', marginTop: '20px', marginBottom: '12px' }}>IN PROGRESS</h2>
-          {getInProgressTasks().map(task => <TaskCard key={task.id} task={task} />)}
+          {bySource(getInProgressTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
 
           <h2 style={{ fontSize: '13px', fontWeight: '600', color: '#999', marginTop: '20px', marginBottom: '12px' }}>COMPLETED</h2>
-          {getCompletedTasks().map(task => <TaskCard key={task.id} task={task} />)}
+          {bySource(getCompletedTasks()).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
         </div>
       )}
 
@@ -176,17 +204,22 @@ function TasksPage({ amiImage }) {
           {Object.entries(tasksByDate).map(([date, dateTasks]) => (
             <div key={date} style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '12px', fontWeight: '600', color: '#999', marginBottom: '8px' }}>📅 {date}</h3>
-              {dateTasks.slice(0, showMore_dateTasks).map(task => <TaskCard key={task.id} task={task} />)}
-          {dateTasks.length > showMore_dateTasks && (
-            <button onClick={() => setShowMore_dateTasks(showMore_dateTasks + 15)}
-                    style={{ width: '100%', padding: '12px', minHeight: '44px', marginTop: '8px',
-                             background: '#2a2a2a', color: '#aaa', border: 'none',
-                             borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              Show more ({dateTasks.length - showMore_dateTasks} more)
-            </button>
-          )}
-          {showMore_dateTasks > 15 && (
-            <button onClick={() => setShowMore_dateTasks(15)}
+              {bySource(dateTasks).slice(0, pageSize).map(task => <TaskCard key={task.id} task={task} />)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+      {pageSize < 500 && (
+        <div style={{ padding: '0 20px 20px' }}>
+          <button onClick={() => setPageSize(pageSize + 20)}
+                  style={{ width: '100%', padding: '12px', minHeight: '44px',
+                           background: '#2a2a2a', color: '#aaa', border: 'none',
+                           borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
+            Show more
+          </button>
+          {pageSize > 20 && (
+            <button onClick={() => setPageSize(20)}
                     style={{ width: '100%', padding: '9px', marginTop: '6px',
                              background: 'transparent', color: '#6b6b7c',
                              border: '1px solid #2c2c3a', borderRadius: '8px',
@@ -194,11 +227,8 @@ function TasksPage({ amiImage }) {
               Show less
             </button>
           )}
-            </div>
-          ))}
         </div>
       )}
-    </div>
   );
 }
 

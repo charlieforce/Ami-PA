@@ -13676,6 +13676,17 @@ def whoami_check():
             "env": _o.getenv("AMI_ENV") or "(not set)"}
 
 
+@app.post("/api/reminders/<int:rid>/stop")
+@require_password
+def stop_reminder_repeating(rid):
+    """Stop it coming back, but keep the record of it."""
+    try:
+        db.execute("UPDATE reminders SET recurring = 'none' WHERE id = ?", (rid,))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
@@ -15899,7 +15910,8 @@ def process_recurring_reminders():
         c.execute("""
             SELECT id, title, due_date, due_time, priority, type, description
             FROM reminders
-            WHERE recurring IN ('daily', 'weekly', 'monthly', 'yearly')
+            WHERE recurring IN ('daily', 'weekly', 'monthly', 'yearly',
+                                'every_2_days', 'twice_weekly', 'every_10_days', 'every_14_days')
             AND status = 'completed'
         """)
         
@@ -15911,7 +15923,11 @@ def process_recurring_reminders():
             old_date = datetime.strptime(due_date, "%Y-%m-%d")
             
             # Calculate next occurrence
-            if reminder[6] == 'daily':
+            _gaps = {'every_2_days': 2, 'twice_weekly': 3, 'every_10_days': 10,
+                     'every_14_days': 14}
+            if reminder[6] in _gaps:
+                new_date = old_date + timedelta(days=_gaps[reminder[6]])
+            elif reminder[6] == 'daily':
                 next_date = old_date + timedelta(days=1)
             elif reminder[6] == 'weekly':
                 next_date = old_date + timedelta(weeks=1)
