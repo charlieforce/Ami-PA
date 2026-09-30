@@ -876,6 +876,11 @@ const handleSendMessage = async (msgToSend = null) => {
       {activeTab === 'birthdays' && <BirthdayCalendar />}
         {activeTab === 'menu' && (
           <div style={{padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px'}}>
+            <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('notes')}>
+              <div style={{fontSize: '28px', marginBottom: '6px'}}>📝</div>
+              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Notes</div>
+              <div style={{fontSize: '12px', color: '#666'}}>Everything you wrote down</div>
+            </div>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('briefing')}>
               <p style={{fontSize: '28px', margin: '0 0 8px 0'}}>📰</p>
               <p style={{margin: '0 0 4px 0', fontWeight: 'bold', fontSize: '16px', color: '#333'}}>BRIEFING</p>
@@ -936,11 +941,6 @@ const handleSendMessage = async (msgToSend = null) => {
               <div style={{fontSize: '12px', color: '#666'}}>Meds, readings, visits</div>
             </div>
 
-            <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('report')}>
-              <div style={{fontSize: '28px', marginBottom: '6px'}}>📊</div>
-              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Report</div>
-              <div style={{fontSize: '12px', color: '#666'}}>What's actually happening</div>
-            </div>
 
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('admin')}>
               <p style={{fontSize: '28px', margin: '0 0 8px 0'}}>⚙️</p>
@@ -962,6 +962,13 @@ const handleSendMessage = async (msgToSend = null) => {
           🏠 HOME
         </button>
         <button 
+          className={`nav-btn ${activeTab === 'report' ? 'active' : ''}`}
+          onClick={() => setActiveTab('report')}
+          title="How things are going"
+        >
+          📊 REPORT
+        </button>
+        <button 
           className={`nav-btn ${activeTab === 'tasks' ? 'active' : ''}`}
           onClick={() => setActiveTab('tasks')}
           title="Tasks"
@@ -974,13 +981,6 @@ const handleSendMessage = async (msgToSend = null) => {
           title="TODO"
         >
           📋 TODO {todoCount > 0 && <span style={{fontSize: '10px', background: '#FF6B6B', color: 'white', padding: '2px 4px', borderRadius: '10px', marginLeft: '2px'}}>{todoCount}</span>}
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'notes' ? 'active' : ''}`}
-          onClick={() => setActiveTab('notes')}
-          title="Notes"
-        >
-          📝 NOTES
         </button>
 <button 
           className={`nav-btn ${activeTab === 'menu' ? 'active' : ''}`}
