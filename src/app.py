@@ -4479,6 +4479,12 @@ FIRST MESSAGE OF THE SESSION:
     try:
         import re as _rtg
         try:
+            if _rtg.search(r'\b(how (am i|did i|is it) (doing|going)|my week|this week|report|progress|where am i|how are things|what have i (done|been)|catch me up)\w*',
+                           (query or '').lower()):
+                context += _report_for_context()
+        except Exception:
+            pass
+        try:
             if _rtg.search(r'\b(seahawk|newcastle|nfl|premier league|match|fixture|game|kick ?off|playing|football|soccer|score)\w*', (query or '').lower()):
                 context += _fixtures_for_context()
         except Exception:
@@ -12371,6 +12377,35 @@ def _fixtures_for_context():
         return ""
 
 
+def _report_for_context():
+    """The week at a glance, so she can bring it up herself."""
+    try:
+        import json as _j
+        from flask import current_app as _ca
+        with app.test_request_context('/api/report2?period=week',
+                                      headers={'X-Ami-Password': AMI_PASSWORD}):
+            r = work_report_v2()
+        d = r[0] if isinstance(r, tuple) else r
+        if not isinstance(d, dict) or d.get('error'):
+            return ""
+        bits = ["\n\nHIS WEEK SO FAR (only bring this up if he asks, or if it answers "
+                "what he just said):"]
+        if d.get('headline'):
+            bits.append("- " + d['headline'])
+        q = [x['venture'] for x in (d.get('gone_quiet') or []) if (x.get('days_quiet') or 0) > 7]
+        if q:
+            bits.append("- nothing moved on: " + ", ".join(q[:4]))
+        sw = d.get('said_he_would') or []
+        if sw:
+            bits.append("- he said he would: " + "; ".join(x['said'] for x in sw[:3]))
+        ns = d.get('not_spoken_of') or []
+        if ns:
+            bits.append("- has not mentioned: " + ", ".join(x['name'].split()[0] for x in ns[:3]))
+        return "\n".join(bits)
+    except Exception:
+        return ""
+
+
 def _goals_for_context():
     try:
         goals = db.query("SELECT * FROM fitness_goals WHERE active=1") or []
@@ -13795,6 +13830,304 @@ def add_prices_bulk():
                 failed.append((r.get('item_name'), str(e)[:60]))
         return {"status": "success", "saved": len(saved), "entries": saved, "failed": failed}
     except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/report2")
+@require_password
+def work_report_v2():
+    """Everything at a glance - what moved, what stalled, and what needs him."""
+    try:
+        from datetime import datetime as _d, timedelta as _td
+        period = request.args.get('period', 'week')
+        days = {'week': 7, 'fortnight': 14, 'month': 30, 'quarter': 90}.get(period, 7)
+        now = _charlie_now().replace(tzinfo=None)
+        today = now.strftime('%Y-%m-%d')
+        since = (now - _td(days=days)).strftime('%Y-%m-%d')
+        before = (now - _td(days=days * 2)).strftime('%Y-%m-%d')
+
+        def _day(v):
+            return str(v or '')[:10]
+
+        out = {"period": period, "days": days, "generated_at": now.isoformat(),
+               "from": since, "to": today}
+
+        ventures = {r['id']: r['name'] for r in (db.query("SELECT id, name FROM ventures") or [])}
+        tasks = db.query("SELECT * FROM tasks") or []
+        todos = db.query("SELECT * FROM todos") or []
+
+        DONE = ('done', 'completed', 'complete')
+        OPEN = ('todo', 'pending', 'in_progress', 'doing', 'blocked')
+
+        # ---- what actually moved, across BOTH boards ------------------------
+        t_done = [t for t in tasks if (t.get('status') or '') in DONE
+                  and _day(t.get('updated_at')) >= since]
+        d_done = [t for t in todos if (t.get('status') or '') in DONE
+                  and _day(t.get('completed_at') or t.get('updated_at')) >= since]
+        t_made = [t for t in tasks if _day(t.get('created_at')) >= since]
+        d_made = [t for t in todos if _day(t.get('created_at')) >= since]
+        was_done = [t for t in tasks if (t.get('status') or '') in DONE
+                    and before <= _day(t.get('updated_at')) < since]
+        was_done += [t for t in todos if (t.get('status') or '') in DONE
+                     and before <= _day(t.get('completed_at') or t.get('updated_at')) < since]
+
+        t_open = [t for t in tasks if (t.get('status') or '') in OPEN]
+        d_open = [t for t in todos if (t.get('status') or '') in OPEN]
+        in_flight = [t for t in tasks if (t.get('status') or '') == 'in_progress']
+
+        out['movement'] = {
+            "finished": len(t_done) + len(d_done),
+            "finished_before": len(was_done),
+            "made": len(t_made) + len(d_made),
+            "open_now": len(t_open) + len(d_open),
+            "in_flight": len(in_flight),
+            "net": (len(t_made) + len(d_made)) - (len(t_done) + len(d_done)),
+            "tasks_open": len(t_open), "todos_open": len(d_open),
+        }
+
+        # ---- where the attention went (everything touched, not just finished)
+        attention = {}
+        for t in tasks:
+            if _day(t.get('updated_at')) >= since or _day(t.get('created_at')) >= since:
+                nm = ventures.get(t.get('venture_id')) or 'Not tied to a venture'
+                a = attention.setdefault(nm, {"touched": 0, "finished": 0, "open": 0})
+                a['touched'] += 1
+                if (t.get('status') or '') in DONE:
+                    a['finished'] += 1
+                elif (t.get('status') or '') in OPEN:
+                    a['open'] += 1
+        out['attention'] = dict(sorted(attention.items(),
+                                       key=lambda kv: -kv[1]['touched'])[:8])
+
+        # ---- the ventures that have gone quiet ------------------------------
+        quiet = []
+        for vid, nm in ventures.items():
+            mine = [t for t in tasks if t.get('venture_id') == vid]
+            if not mine:
+                quiet.append({"venture": nm, "last_touched": None, "days_quiet": 999,
+                              "open": 0, "note": "nothing on the board at all"})
+                continue
+            last = max((_day(t.get('updated_at')) or _day(t.get('created_at')) or '')
+                       for t in mine)
+            try:
+                gap = (now.date() - _d.strptime(last, '%Y-%m-%d').date()).days
+            except Exception:
+                gap = None
+            if gap is None or gap > days:
+                quiet.append({"venture": nm, "last_touched": last, "days_quiet": gap,
+                              "open": len([t for t in mine if (t.get('status') or '') in OPEN])})
+        for _q in quiet:
+            if _q.get('days_quiet') == 999:
+                _q['days_quiet'] = None
+                _q['note'] = 'nothing on the board at all'
+        out['gone_quiet'] = sorted(quiet, key=lambda v: -(v['days_quiet'] or 9999))[:6]
+
+        # ---- what is stuck --------------------------------------------------
+        stuck = []
+        for t in t_open + d_open:
+            d0 = _day(t.get('created_at')) or _day(t.get('updated_at'))
+            if not d0:
+                continue
+            try:
+                age = (now.date() - _d.strptime(d0, '%Y-%m-%d').date()).days
+            except Exception:
+                continue
+            if age > 14:
+                stuck.append({"title": (t.get('title') or '')[:70], "days": age,
+                              "venture": ventures.get(t.get('venture_id')) or ''})
+        out['stuck'] = sorted(stuck, key=lambda x: -x['days'])[:8]
+
+        # ---- what is slipping -----------------------------------------------
+        late = []
+        for t in t_open + d_open:
+            dd = _day(t.get('due_date'))
+            if dd and dd < today:
+                try:
+                    by = (now.date() - _d.strptime(dd, '%Y-%m-%d').date()).days
+                except Exception:
+                    continue
+                late.append({"title": (t.get('title') or '')[:70], "days_late": by,
+                             "venture": ventures.get(t.get('venture_id')) or ''})
+        out['slipping'] = sorted(late, key=lambda x: -x['days_late'])[:8]
+        out['movement']['late'] = len(late)
+
+        # ---- his body -------------------------------------------------------
+        body = {}
+        try:
+            for g in (db.query("SELECT * FROM fitness_goals WHERE active = 1") or []):
+                hit = db.query("""SELECT COUNT(DISTINCT done_on) c FROM goal_log
+                                  WHERE goal_id = ? AND done_on >= ?""", (g['id'], since))
+                body[g['name']] = {"target": g.get('target'), "per": g.get('per'),
+                                   "days_logged": (hit[0]['c'] if hit else 0)}
+        except Exception:
+            pass
+        out['body'] = body
+
+        # ---- his health ------------------------------------------------------
+        health = {}
+        try:
+            bp = db.query("""SELECT systolic, diastolic, taken_at FROM bp_readings
+                             WHERE DATE(taken_at) >= ? ORDER BY taken_at""", (since,)) or []
+            if bp:
+                health['bp_readings'] = len(bp)
+                health['bp_average'] = (str(round(sum(b['systolic'] for b in bp) / len(bp))) + "/"
+                                        + str(round(sum(b['diastolic'] for b in bp) / len(bp))))
+                health['bp_latest'] = str(bp[-1]['systolic']) + "/" + str(bp[-1]['diastolic'])
+            else:
+                health['bp_readings'] = 0
+            meds = db.query("SELECT COUNT(*) c FROM medications WHERE stopped_on IS NULL")
+            taken = db.query("""SELECT COUNT(*) c FROM medication_log WHERE taken_on >= ?""", (since,))
+            health['medications'] = meds[0]['c'] if meds else 0
+            health['doses_logged'] = taken[0]['c'] if taken else 0
+        except Exception:
+            pass
+        out['health'] = health
+
+        # ---- money going out -------------------------------------------------
+        money = {}
+        try:
+            subs = db.query("""SELECT name, amount, currency, cycle, next_renewal
+                               FROM subscriptions WHERE status = 'active'""") or []
+            per_month = {'monthly': 1, 'yearly': 1 / 12.0, 'quarterly': 1 / 3.0, 'weekly': 4.33}
+            money['subscriptions'] = len(subs)
+            money['monthly_total'] = round(sum((s.get('amount') or 0)
+                                               * per_month.get(s.get('cycle'), 1) for s in subs), 2)
+            money['renewing_soon'] = [
+                {"name": s['name'], "amount": s.get('amount'), "on": _day(s.get('next_renewal'))}
+                for s in subs if _day(s.get('next_renewal')) and _day(s['next_renewal'])
+                <= (now + _td(days=14)).strftime('%Y-%m-%d')]
+            pr = db.query("SELECT COUNT(*) c FROM price_entries WHERE observed_on >= ?", (since,))
+            money['prices_logged'] = pr[0]['c'] if pr else 0
+        except Exception:
+            pass
+        out['money'] = money
+
+        # ---- what is coming ---------------------------------------------------
+        try:
+            out['coming'] = [
+                {"where": r['location'], "on": _day(r['travel_date'])}
+                for r in (db.query("""SELECT location, travel_date FROM timezone_schedule
+                                      WHERE travel_date >= date('now')
+                                        AND travel_date LIKE '____-__-__'
+                                      ORDER BY travel_date LIMIT 4""") or [])]
+        except Exception:
+            out['coming'] = []
+
+
+        # ---- the same numbers, for the period before this one ---------------
+        was_made = [t for t in tasks if before <= _day(t.get('created_at')) < since]
+        was_made += [t for t in todos if before <= _day(t.get('created_at')) < since]
+        was_late = 0
+        for t in t_open + d_open:
+            dd = _day(t.get('due_date'))
+            if dd and dd < since:
+                was_late += 1
+        out['movement']['made_before'] = len(was_made)
+        out['movement']['late_before'] = was_late
+        out['movement']['late_change'] = len(late) - was_late
+
+        # ---- what he said he would do ---------------------------------------
+        said = []
+        try:
+            import re as _rs
+            rows = db.query("""SELECT user_message, timestamp FROM conversations
+                               WHERE DATE(timestamp) >= ? AND user_message IS NOT NULL
+                                 AND TRIM(user_message) != ''
+                                 AND LENGTH(user_message) > 25
+                               ORDER BY id""", (since,)) or []
+            openish = [(t.get('title') or '').lower() for t in (t_open + d_open)]
+            for r in rows:
+                msg = str(r.get('user_message') or '')
+                for m in _rs.finditer(r"\b(?:i(?:'| a)?ll|i will|i am going to|i'm going to|"
+                                      r"i need to|i have to|i should|let me)\s+([a-z][^.,;!?]{6,70})",
+                                      msg, _rs.I):
+                    what = m.group(1).strip().rstrip('.')
+                    if len(what) < 8:
+                        continue
+                    key = [w for w in what.lower().split() if len(w) > 4][:3]
+                    if key and any(all(k in o for k in key) for o in openish):
+                        continue          # it is on a board, so it is tracked
+                    done_words = ('did', 'done', 'finished', 'sorted', 'called', 'sent')
+                    if any(w in msg.lower() for w in done_words):
+                        continue
+                    said.append({"said": what[:80], "on": _day(r.get('timestamp'))})
+            seen, keep = set(), []
+            for x in said:
+                k = x['said'].lower()[:28]
+                if k not in seen:
+                    seen.add(k); keep.append(x)
+            out['said_he_would'] = keep[-8:]
+        except Exception as _e:
+            out['said_he_would'] = []
+
+        # ---- people he has not spoken about ---------------------------------
+        try:
+            out['not_spoken_of'] = [
+                {"name": r['name'], "who": r.get('relationship') or '',
+                 "last": _day(r.get('last_mentioned')) or 'not in a while'}
+                for r in (db.query("""SELECT name, relationship, last_mentioned FROM contacts
+                                      WHERE close = 1
+                                        AND (last_mentioned IS NULL
+                                             OR last_mentioned <= date('now','-14 days'))
+                                      ORDER BY COALESCE(last_mentioned, '2000-01-01') LIMIT 5""") or [])]
+        except Exception:
+            out['not_spoken_of'] = []
+
+        # ---- what he talks about, against what he touched -------------------
+        try:
+            talk = {}
+            convo = db.query("""SELECT user_message FROM conversations
+                                WHERE DATE(timestamp) >= ?""", (since,)) or []
+            blob = " ".join(str(c.get('user_message') or '') for c in convo).lower()
+            for vid, nm in ventures.items():
+                first = nm.split()[0].lower()
+                if len(first) < 3:
+                    continue
+                mentions = blob.count(first)
+                touched = attention.get(nm, {}).get('touched', 0)
+                if mentions or touched:
+                    talk[nm] = {"talked_about": mentions, "worked_on": touched}
+            out['talk_vs_work'] = dict(sorted(
+                talk.items(), key=lambda kv: -(kv[1]['talked_about'] - kv[1]['worked_on']))[:6])
+        except Exception:
+            out['talk_vs_work'] = {}
+
+        # ---- one line he cannot misread -------------------------------------
+        try:
+            mv = out['movement']
+            bits = []
+            if mv['finished'] == 0 and mv['made'] > 0:
+                bits.append("You made " + str(mv['made']) + " and finished none")
+            else:
+                d0 = mv['finished'] - mv['finished_before']
+                bits.append("You finished " + str(mv['finished']) +
+                            (" (up " + str(d0) + ")" if d0 > 0 else
+                             (" (down " + str(-d0) + ")" if d0 < 0 else "")) +
+                            " and made " + str(mv['made']))
+            if mv.get('late'):
+                ch = mv.get('late_change', 0)
+                bits.append(str(mv['late']) + " overdue" +
+                            (", " + str(ch) + " more than last time" if ch > 0 else
+                             (", " + str(-ch) + " fewer" if ch < 0 else ", same as last time")))
+            top = list(out['attention'].keys())
+            if top:
+                bits.append(top[0] + " had your attention")
+            nq = len([q for q in out['gone_quiet']
+                      if (q.get('days_quiet') or 0) > days or q.get('note')])
+            if nq:
+                bits.append(str(nq) + " venture" + ("s" if nq != 1 else "") + " had none")
+            body_missed = [k for k, v in (out.get('body') or {}).items()
+                           if v.get('per') == 'day' and (v.get('days_logged') or 0) < 3]
+            if body_missed:
+                bits.append(", ".join(body_missed) + " barely logged")
+            out['headline'] = ". ".join(bits) + "."
+        except Exception:
+            out['headline'] = ""
+
+        return {"status": "success", **out}
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
         return {"error": str(e)}, 400
 
 
