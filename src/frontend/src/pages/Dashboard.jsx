@@ -421,6 +421,7 @@ function Dashboard({ onLogout }) {
       if (result.status === 'success') {
         setMessages(prev => [...prev, {
           role: 'ami',
+          at: new Date().toISOString(),
           text: `✅ ${result.message}\n\n${todoData.title}\n🔴 Priority: ${todoData.priority}\n📅 Due: ${todoData.due_date}`
         }]);
       }
@@ -454,8 +455,8 @@ const handleSendMessage = async (msgToSend = null) => {
     let started = false;
     const showFinal = (text) => {
       setMessages(prev => started
-        ? prev.map(m => m._sid === sid ? { role: 'ami', text } : m)
-        : [...prev, { role: 'ami', text }]);
+        ? prev.map(m => m._sid === sid ? { role: 'ami', text, at: m.at || new Date().toISOString() } : m)
+        : [...prev, { role: 'ami', text, at: new Date().toISOString() }]);
     };
     orchestratedChatStream(finalMessage, (piece) => {
       if (!started) {
