@@ -9675,14 +9675,43 @@ def meds_due_today():
     try:
         from datetime import datetime as _d
         today = _d.now().strftime('%Y-%m-%d')
-        meds = db.query("""SELECT id, name, dose, frequency, timing FROM medications
-                           WHERE stopped_on IS NULL""") or []
+        meds = db.query("""SELECT id, name, dose, frequency, timing, schedule_kind,
+                                  every_days, every_days_max, started_on, ends_on
+                           FROM medications
+                           WHERE stopped_on IS NULL
+                             AND (ends_on IS NULL OR ends_on >= date('now'))""") or []
         taken = db.query("""SELECT medication_id, slot FROM medication_log
                             WHERE taken_on = ?""", (today,)) or []
         taken_set = {(t['medication_id'], t['slot']) for t in taken}
 
         out = []
         for m in meds:
+            # taken every so many days - due on the start date, then every N days after the last one
+            if (m.get('schedule_kind') or '') == 'interval':
+                gap = int(m.get('every_days') or 0) or 1
+                last = db.query("""SELECT taken_on FROM medication_log WHERE medication_id = ?
+                                   ORDER BY taken_on DESC LIMIT 1""", (m['id'],))
+                if last:
+                    try:
+                        since = (_d.strptime(today, '%Y-%m-%d')
+                                 - _d.strptime(str(last[0]['taken_on'])[:10], '%Y-%m-%d')).days
+                    except Exception:
+                        since = gap
+                else:
+                    try:
+                        since = (_d.strptime(today, '%Y-%m-%d')
+                                 - _d.strptime(str(m.get('started_on') or today)[:10], '%Y-%m-%d')).days
+                    except Exception:
+                        since = 0
+                    if since == 0:
+                        since = gap  # the first one is due on the day he starts
+                if since >= gap:
+                    out.append({"medication_id": m['id'], "name": m['name'],
+                                "dose": m.get('dose'), "slot": "today",
+                                "every_days": gap, "days_since": since,
+                                "taken": (m['id'], 'today') in taken_set})
+                continue
+
             freq = (m.get('frequency') or '').lower()
             slots = ['morning']
             if 'twice' in freq:
