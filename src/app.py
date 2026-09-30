@@ -3386,6 +3386,11 @@ def orchestrated_chat():
         _wants_made = False
         if not _is_question:
             _wants_made = any(w in _cl for w in _creation_words)
+            try:
+                if _split_requests(query):
+                    _wants_made = False   # several things - the multi handler takes it
+            except Exception:
+                pass
             if not _wants_made:
                 try:
                     _wants_made = bool(fast_parse_creation(query))
@@ -4417,8 +4422,8 @@ def synthesize_response(query, engines, engine_data):
     _course_note = None if _is_question else _course_day_change(query)
     _log_note = None if _is_question else _log_from_chat(query)
     _goal_note = None if _is_question else _log_goal_from_chat(query)
-    _plan_note = _make_tasks_from_plan(query)
     _many_note = None if _is_question else _make_many(query)
+    _plan_note = None if _many_note else _make_tasks_from_plan(query)
     _conv_note = _instant_conversion(query)
     # use what the caller already worked out - only route and run engines if nothing was passed
     if not engines:
@@ -12520,6 +12525,29 @@ def _split_requests(text):
     if m and _r.search(r'\b(\d{1,2}|24|48|72)\s*(?:hours?|hrs?|days?)\s+(?:before|ahead)\b', t, _r.I) \
            and _r.search(r'\band\b.{0,20}\bon\b', t, _r.I):
         return [('reminder_pair', t)]
+
+    # "a task to fix the TV and another to buy bread and also a todo to go to the zoo"
+    pieces = _r.split(r'\s+(?:and\s+)?(?:also\s+)?(?:another|then|plus)\s+|\s+and\s+also\s+', t)
+    if len(pieces) > 1:
+        found = []
+        for pc in pieces:
+            k = None
+            if _r.search(r'\btodo|to-?do\b', pc, _r.I): k = 'todo'
+            elif _r.search(r'\btask\b', pc, _r.I): k = 'task'
+            elif _r.search(r'\bremind', pc, _r.I): k = 'reminder'
+            elif found:
+                k = found[-1][0]          # "and another to X" keeps the kind before it
+            if not k:
+                continue
+            what = _r.sub(r'^.*?\b(?:a |an |another |one )?(?:new )?(?:todo|to-?do|task|reminder)\b'
+                          r'[^a-z0-9]*(?:to|for|:)?\s*', '', pc, flags=_r.I).strip()
+            what = _r.sub(r'^(?:can you|could you|please|pls)\s+', '', what, flags=_r.I).strip(' .,')
+            what = _r.sub(r'^remind me\s+(?:to\s+)?', '', what, flags=_r.I).strip()
+            what = _r.sub(r'^to\s+', '', what, flags=_r.I).strip()
+            if 3 < len(what) < 140:
+                found.append((k, what[0].upper() + what[1:]))
+        if len(found) > 1:
+            return found
 
     # "add bread, milk and sugar to my shopping list"
     m = _r.search(r'\b(?:add|put|buy|get)\s+(.+?)\s+(?:to|on)\s+(?:my |the )?shopping\s*list\b', t, _r.I)
