@@ -151,6 +151,10 @@ export default function SubscriptionsTab() {
                 Cancel it ↗
               </a>
             )}
+            <button style={S.small('#2a2a2a')}
+                    onClick={() => { setForm({ ...s }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+              Change
+            </button>
             <button style={S.small('#2a2a2a')} onClick={() => {
               const why = window.prompt('Cancelling ' + s.name + ' - why? (for your record)');
               if (why === null) return;

@@ -219,12 +219,34 @@ def note_gemini_tokens(response):
 scheduler = BackgroundScheduler(job_defaults={'misfire_grace_time': 10800, 'coalesce': True})
 
 def get_user_timezone():
+    """Where he actually is - the same clock Ami uses, which follows his travel."""
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
-    c.execute("SELECT value FROM user_settings WHERE key = 'timezone'")
-    result = c.fetchone()
+    tz = None
+    try:
+        c.execute("SELECT charlie_current_timezone FROM timezone_tracking LIMIT 1")
+        r = c.fetchone()
+        tz = r[0] if r and r[0] else None
+    except Exception:
+        pass
+    if not tz:
+        try:
+            c.execute("SELECT timezone FROM timezone_schedule "
+                      "WHERE travel_date LIKE '____-__-__' AND travel_date <= date('now') "
+                      "ORDER BY travel_date DESC LIMIT 1")
+            r = c.fetchone()
+            tz = r[0] if r and r[0] else None
+        except Exception:
+            pass
+    if not tz:
+        try:
+            c.execute("SELECT value FROM user_settings WHERE key = 'timezone'")
+            r = c.fetchone()
+            tz = r[0] if r else None
+        except Exception:
+            pass
     conn.close()
-    return result[0] if result else 'Africa/Nairobi'
+    return tz or 'Africa/Nairobi'
 
 def generate_and_store_briefing(briefing_type):
     '''Generate briefing and store in database'''
