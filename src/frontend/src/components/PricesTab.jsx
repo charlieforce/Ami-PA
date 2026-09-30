@@ -127,9 +127,22 @@ export default function PricesTab() {
       .then(r => r.json()).then(j => setRate(j.rate_to_usd ? j : null)).catch(() => setRate(null));
   }, [adding, form.currency]);
 
+  const editEntry = (e) => {
+    setForm({ ...e, observed_on: String(e.observed_on || '').slice(0, 10) });
+    setAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const removeEntry = async (e) => {
+    if (!window.confirm('Remove ' + e.item_name + '?')) return;
+    await fetch(API + '/api/prices/' + e.id, { method: 'DELETE', headers: AUTH });
+    load();
+  };
+
   const save = async () => {
     if (!form.item_name || !form.local_price) { setErr('Item and price, at least'); return; }
-    const r = await fetch(API + '/api/prices', { method: 'POST', headers: H, body: JSON.stringify(form) });
+    const r = await fetch(API + '/api/prices' + (form.id ? '/' + form.id : ''),
+                          { method: form.id ? 'PUT' : 'POST', headers: H, body: JSON.stringify(form) });
     const j = await r.json();
     if (j.error) { setErr(j.error); return; }
     setAdding(false); setForm({}); setErr(''); load();
@@ -390,6 +403,15 @@ export default function PricesTab() {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end',
+                                marginBottom: '2px' }}>
+                    <button onClick={() => editEntry(e)} title="Change this"
+                            style={{ background: 'none', border: 'none', color: '#667eea',
+                                     cursor: 'pointer', fontSize: '13px', padding: '2px 5px' }}>✎</button>
+                    <button onClick={() => removeEntry(e)} title="Remove"
+                            style={{ background: 'none', border: 'none', color: '#ef4444',
+                                     cursor: 'pointer', fontSize: '13px', padding: '2px 5px' }}>✕</button>
+                  </div>
                   <div style={S.big}>{local(e.local_price, e.currency)}</div>
                   {e.usd_price != null && <div style={S.usd}>≈ {money(e.usd_price)}</div>}
                   <div style={S.fx}>

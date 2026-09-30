@@ -3750,7 +3750,9 @@ Which one yu want tackle right now? Let's go! 🔥"""
         # Step 3: Synthesize natural response
         response_text = synthesize_response(query, engines, engine_data)
         try:
-            response_text = _claims_without_doing(response_text, bool(_made_something))
+            _saved_anything = bool(_made_something) or bool(locals().get('_log_note')) \
+                              or 'PRICE SAVED' in context or 'YOU JUST' in context
+            response_text = _claims_without_doing(response_text, _saved_anything)
         except Exception as _cb:
             print("backstop skipped: " + str(_cb)[:60])
         print(f"💬 Ami says: {response_text[:50]}...")
@@ -12716,10 +12718,37 @@ def _log_from_chat(text):
                     if any(_t and _t in low for _t in _terms):
                         _item = _pi
                         break
+                # not on his list yet? take the word before or after the price as the thing
+                if not _item:
+                    _guess = _r.search(r'(?:^|\s)([a-z][a-z \-]{1,24}?)\s+(?:is|was|costs?|cost|'
+                                       r'na|for|at)\s+\d', low)
+                    if not _guess:
+                        _guess = _r.search(r'(?:paid|bought|got)\s+[\d,.]+\s*\w*\s+for\s+'
+                                           r'([a-z][a-z \-]{1,24})', low)
+                    if _guess:
+                        _nm = _guess.group(1).strip().strip('the ').title()
+                        if 2 < len(_nm) < 26:
+                            _item = {'name': _nm, 'standard_unit': None}
+                # where he is, if he did not say
+                if not _city:
+                    try:
+                        _here = db.query("""SELECT location FROM timezone_schedule
+                                            WHERE travel_date LIKE '____-__-__'
+                                              AND travel_date <= date('now')
+                                            ORDER BY travel_date DESC LIMIT 1""")
+                        if _here:
+                            _city = None
+                            _country_now = str(_here[0]['location'])
+                        else:
+                            _country_now = None
+                    except Exception:
+                        _country_now = None
+                else:
+                    _country_now = None
                 if _item:
                     _row = _save_price({
                         'item_name': _item['name'], 'local_price': _amt, 'currency': _ccy,
-                        'city': _city, 'unit': _item.get('standard_unit'),
+                        'city': _city, 'country': _country_now, 'unit': _item.get('standard_unit'),
                         'price_type': ('asking' if _r.search(r'\b(asking|quoted|charging|want)\b', low)
                                        else 'paid'),
                         'notes': 'from chat'})
@@ -12964,6 +12993,40 @@ def _save_price(d):
 def add_price():
     try:
         return {"status": "success", "entry": _save_price(request.get_json() or {})}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/prices/<int:pid>")
+@require_password
+def update_price(pid):
+    """Change a price he already logged."""
+    try:
+        d = request.get_json() or {}
+        fields = ['item_name', 'local_price', 'currency', 'city', 'country', 'quantity',
+                  'unit', 'spec', 'market_type', 'observed_on', 'price_type', 'notes',
+                  'category', 'project_id']
+        sets, vals = [], []
+        for f in fields:
+            if f in d:
+                sets.append(f + " = ?")
+                vals.append(d[f])
+        if d.get('local_price') and d.get('currency'):
+            try:
+                rate = _fx_rate(d['currency'])
+                if rate:
+                    q = float(d.get('quantity') or 1) or 1
+                    usd = float(d['local_price']) * rate
+                    sets += ["usd_price = ?", "per_unit_usd = ?", "fx_rate = ?"]
+                    vals += [round(usd, 2), round(usd / q, 4), rate]
+            except Exception:
+                pass
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(pid)
+        db.execute("UPDATE price_entries SET " + ", ".join(sets) + " WHERE id = ?", tuple(vals))
+        row = db.query("SELECT * FROM price_entries WHERE id = ?", (pid,))
+        return {"status": "success", "entry": row[0] if row else None}
     except Exception as e:
         return {"error": str(e)}, 400
 
