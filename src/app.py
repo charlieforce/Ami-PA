@@ -465,6 +465,38 @@ def _interval_meds_due():
     return out
 
 
+def interval_med_nudge():
+    """A tablet taken every so many days - one nudge on the day it is due."""
+    try:
+        if in_dnd():
+            return
+        now = _charlie_now().replace(tzinfo=None)
+        if now.hour < 8 or now.hour > 20:
+            return
+        today = now.strftime('%Y-%m-%d')
+        for m in _interval_meds_due():
+            if not (m['overdue'] or m['window']):
+                continue
+            if db.query("SELECT id FROM medication_log WHERE medication_id = ? AND taken_on = ?",
+                        (m['id'], today)):
+                continue
+            key = 'intmed' + str(m['id'])
+            if not _nudge_due(key):
+                continue
+            _nudge_said(key)
+            if m['overdue']:
+                msg = (m['name'] + " don pass - " + str(m['since']) + " days since di last one, "
+                       "and e suppose to be every " + str(m['gap']) + ". Take am today, bo.")
+            else:
+                msg = (m['name'] + " due today - " + str(m['since']) + " days since di last one. "
+                       + (str(m['dose']) + ". " if m.get('dose') else ""))
+            db.execute("INSERT INTO conversations (user_message, ami_response) VALUES (?, ?)",
+                       ("", "\U0001F48A " + msg))
+            print("interval med nudge: " + m['name'])
+    except Exception as e:
+        print("interval med nudge error: " + str(e))
+
+
 def medication_time_nudge():
     """Runs every 5 minutes: nudge for any dose whose time has just come."""
     try:
@@ -847,6 +879,8 @@ try:
         try:
             scheduler.add_job(lambda: medication_time_nudge(), 'interval', minutes=5,
                               id='med_times', replace_existing=True)
+            scheduler.add_job(lambda: interval_med_nudge(), 'interval', minutes=120,
+                              id='interval_med_nudge', replace_existing=True)
             scheduler.add_job(lambda: meeting_nudges(), 'interval', minutes=10,
                               id='meeting_nudges', replace_existing=True)
             scheduler.add_job(lambda: travel_nudges(), 'interval', minutes=60,
@@ -13681,6 +13715,20 @@ def today_strip():
                             f['opponent'].split()[-1] + " " +
                             k.strftime('%-I:%M%p').lower().replace(':00', ''),
                     "ask": "when are the " + f['team'].split()[-1] + " playing and who against?"})
+        except Exception:
+            pass
+
+        # a tablet taken every so many days, due today
+        try:
+            for _im in _interval_meds_due():
+                if _im['overdue'] or _im['window']:
+                    _dn = db.query("""SELECT id FROM medication_log
+                                      WHERE medication_id = ? AND taken_on = ?""",
+                                   (_im['id'], today))
+                    if not _dn:
+                        out['decide'].append({
+                            "what": _im['name'] + (" overdue" if _im['overdue'] else " due today"),
+                            "ask": "remind me about my " + _im['name']})
         except Exception:
             pass
 
