@@ -10244,6 +10244,28 @@ def add_visit():
         return {"error": str(e)}, 400
 
 
+@app.put("/api/medical/visits/<int:vid>")
+@require_password
+def update_visit(vid):
+    """Change a visit he already recorded."""
+    try:
+        d = request.get_json() or {}
+        fields = ['visit_date', 'seen_by', 'place', 'reason', 'what_they_said',
+                  'follow_up', 'notes']
+        sets, vals = [], []
+        for f in fields:
+            if f in d:
+                sets.append(f + " = ?")
+                vals.append(d[f])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(vid)
+        db.execute("UPDATE medical_visits SET " + ", ".join(sets) + " WHERE id = ?", tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.delete("/api/medical/visits/<int:vid>")
 @require_password
 def delete_visit(vid):

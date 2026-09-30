@@ -63,6 +63,12 @@ export default function MedicalTab() {
   const [summary, setSummary] = useState({});
   const [conds, setConds] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [openVisit, setOpenVisit] = useState(null);
+  const editVisit = (v) => {
+    setForm({ ...v, visit_date: String(v.visit_date || '').slice(0, 10) });
+    setAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const [visitQ, setVisitQ] = useState('');
   const [visitShow, setVisitShow] = useState(12);
   const [allergies, setAllergies] = useState([]);
@@ -123,6 +129,17 @@ export default function MedicalTab() {
   const post = async (path, body) => {
     try {
       const r = await fetch(API + path, { method: 'POST', headers: H, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (j.error) { setErr(j.error); return false; }
+      setForm({}); setAdding(false);
+      await load();
+      return true;
+    } catch (e) { setErr(String(e)); return false; }
+  };
+
+  const put = async (path, body) => {
+    try {
+      const r = await fetch(API + path, { method: 'PUT', headers: H, body: JSON.stringify(body) });
       const j = await r.json();
       if (j.error) { setErr(j.error); return false; }
       setForm({}); setAdding(false);
@@ -610,7 +627,7 @@ export default function MedicalTab() {
               <textarea style={{ ...S.input, minHeight: '80px' }} placeholder="What they said"
                         value={form.what_they_said || ''} onChange={e => setForm({ ...form, what_they_said: e.target.value })} />
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button style={S.btn('#10b981')} onClick={() => post('/api/medical/visits', form)}>Save</button>
+                <button style={S.btn('#10b981')} onClick={() => form.id ? put('/api/medical/visits/' + form.id, form) : post('/api/medical/visits', form)}>Save</button>
                 <button style={S.btn('#2a2a2a')} onClick={() => { setAdding(false); setForm({}); }}>Cancel</button>
               </div>
             </div>
@@ -647,7 +664,17 @@ export default function MedicalTab() {
                   </div>
                   {v.what_they_said && (
                     <div style={{ fontSize: '13px', color: '#bbb', marginTop: '8px', whiteSpace: 'pre-wrap' }}>
-                      {v.what_they_said}
+                      {openVisit === v.id || (v.what_they_said || '').length < 240
+                        ? v.what_they_said
+                        : v.what_they_said.slice(0, 240) + '...'}
+                      {(v.what_they_said || '').length >= 240 && (
+                        <button onClick={() => setOpenVisit(openVisit === v.id ? null : v.id)}
+                                style={{ display: 'block', marginTop: '6px', background: 'none',
+                                         border: 'none', color: '#667eea', fontSize: '12px',
+                                         cursor: 'pointer', padding: 0 }}>
+                          {openVisit === v.id ? 'less' : 'read all of it'}
+                        </button>
+                      )}
                     </div>
                   )}
                   {(v.documents || []).length > 0 && (
@@ -700,7 +727,10 @@ export default function MedicalTab() {
                     </div>
                   )}
                 </div>
-                <button style={S.icon} onClick={() => del('/api/medical/visits/' + v.id, 'visit')}>✕</button>
+                <span style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                  <button style={S.icon} title="Change this" onClick={() => editVisit(v)}>✎</button>
+                  <button style={S.icon} onClick={() => del('/api/medical/visits/' + v.id, 'visit')}>✕</button>
+                </span>
               </div>
 
               <label style={{ fontSize: '12px', color: '#fff', cursor: 'pointer', background: '#2a2a2a',
