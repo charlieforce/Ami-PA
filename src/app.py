@@ -9705,11 +9705,13 @@ def meds_due_today():
                         since = 0
                     if since == 0:
                         since = gap  # the first one is due on the day he starts
-                if since >= gap:
+                done_today = (m['id'], 'today') in taken_set
+                if since >= gap or done_today:
                     out.append({"medication_id": m['id'], "name": m['name'],
                                 "dose": m.get('dose'), "slot": "today",
                                 "every_days": gap, "days_since": since,
-                                "taken": (m['id'], 'today') in taken_set})
+                                "next_in": (0 if done_today else max(0, gap - since)),
+                                "taken": done_today})
                 continue
 
             freq = (m.get('frequency') or '').lower()
