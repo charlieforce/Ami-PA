@@ -301,6 +301,11 @@ export default function ReportTab() {
       {read && (
         <div style={{ ...S.card, marginTop: '12px', background: '#1d1a2e', borderColor: '#3a3357' }}>
           <div style={{ fontSize: '13px', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{read}</div>
+          <button onClick={() => setRead('')}
+                  style={{ marginTop: '10px', background: 'none', border: 'none',
+                           color: '#6b6b7c', fontSize: '12px', cursor: 'pointer', padding: 0 }}>
+            clear
+          </button>
         </div>
       )}
     </div>
