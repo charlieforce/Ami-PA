@@ -13573,10 +13573,16 @@ def _instant_time(text):
     """The clock does not need a language model."""
     import re as _r
     low = (text or '').strip().lower()
-    if not _r.search(r"\b(what('?s| is)? (the )?time|wetin time|time (is it|now)|"
-                     r"what time is it)\b", low):
-        return None
-    if len(low) > 60:
+    low = low.strip(' ?.!')
+    # only when the WHOLE message is asking the clock - not "what time are the
+    # seahawks playing", not "what time is my meeting"
+    if not _r.fullmatch(r"(hey |ok |so |and )?"
+                        r"(what('?s| is)? (the )?time( is it)?( now| here| there)?"
+                        r"|what time is it( now| here)?"
+                        r"|time( now| check)?"
+                        r"|wetin time (dey|be) (it|now)"
+                        r"|wetin be di time)"
+                        r"( for me| where i am)?", low):
         return None
     try:
         import pytz as _p
