@@ -36,6 +36,8 @@ const S = {
 
 export default function SportsTab() {
   const [scope, setScope] = useState('week');
+  const [leagueFilter, setLeagueFilter] = useState('all');
+  const [show, setShow] = useState(12);
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -64,12 +66,16 @@ export default function SportsTab() {
   if (err) return <div style={S.page}><div style={{ ...S.game(false), borderColor: '#5c3030' }}>{err}</div></div>;
   if (!d) return <div style={S.page}><div style={S.empty}>Looking...</div></div>;
 
-  const games = d.games || [];
-  const mine = games.filter(g => g.mine);
-  const rest = games.filter(g => !g.mine);
+  const all = d.games || [];
+  const leagues = [...new Set(all.map(g => g.league))];
+  const mine = all.filter(g => g.mine);                       // always, whatever the filter
+  const rest = all.filter(g => !g.mine &&
+                              (leagueFilter === 'all' || g.league === leagueFilter));
+  const restShown = rest.slice(0, show);
 
   const Game = ({ g }) => (
-    <div style={S.game(g.mine)}>
+    <div style={{ ...S.game(g.mine),
+                  ...(g.mine ? { borderLeft: '3px solid #a78bfa', padding: '13px 13px 13px 12px' } : {}) }}>
       <div style={S.row}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: g.mine ? 700 : 500 }}>
@@ -109,9 +115,24 @@ export default function SportsTab() {
         </button>
       </div>
 
+      {leagues.length > 1 && (
+        <div style={{ ...S.chips, marginTop: '-4px' }}>
+          <button style={S.chip(leagueFilter === 'all')}
+                  onClick={() => { setLeagueFilter('all'); setShow(12); }}>
+            All sport
+          </button>
+          {leagues.map(l => (
+            <button key={l} style={S.chip(leagueFilter === l)}
+                    onClick={() => { setLeagueFilter(l); setShow(12); }}>
+              {BADGE[l] || ''} {l}
+            </button>
+          ))}
+        </div>
+      )}
+
       {mine.length > 0 && (
         <>
-          <div style={S.label}>Your teams</div>
+          <div style={{ ...S.label, color: '#a78bfa' }}>Your teams</div>
           {mine.map((g, i) => <Game key={'m' + i} g={g} />)}
         </>
       )}
@@ -119,11 +140,28 @@ export default function SportsTab() {
       {rest.length > 0 && (
         <>
           <div style={S.label}>Everything else</div>
-          {rest.map((g, i) => <Game key={'r' + i} g={g} />)}
+          {restShown.map((g, i) => <Game key={'r' + i} g={g} />)}
+          {rest.length > show && (
+            <button onClick={() => setShow(show + 12)}
+                    style={{ width: '100%', padding: '11px', marginTop: '4px',
+                             background: '#2a2a2a', color: '#aaa', border: 'none',
+                             borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+              Show more ({rest.length - show} more)
+            </button>
+          )}
+          {show > 12 && (
+            <button onClick={() => setShow(12)}
+                    style={{ width: '100%', padding: '9px', marginTop: '6px',
+                             background: 'transparent', color: '#6b6b7c',
+                             border: '1px solid #2c2c3a', borderRadius: '8px',
+                             fontSize: '12px', cursor: 'pointer' }}>
+              Show less
+            </button>
+          )}
         </>
       )}
 
-      {games.length === 0 && (
+      {mine.length === 0 && rest.length === 0 && (
         <div style={S.empty}>
           Nothing in this window. Try a wider one, or press refresh to pull the schedules.
         </div>

@@ -3239,6 +3239,16 @@ def orchestrated_chat():
         data = request.get_json()
         query = data.get('message', '')
         print(f"🚀 orchestrated_chat started with query: '{query}'")
+
+        # the clock needs no model
+        _clock_now = _instant_time(query)
+        if _clock_now:
+            try:
+                db.execute("INSERT INTO conversations (user_message, ami_response) VALUES (?,?)",
+                           (query, _clock_now))
+            except Exception:
+                pass
+            return {"status": "success", "response": _clock_now, "role": "ami"}
         
         # GET OR CREATE SESSION
         session_id = get_or_create_session('charlie')
@@ -5443,7 +5453,7 @@ FIRST MESSAGE OF THE SESSION:
     except Exception as e:
         _msg = str(e)
         if '503' in _msg or 'UNAVAILABLE' in _msg or 'overloaded' in _msg.lower():
-            return ("Bo, Gemini dey overloaded right now - no be yu, na dem. "
+            return ("Mi head heavy small right now, bo - give am a minute and ask mi again. "
                     "Give am a minute and ask me again.")
         if '429' in _msg or 'quota' in _msg.lower():
             return ("A don hit di API limit for now. Check Engines & Cost, "
@@ -12423,6 +12433,95 @@ def refresh_fixtures(weeks_ahead=6):
     return {"new": got, "updated": updated}
 
 
+def _sport_for_briefing():
+    """His teams only, today only: when they play, what it clashes with, and
+    how last night went. No analysis - he has the internet for that."""
+    try:
+        from datetime import datetime as _d, timedelta as _td
+        import pytz as _p
+        now = _charlie_now()
+        here = now.tzinfo
+        today = now.strftime('%Y-%m-%d')
+        lines = []
+
+        mine = [r['team'] for r in (db.query(
+            "SELECT team FROM followed_teams WHERE active = 1") or [])]
+        if not mine:
+            return ""
+        marks = ",".join("?" for _ in mine)
+
+        # --- how it went while he slept -------------------------------------
+        since = (_d.utcnow() - _td(hours=36)).strftime('%Y-%m-%dT%H:%M:%S')
+        for r in (db.query("""SELECT team, opponent, home_away, score, kickoff_utc
+                              FROM fixtures
+                              WHERE team IN (""" + marks + """)
+                                AND result IS NOT NULL AND kickoff_utc >= ?
+                              ORDER BY kickoff_utc DESC LIMIT 3""",
+                           tuple(mine) + (since,)) or []):
+            sc = str(r.get('score') or '').strip()
+            if not sc or '-' not in sc:
+                continue
+            try:
+                away_s, home_s = [int(x) for x in sc.split('-')[:2]]
+            except Exception:
+                continue
+            his = home_s if r['home_away'] == 'home' else away_s
+            theirs = away_s if r['home_away'] == 'home' else home_s
+            verdict = ("won" if his > theirs else ("lost" if his < theirs else "drew"))
+            lines.append(r['team'] + " " + verdict + " " + str(his) + "-" + str(theirs) +
+                         " " + ("against " if r['home_away'] == 'home' else "away to ") +
+                         r['opponent'] + ".")
+
+        # --- playing today ---------------------------------------------------
+        for r in (db.query("""SELECT team, opponent, home_away, kickoff_utc, league
+                              FROM fixtures
+                              WHERE team IN (""" + marks + """)
+                                AND result IS NULL AND substr(kickoff_utc,1,10) >= ?
+                                AND substr(kickoff_utc,1,10) <= ?
+                              ORDER BY kickoff_utc LIMIT 3""",
+                           tuple(mine) + (today, (now + _td(days=1)).strftime('%Y-%m-%d'))) or []):
+            try:
+                k = _p.utc.localize(_d.strptime((str(r['kickoff_utc'])[:19] + ':00')[:19],
+                                                '%Y-%m-%dT%H:%M:%S')).astimezone(here)
+            except Exception:
+                continue
+            when = k.strftime('%-I:%M%p').lower().replace(':00', '')
+            day = "today" if k.date() == now.date() else "tomorrow"
+            bit = (r['team'] + " " + ("v " if r['home_away'] == 'home' else "away to ") +
+                   r['opponent'] + " " + day + " at " + when)
+
+            # an unholy hour where he actually is
+            if k.hour >= 23 or k.hour < 6:
+                bit += " - that is the middle of the night here"
+
+            # does it land on top of something of his?
+            try:
+                cal = str(get_calendar_for_ami() or '')
+                import re as _r2
+                for m2 in _r2.finditer(r'([^\n]{3,60}?)\s*-\s*(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})', cal):
+                    if m2.group(2) != k.strftime('%Y-%m-%d'):
+                        continue
+                    ev = _d.strptime(m2.group(2) + " " + m2.group(3) + ":" + m2.group(4),
+                                     '%Y-%m-%d %H:%M')
+                    gap = abs((ev - k.replace(tzinfo=None)).total_seconds()) / 3600.0
+                    if gap < 2.5:
+                        bit += (" - that sits on top of " + m2.group(1).strip()[:34] +
+                                " at " + m2.group(3) + ":" + m2.group(4))
+                        break
+            except Exception:
+                pass
+            lines.append(bit + ".")
+
+        if not lines:
+            return ""
+        return ("\n\nHIS TEAMS TODAY (say it in one short line in the briefing, nothing more - "
+                "no analysis, no predictions, and if they lost do not dwell on it):\n- "
+                + "\n- ".join(lines))
+    except Exception as e:
+        print("sport briefing error: " + str(e))
+        return ""
+
+
 def _fixtures_for_context():
     """His teams' next games, in his own time, so she never has to guess."""
     try:
@@ -13468,6 +13567,31 @@ def prices_overview():
         return {"status": "success", "items": out}
     except Exception as e:
         return {"error": str(e)}, 400
+
+
+def _instant_time(text):
+    """The clock does not need a language model."""
+    import re as _r
+    low = (text or '').strip().lower()
+    if not _r.search(r"\b(what('?s| is)? (the )?time|wetin time|time (is it|now)|"
+                     r"what time is it)\b", low):
+        return None
+    if len(low) > 60:
+        return None
+    try:
+        import pytz as _p
+        now = _charlie_now()
+        here = now.strftime('%-I:%M%p').lower().replace(':00', '')
+        zone = str(now.tzinfo).split('/')[-1].replace('_', ' ')
+        bits = [here + " here in " + zone]
+        for nm, tz in (("Freetown", "Africa/Freetown"), ("Nairobi", "Africa/Nairobi")):
+            if nm.lower() in zone.lower():
+                continue
+            t = now.astimezone(_p.timezone(tz))
+            bits.append(t.strftime('%-I:%M%p').lower().replace(':00', '') + " " + nm)
+        return "Na " + ", ".join(bits) + "."
+    except Exception:
+        return None
 
 
 def _instant_conversion(text):
