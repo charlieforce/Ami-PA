@@ -356,14 +356,29 @@ def evening_medication_nudge():
                             WHERE taken_on = ?""", (today,)) or []
         taken_set = {(t['medication_id'], t['slot']) for t in taken}
 
+        # a tablet taken every so many days is only mentioned on the day it is due
+        _due_now = set()
+        try:
+            for _im in _interval_meds_due():
+                if _im['overdue'] or _im['window']:
+                    _due_now.add(_im['id'])
+        except Exception:
+            pass
+
         pending = []
         for m in meds:
             freq = (m.get('frequency') or '').lower()
             if 'as needed' in freq:
                 continue
+            if (m.get('schedule_kind') or '') == 'interval':
+                if m['id'] not in _due_now or (m['id'], 'today') in taken_set:
+                    continue
+                pending.append(m['name'])
+                continue
             slot = 'evening' if ('twice' in freq or 'three' in freq) else 'morning'
             if (m['id'], slot) not in taken_set:
-                pending.append(m['name'] + (" " + m['dose'] if m.get('dose') else ""))
+                _d2 = str(m.get('dose') or '').strip()
+                pending.append(m['name'] + ((" " + _d2) if _d2 and not _d2.isdigit() else ""))
 
         if not pending:
             return
@@ -505,7 +520,8 @@ def medication_time_nudge():
             return
         now = _charlie_now().replace(tzinfo=None)
         today = now.strftime('%Y-%m-%d')
-        meds = db.query("""SELECT id, name, dose, frequency, times FROM medications
+        meds = db.query("""SELECT id, name, dose, frequency, times, schedule_kind,
+                                  every_days, started_on FROM medications
                            WHERE stopped_on IS NULL AND times IS NOT NULL AND TRIM(times) != ''""") or []
         taken = {(t['medication_id'], t['slot']) for t in
                  (db.query("SELECT medication_id, slot FROM medication_log WHERE taken_on = ?", (today,)) or [])}
@@ -2707,7 +2723,7 @@ def gemini_route(query):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         eng = (_json.loads(raw).get("engines") or [])
@@ -4141,7 +4157,7 @@ def _reconcile_fact(person, existing, fact, client):
         )
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         data = _json.loads(raw)
@@ -4186,7 +4202,7 @@ def extract_durable_facts(query, ami_reply=""):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
 
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
@@ -4418,6 +4434,23 @@ Things he has told you about himself are true because he said them. Use them the
 
 import threading as _thr_stream
 _stream_state = _thr_stream.local()
+
+
+def _ask_gemini(client, prompt=None, model="gemini-3.7-flash", tries=3, **kw):
+    """They get busy. Wait a beat and ask again before giving up on him."""
+    import time as _t
+    last = None
+    for i in range(tries):
+        try:
+            return client.models.generate_content(model=model, contents=prompt, **kw)
+        except Exception as e:
+            last = e
+            m = str(e)
+            if '503' in m or 'UNAVAILABLE' in m or 'overloaded' in m.lower():
+                _t.sleep(1.5 * (i + 1))
+                continue
+            raise
+    raise last
 
 
 def synthesize_response(query, engines, engine_data):
@@ -5438,7 +5471,7 @@ FIRST MESSAGE OF THE SESSION:
             except Exception:
                 pass
         else:
-            response = note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt, config=_fast_cfg)
+            response = note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt, config=_fast_cfg)
             note_gemini_tokens(response)
         ami_response = response.text if response.text else "Eh bai!"
         
@@ -5453,8 +5486,7 @@ FIRST MESSAGE OF THE SESSION:
     except Exception as e:
         _msg = str(e)
         if '503' in _msg or 'UNAVAILABLE' in _msg or 'overloaded' in _msg.lower():
-            return ("Mi head heavy small right now, bo - give am a minute and ask mi again. "
-                    "Give am a minute and ask me again.")
+            return "Mi head heavy small right now, bo - try mi again in a minute." 
         if '429' in _msg or 'quota' in _msg.lower():
             return ("A don hit di API limit for now. Check Engines & Cost, "
                     "or wait till di limit reset.")
@@ -6977,7 +7009,7 @@ def parse_creation(text):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         d = _json.loads(raw)
@@ -8047,7 +8079,7 @@ def expand_text():
     prompt = "Expand this text by adding more detail, context, and elaboration. Keep the same meaning but make it more comprehensive. Return ONLY the expanded text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8075,7 +8107,7 @@ def summarize_text():
     prompt = "Make this text more concise. Keep the key points but remove unnecessary details. Return ONLY the summarized text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8103,7 +8135,7 @@ def professional_text():
     prompt = "Rewrite this text in a professional and formal business tone. Keep the same information but make it more polished. Return ONLY the professional text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8134,7 +8166,7 @@ def change_tone():
     prompt = f"Rewrite this text in a {tone} tone. Return ONLY the rewritten text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8162,7 +8194,7 @@ def bullet_points():
     prompt = "Convert this text into a clean, well-organized bullet point list. Keep the same information but make it structured. Return ONLY the bullet points:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8190,7 +8222,7 @@ def simplify_text():
     prompt = "Simplify this text to make it easier to understand. Use simple words and short sentences. Return ONLY the simplified text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8214,7 +8246,7 @@ def text_generate_title():
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
         title = (resp.text or "").strip().strip('"').strip()
         return jsonify({"title": title or "Untitled", "status": "success"})
@@ -14549,7 +14581,7 @@ def report_read():
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = client.models.generate_content(model="gemini-3.7-flash", contents=prompt)
+        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
         note_gemini_tokens(resp)
         return {"status": "success", "read": (resp.text or "").strip()}
     except Exception as e:
