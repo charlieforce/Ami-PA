@@ -12403,13 +12403,19 @@ def refresh_fixtures(weeks_ahead=6):
     except Exception:
         mine = set()
 
-    yr = _d.utcnow().year
-    # whole seasons at once: 2 is the regular season, 3 the playoffs
+    now0 = _d.utcnow()
+    yr = now0.year
+    # football runs across two calendar years and caps at 100 results, so it
+    # goes month by month. the american sports take a whole season at once.
+    months = []
+    for k in range(8):
+        m = now0.month + k
+        months.append("?dates=" + str(yr + (m - 1) // 12) + str(((m - 1) % 12) + 1).zfill(2))
+    seasons = ["?dates=" + str(yr) + "&seasontype=2",
+               "?dates=" + str(yr) + "&seasontype=3",
+               "?dates=" + str(yr + 1) + "&seasontype=2", ""]
     for league, sport, path in ESPN_LEAGUES:
-        for q in ("?dates=" + str(yr) + "&seasontype=2",
-                  "?dates=" + str(yr) + "&seasontype=3",
-                  "?dates=" + str(yr + 1) + "&seasontype=2",
-                  ""):
+        for q in (months if path.startswith('soccer') else seasons):
             url = ("https://site.api.espn.com/apis/site/v2/sports/" + path +
                    "/scoreboard" + q)
             try:
