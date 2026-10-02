@@ -13842,50 +13842,6 @@ def chat_search():
         return {"error": str(e)}, 400
 
 
-@app.post("/api/admin/restore-db")
-@require_password
-def restore_db():
-    """TEMPORARY - put his real database on the server. Remove after the move."""
-    try:
-        import shutil as _sh
-        f = request.files.get('file')
-        if not f:
-            return {"error": "no file"}, 400
-        target = AMI_DB
-        _os_db.makedirs(_os_db.path.dirname(target) or '.', exist_ok=True)
-        if _os_db.path.exists(target):
-            _sh.copy2(target, target + '.replaced')
-        f.save(target)
-        import sqlite3 as _s3
-        c = _s3.connect(target)
-        tables = [r[0] for r in c.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-        counts = {}
-        for t in ('conversations', 'contacts', 'user_birthdays', 'notes', 'tasks',
-                  'price_entries', 'fitness_goals', 'exercises'):
-            try:
-                counts[t] = c.execute("SELECT COUNT(*) FROM " + t).fetchone()[0]
-            except Exception:
-                pass
-        c.close()
-        return {"status": "success", "tables": len(tables), "counts": counts,
-                "size_kb": round(_os_db.path.getsize(target) / 1024)}
-    except Exception as e:
-        return {"error": str(e)}, 400
-
-
-@app.get("/api/whoami-check")
-def whoami_check():
-    """Temporary - does the server have its settings? Reveals nothing secret."""
-    import os as _o
-    return {"password_set": bool(_o.getenv("AMI_PASSWORD")),
-            "password_length": len(_o.getenv("AMI_PASSWORD") or ""),
-            "password_is_charlie": (_o.getenv("AMI_PASSWORD") == "charlie"),
-            "google_key_set": bool(_o.getenv("GOOGLE_API_KEY")),
-            "db_path": _o.getenv("AMI_DB_PATH") or "(not set)",
-            "env": _o.getenv("AMI_ENV") or "(not set)"}
-
-
 @app.post("/api/reminders/<int:rid>/stop")
 @require_password
 def stop_reminder_repeating(rid):
