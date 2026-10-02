@@ -22,6 +22,7 @@ import Calendar from './Calendar';
 import AdminPortal from './AdminPortal';
 import '../styles/DashboardMobile.css';
 import ReportTab from '../components/ReportTab';
+import SportsTab from '../components/SportsTab';
 import MedicalTab from '../components/MedicalTab';
 import LearningTab from '../components/LearningTab';
 import SubscriptionsTab from '../components/SubscriptionsTab';
@@ -873,10 +874,16 @@ const handleSendMessage = async (msgToSend = null) => {
       {activeTab === 'fitness' && <FitnessTab />}
       {activeTab === 'medical' && <MedicalTab />}
       {activeTab === 'report' && <ReportTab />}
+      {activeTab === 'sports' && <SportsTab />}
       {activeTab === 'admin' && <AdminPortal />}
       {activeTab === 'birthdays' && <BirthdayCalendar />}
         {activeTab === 'menu' && (
           <div style={{padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px'}}>
+            <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('sports')}>
+              <div style={{fontSize: '28px', marginBottom: '6px'}}>🏈</div>
+              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Sport</div>
+              <div style={{fontSize: '12px', color: '#666'}}>Who is playing, and when</div>
+            </div>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('notes')}>
               <div style={{fontSize: '28px', marginBottom: '6px'}}>📝</div>
               <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Notes</div>

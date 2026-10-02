@@ -879,6 +879,8 @@ try:
         try:
             scheduler.add_job(lambda: medication_time_nudge(), 'interval', minutes=5,
                               id='med_times', replace_existing=True)
+            scheduler.add_job(lambda: refresh_fixtures(), 'interval', hours=12,
+                              id='fixtures_refresh', replace_existing=True)
             scheduler.add_job(lambda: interval_med_nudge(), 'interval', minutes=120,
                               id='interval_med_nudge', replace_existing=True)
             scheduler.add_job(lambda: meeting_nudges(), 'interval', minutes=10,
@@ -12339,14 +12341,98 @@ def _log_goal_from_chat(text):
     return "HIS GOALS, JUST UPDATED: " + "; ".join(said) + ". Work it in naturally - do not list it."
 
 
+ESPN_LEAGUES = [
+    ("NFL", "american football", "football/nfl"),
+    ("Premier League", "football", "soccer/eng.1"),
+    ("NBA", "basketball", "basketball/nba"),
+    ("Champions League", "football", "soccer/uefa.champions"),
+    ("AFCON", "football", "soccer/caf.nations"),
+]
+
+
+def refresh_fixtures(weeks_ahead=6):
+    """Pull the real schedules. Safe to run any time - it updates rather than duplicates."""
+    import urllib.request as _u, json as _j
+    from datetime import datetime as _d, timedelta as _td
+    got, updated = 0, 0
+    try:
+        mine = {r['team'].lower() for r in (db.query(
+            "SELECT team FROM followed_teams WHERE active = 1") or [])}
+    except Exception:
+        mine = set()
+
+    yr = _d.utcnow().year
+    # whole seasons at once: 2 is the regular season, 3 the playoffs
+    for league, sport, path in ESPN_LEAGUES:
+        for q in ("?dates=" + str(yr) + "&seasontype=2",
+                  "?dates=" + str(yr) + "&seasontype=3",
+                  "?dates=" + str(yr + 1) + "&seasontype=2",
+                  ""):
+            url = ("https://site.api.espn.com/apis/site/v2/sports/" + path +
+                   "/scoreboard" + q)
+            try:
+                with _u.urlopen(url, timeout=20) as r:
+                    data = _j.loads(r.read().decode())
+            except Exception as e:
+                print("fixtures: " + league + " week " + str(wk) + " - " + str(e)[:50])
+                continue
+            for ev in (data.get('events') or []):
+                try:
+                    eid = str(ev.get('id') or '')
+                    when = str(ev.get('date') or '').replace('Z', '')[:19]
+                    if len(when) == 16:
+                        when += ':00'
+                    comp = (ev.get('competitions') or [{}])[0]
+                    sides = comp.get('competitors') or []
+                    if len(sides) < 2:
+                        continue
+                    home = next((c for c in sides if c.get('homeAway') == 'home'), sides[0])
+                    away = next((c for c in sides if c.get('homeAway') == 'away'), sides[1])
+                    hn = (home.get('team') or {}).get('displayName') or ''
+                    an = (away.get('team') or {}).get('displayName') or ''
+                    st = ((ev.get('status') or {}).get('type') or {})
+                    done = bool(st.get('completed'))
+                    state = st.get('description') or ''
+                    score = None
+                    if done or st.get('state') == 'in':
+                        score = str(away.get('score') or '') + "-" + str(home.get('score') or '')
+                    note = (comp.get('notes') or [{}])[0].get('headline', '') if comp.get('notes') else ''
+
+                    for team, opp, ha in ((hn, an, 'home'), (an, hn, 'away')):
+                        if not team:
+                            continue
+                        was = db.query("SELECT id FROM fixtures WHERE espn_id = ? AND team = ?",
+                                       (eid, team))
+                        if was:
+                            db.execute("""UPDATE fixtures SET status = ?, score = ?,
+                                          result = ?, kickoff_utc = ? WHERE id = ?""",
+                                       (state, score,
+                                        (score if done else None), when, was[0]['id']))
+                            updated += 1
+                        else:
+                            db.execute("""INSERT OR IGNORE INTO fixtures
+                                          (sport, league, team, opponent, home_away,
+                                           kickoff_utc, note, result, espn_id, status, score)
+                                          VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                                       (sport, league, team, opp, ha, when, note,
+                                        (score if done else None), eid, state, score))
+                            got += 1
+                except Exception:
+                    continue
+    print("fixtures: " + str(got) + " new, " + str(updated) + " updated")
+    return {"new": got, "updated": updated}
+
+
 def _fixtures_for_context():
     """His teams' next games, in his own time, so she never has to guess."""
     try:
         from datetime import datetime as _d
         import pytz as _p
-        rows = db.query("""SELECT team, league, opponent, home_away, kickoff_utc, note
-                           FROM fixtures WHERE kickoff_utc >= ? AND result IS NULL
-                           ORDER BY kickoff_utc""",
+        rows = db.query("""SELECT f.team, f.league, f.opponent, f.home_away, f.kickoff_utc, f.note
+                           FROM fixtures f
+                           JOIN followed_teams t ON LOWER(t.team) = LOWER(f.team)
+                           WHERE f.kickoff_utc >= ? AND f.result IS NULL AND t.active = 1
+                           ORDER BY f.kickoff_utc""",
                         (_d.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),)) or []
         if not rows:
             return ""
@@ -12357,7 +12443,7 @@ def _fixtures_for_context():
                 continue
             seen.add(r['team'])
             try:
-                k = _p.utc.localize(_d.strptime(str(r['kickoff_utc'])[:19], '%Y-%m-%dT%H:%M:%S')).astimezone(here)
+                k = _p.utc.localize(_d.strptime((str(r['kickoff_utc'])[:19] + ':00')[:19], '%Y-%m-%dT%H:%M:%S')).astimezone(here)
                 when = k.strftime('%a %-d %b, %-I:%M%p').replace('AM', 'am').replace('PM', 'pm')
                 days = (k.date() - _charlie_now().date()).days
                 when += " (today)" if days == 0 else (" (tomorrow)" if days == 1 else "")
@@ -13683,6 +13769,82 @@ def stop_reminder_repeating(rid):
     try:
         db.execute("UPDATE reminders SET recurring = 'none' WHERE id = ?", (rid,))
         return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/sports")
+@require_password
+def sports_board():
+    """What is on - his teams first, then everyone else."""
+    try:
+        from datetime import datetime as _d, timedelta as _td
+        import pytz as _p
+        scope = request.args.get('when', 'week')
+        span = {'today': 1, 'week': 8, 'month': 31}.get(scope, 8)
+        now_utc = _d.utcnow()
+        until = (now_utc + _td(days=span)).strftime('%Y-%m-%dT%H:%M:%S')
+        since = (now_utc - _td(hours=6)).strftime('%Y-%m-%dT%H:%M:%S')
+
+        mine = {r['team'] for r in (db.query(
+            "SELECT team FROM followed_teams WHERE active = 1") or [])}
+        rows = db.query("""SELECT * FROM fixtures
+                           WHERE kickoff_utc >= ? AND kickoff_utc <= ?
+                           ORDER BY kickoff_utc""", (since, until)) or []
+
+        here = _charlie_now().tzinfo
+        seen, out = set(), []
+        for r in rows:
+            pair = tuple(sorted([r['team'], r['opponent'] or ''])) + (r['kickoff_utc'],)
+            is_mine = r['team'] in mine
+            if pair in seen and not is_mine:
+                continue
+            seen.add(pair)
+            try:
+                k = _p.utc.localize(_d.strptime(str(r['kickoff_utc'])[:19],
+                                                '%Y-%m-%dT%H:%M:%S')).astimezone(here)
+                local = k.strftime('%a %-d %b, %-I:%M%p').replace('AM', 'am').replace('PM', 'pm')
+                dd = (k.date() - _charlie_now().date()).days
+                when = "today" if dd == 0 else ("tomorrow" if dd == 1 else local)
+            except Exception:
+                local, when = str(r['kickoff_utc'])[:16], ''
+            out.append({"league": r['league'], "team": r['team'], "opponent": r['opponent'],
+                        "home_away": r['home_away'], "local": local, "when": when,
+                        "mine": is_mine, "status": r.get('status'), "score": r.get('score'),
+                        "played": bool(r.get('result'))})
+        out.sort(key=lambda x: (not x['mine'], x['local']))
+        return {"status": "success", "games": out,
+                "teams": sorted(mine), "scope": scope}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/sports/refresh")
+@require_password
+def sports_refresh():
+    try:
+        return {"status": "success", **refresh_fixtures()}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/sports/teams")
+@require_password
+def sports_add_team():
+    """Follow or unfollow a team."""
+    try:
+        d = request.get_json() or {}
+        nm = (d.get('team') or '').strip()
+        if not nm:
+            return {"error": "needs a team"}, 400
+        if d.get('remove'):
+            db.execute("DELETE FROM followed_teams WHERE LOWER(team) = LOWER(?)", (nm,))
+        else:
+            db.execute("""INSERT OR IGNORE INTO followed_teams (team, league, sport)
+                          VALUES (?,?,?)""", (nm, d.get('league') or '', d.get('sport') or ''))
+        return {"status": "success",
+                "teams": [r['team'] for r in (db.query(
+                    "SELECT team FROM followed_teams WHERE active = 1 ORDER BY team") or [])]}
     except Exception as e:
         return {"error": str(e)}, 400
 
