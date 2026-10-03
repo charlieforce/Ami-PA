@@ -48,6 +48,8 @@ from flask_cors import CORS
 
 import os as _os_db
 AMI_DB = _os_db.getenv("AMI_DB_PATH", "data/ami_memory.db")
+AMI_MODEL = _os_db.getenv("AMI_MODEL", "gemini-3.7-flash")
+AMI_MODEL_FALLBACK = _os_db.getenv("AMI_MODEL_FALLBACK", "gemini-2.5-flash")
 
 # GLOBAL CONSTANTS FOR LOCATION/COUNTRY MAPPING
 KNOWN_LOCATIONS = {
@@ -2723,7 +2725,7 @@ def gemini_route(query):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         eng = (_json.loads(raw).get("engines") or [])
@@ -3876,8 +3878,20 @@ def load_ami_context():
     
     # Load today's briefing
     today = datetime.now().strftime('%Y-%m-%d')
-    briefing_result = db.query("SELECT briefing_text FROM briefing_messages WHERE DATE(date_created) = ? LIMIT 1", (today,))
-    context['briefing'] = briefing_result[0]['briefing_text'] if briefing_result else "No briefing available yet"
+    # the briefing is 9,000 characters. it only goes in when he asks about
+    # the news - carrying it on every message cost time and money for nothing.
+    context['briefing'] = ""
+    try:
+        import re as _rb
+        _q = (globals().get('_CURRENT_QUERY') or '')
+        if _rb.search(r"\b(news|headline|briefing|what.?s happening|afrobeat|"
+                      r"what did i miss|catch me up|world|politics)\w*", _q.lower()):
+            _br = db.query("SELECT briefing_text FROM briefing_messages "
+                           "WHERE DATE(date_created) = ? ORDER BY id DESC LIMIT 1", (today,))
+            if _br:
+                context['briefing'] = _br[0]['briefing_text']
+    except Exception:
+        pass
     
     return context
 
@@ -3992,7 +4006,7 @@ def get_weather(location="Freetown"):
         client = genai.Client()
         query = f"Current weather in {location} today - temperature, conditions, forecast"
         response = gemini_guard() or note_gemini_call() or client.models.generate_content(
-            model="gemini-3.7-flash",
+            model=AMI_MODEL,
             contents=query,
             tools=[genai.protos.Tool(google_search=genai.protos.GoogleSearch())]
         )
@@ -4165,7 +4179,7 @@ def _reconcile_fact(person, existing, fact, client):
         )
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         data = _json.loads(raw)
@@ -4210,7 +4224,7 @@ def extract_durable_facts(query, ami_reply=""):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
 
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
@@ -4444,7 +4458,8 @@ import threading as _thr_stream
 _stream_state = _thr_stream.local()
 
 
-def _ask_gemini(client, prompt=None, model="gemini-3.7-flash", tries=3, **kw):
+def _ask_gemini(client, prompt=None, model=None, tries=3, **kw):
+    model = model or AMI_MODEL
     """They get busy. Wait a beat and ask again before giving up on him."""
     import time as _t
     last = None
@@ -4455,8 +4470,16 @@ def _ask_gemini(client, prompt=None, model="gemini-3.7-flash", tries=3, **kw):
             last = e
             m = str(e)
             if '503' in m or 'UNAVAILABLE' in m or 'overloaded' in m.lower():
-                _t.sleep(1.5 * (i + 1))
-                continue
+                # one quick retry, then try the other model rather than give up
+                if i == 0:
+                    _t.sleep(1.2)
+                    continue
+                if model != AMI_MODEL_FALLBACK:
+                    print("model " + str(model) + " is down - falling back to "
+                          + AMI_MODEL_FALLBACK)
+                    model = AMI_MODEL_FALLBACK
+                    continue
+                raise
             raise
     raise last
 
@@ -5386,6 +5409,7 @@ FIRST MESSAGE OF THE SESSION:
     to reorganise something - dragging, reordering, bulk changes. Then point him at it.
     """
     
+    globals()['_CURRENT_QUERY'] = query
     time_context = get_current_time_context()
     memory = load_conversation_memory()
     
@@ -5441,6 +5465,14 @@ FIRST MESSAGE OF THE SESSION:
         pass
     prompt = f"{context}{engine_text}\n\n{birthday_context}\n\n{time_context}\n\n{curriculum_content}\n\nRECENT MEMORY:\n{memory}\n\n{tone_guide}\n{response_length}\n\nCharlie: {query}\n\nRespond as Ami - be yourself!"
     try:
+        print('PROMPT SIZE: ' + str(len(prompt)) + ' chars'
+              + ' | context ' + str(len(context))
+              + ' | engines ' + str(len(engine_text))
+              + ' | memory ' + str(len(str(memory))))
+    except Exception:
+        pass
+
+    try:
         print(f"ENGINES: {engines}")
         client = genai.Client()
         # chat replies skip the model's thinking step: ~5x faster to first words, same quality in testing
@@ -5457,7 +5489,7 @@ FIRST MESSAGE OF THE SESSION:
         elif _sq is not None:
             note_gemini_call()
             _parts, _last = [], None
-            for _chunk in client.models.generate_content_stream(model="gemini-3.7-flash", contents=prompt, config=_fast_cfg):
+            for _chunk in client.models.generate_content_stream(model=AMI_MODEL, contents=prompt, config=_fast_cfg):
                 _t = getattr(_chunk, 'text', None) or ''
                 if _t:
                     if not _parts:
@@ -5479,7 +5511,7 @@ FIRST MESSAGE OF THE SESSION:
             except Exception:
                 pass
         else:
-            response = note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt, config=_fast_cfg)
+            response = note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt, config=_fast_cfg)
             note_gemini_tokens(response)
         ami_response = response.text if response.text else "Eh bai!"
         
@@ -7017,7 +7049,7 @@ def parse_creation(text):
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
         d = _json.loads(raw)
@@ -8087,7 +8119,7 @@ def expand_text():
     prompt = "Expand this text by adding more detail, context, and elaboration. Keep the same meaning but make it more comprehensive. Return ONLY the expanded text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8115,7 +8147,7 @@ def summarize_text():
     prompt = "Make this text more concise. Keep the key points but remove unnecessary details. Return ONLY the summarized text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8143,7 +8175,7 @@ def professional_text():
     prompt = "Rewrite this text in a professional and formal business tone. Keep the same information but make it more polished. Return ONLY the professional text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8174,7 +8206,7 @@ def change_tone():
     prompt = f"Rewrite this text in a {tone} tone. Return ONLY the rewritten text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8202,7 +8234,7 @@ def bullet_points():
     prompt = "Convert this text into a clean, well-organized bullet point list. Keep the same information but make it structured. Return ONLY the bullet points:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8230,7 +8262,7 @@ def simplify_text():
     prompt = "Simplify this text to make it easier to understand. Use simple words and short sentences. Return ONLY the simplified text:\n\n" + text
     
     try:
-        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
     except Exception as e:
@@ -8254,7 +8286,7 @@ def text_generate_title():
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         title = (resp.text or "").strip().strip('"').strip()
         return jsonify({"title": title or "Untitled", "status": "success"})
@@ -11709,7 +11741,7 @@ def fitness_suggest():
             return {"error": "Gemini is off or over its limit - check Settings"}, 400
         note_gemini_call()
         resp = client.models.generate_content(
-            model="gemini-3.7-flash", contents=prompt,
+            model=AMI_MODEL, contents=prompt,
             config=_t.GenerateContentConfig(thinking_config=_t.ThinkingConfig(thinking_level='low')))
         note_gemini_tokens(resp)
         raw = (resp.text or '').strip()
@@ -11820,7 +11852,7 @@ def fitness_programme():
         client = genai.Client()
         note_gemini_call()
         resp = client.models.generate_content(
-            model="gemini-3.7-flash", contents=prompt,
+            model=AMI_MODEL, contents=prompt,
             config=_t.GenerateContentConfig(thinking_config=_t.ThinkingConfig(thinking_level='low')))
         note_gemini_tokens(resp)
         raw = (resp.text or '').strip()
@@ -12416,14 +12448,14 @@ def refresh_fixtures(weeks_ahead=6):
     # football runs across two calendar years and caps at 100 results, so it
     # goes month by month. the american sports take a whole season at once.
     months = []
-    for k in range(8):
+    for k in range(-3, 8):
         m = now0.month + k
         months.append("?dates=" + str(yr + (m - 1) // 12) + str(((m - 1) % 12) + 1).zfill(2))
     seasons = ["?dates=" + str(yr) + "&seasontype=2",
                "?dates=" + str(yr) + "&seasontype=3",
                "?dates=" + str(yr + 1) + "&seasontype=2", ""]
     for league, sport, path in ESPN_LEAGUES:
-        for q in (months if path.startswith('soccer') else seasons):
+        for q in months + ([] if path.startswith('soccer') else seasons):
             url = ("https://site.api.espn.com/apis/site/v2/sports/" + path +
                    "/scoreboard" + q)
             try:
@@ -12601,8 +12633,21 @@ def _fixtures_for_context():
         if last:
             lines.append("Last out: " + last[0]['team'] + " " + str(last[0]['result']) +
                          " to " + last[0]['opponent'] + ".")
+        past = db.query("""SELECT f.team, f.opponent, f.home_away, f.score, f.kickoff_utc
+                           FROM fixtures f
+                           JOIN followed_teams t ON LOWER(t.team) = LOWER(f.team)
+                           WHERE f.result IS NOT NULL AND t.active = 1
+                           ORDER BY f.kickoff_utc DESC LIMIT 4""") or []
+        if past:
+            lines.append("")
+            lines.append("Last results (this is ALL you know - never invent a score):")
+            for r in past:
+                lines.append(r['team'] + " " + str(r['score'] or '?') + " "
+                             + ("v " if r['home_away'] == 'home' else "away to ")
+                             + r['opponent'] + " on " + str(r['kickoff_utc'])[:10])
         return ("\n\nHIS TEAMS - kick-off times are already in his own timezone, so give them "
-                "straight and do not search or hedge:\n- " + "\n- ".join(lines))
+                "straight and do not search or hedge. NEVER invent a score, a date or a result: "
+                "if it is not written here, say you do not have it.\n- " + "\n- ".join(lines))
     except Exception as e:
         print("fixtures context error: " + str(e))
         return ""
@@ -14595,7 +14640,7 @@ def report_read():
         client = genai.Client()
         gemini_guard()
         note_gemini_call()
-        resp = _ask_gemini(client, model="gemini-3.7-flash", prompt=prompt)
+        resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         return {"status": "success", "read": (resp.text or "").strip()}
     except Exception as e:
@@ -15720,7 +15765,7 @@ def search_all_interests_grounding():
         for query in ALL_SEARCHES:
             try:
                 response = gemini_guard() or note_gemini_call() or client.models.generate_content(
-                    model="gemini-3.7-flash",
+                    model=AMI_MODEL,
                     contents=f"Give me the top 2-3 news items about: {query}. Be specific with dates and facts.",
                     config=genai.types.GenerateContentConfig(
                         tools=[genai.types.Tool(google_search=genai.types.GoogleSearch())]
