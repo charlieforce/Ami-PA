@@ -346,6 +346,31 @@ function Dashboard({ onLogout }) {
     return () => { stop = true; clearInterval(t); };
   }, []);
 
+  const [showJump, setShowJump] = useState(false);
+
+  const chatBox = () => {
+    const end = messagesEndRef.current;
+    let el = end ? end.parentElement : null;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const oy = window.getComputedStyle(el).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    const el = chatBox();
+    if (!el) return;
+    const onScroll = () => {
+      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowJump(fromBottom > 240);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [messages.length]);
+
   const scrollToBottom = () => {
     // scroll only the chat box, never the whole page - so the header stays where it is
     const end = messagesEndRef.current;
@@ -739,7 +764,18 @@ const handleSendMessage = async (msgToSend = null) => {
                   </div>
                   </React.Fragment>
                 ))}
-                <div ref={messagesEndRef} />
+                {showJump && (
+        <button onClick={() => { scrollToBottom(); setShowJump(false); }}
+                aria-label="Jump to the latest"
+                style={{ position: 'fixed', right: '18px', bottom: '150px', zIndex: 40,
+                         width: '40px', height: '40px', borderRadius: '20px',
+                         border: '1px solid #3a3357', background: '#262040',
+                         color: '#a78bfa', fontSize: '17px', cursor: 'pointer',
+                         boxShadow: '0 3px 10px rgba(0,0,0,0.4)' }}>
+          ↓
+        </button>
+      )}
+      <div ref={messagesEndRef} />
               </div>
 
               {/* Listening Indicator */}
