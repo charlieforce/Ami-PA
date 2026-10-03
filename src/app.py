@@ -3968,12 +3968,20 @@ def get_current_time_context():
     
     freetown_time = datetime.now(freetown_tz).strftime('%I:%M %p %Z')
     charlie_time = datetime.now(charlie_tz).strftime('%I:%M %p %Z')
+
+    # she must never guess the day
+    from datetime import timedelta as _td
+    _n = datetime.now(charlie_tz)
+    _datebit = ("TODAY IS " + _n.strftime('%A %-d %B %Y') +
+                ". Tomorrow is " + (_n + _td(days=1)).strftime('%A %-d %B') +
+                ", yesterday was " + (_n - _td(days=1)).strftime('%A %-d %B') +
+                ". Work every date out from that - never guess the day or the date.\n")
     
     # If Charlie is in Freetown, just show one time
     if charlie_tz_name == 'Africa/Freetown':
-        return f"Current time in Freetown: {freetown_time} (we're on the same time!)"
+        return _datebit + f"Current time in Freetown: {freetown_time} (we're on the same time!)"
     else:
-        return f"Time: {charlie_time} where Charlie is, {freetown_time} in Freetown."
+        return _datebit + f"Time: {charlie_time} where Charlie is, {freetown_time} in Freetown."
 
 
 
