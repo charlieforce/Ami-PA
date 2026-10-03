@@ -860,6 +860,61 @@ def schedule_morning_briefing():
         pass  # briefing no longer pasted into chat - Ami reads it from briefing_messages
         print(f"✅ Morning briefing: {result.get('search_count')} searches - sent to chat")
 
+def _spend_out_of_the_ordinary():
+    """None on a normal day. Otherwise a short line saying what is odd."""
+    try:
+        rows = db.query("""SELECT DATE(created_at) d,
+                                  ROUND(SUM(est_cost), 4) c,
+                                  COUNT(*) n
+                           FROM api_usage_logs
+                           WHERE created_at >= date('now','-14 days')
+                           GROUP BY DATE(created_at)
+                           ORDER BY d""") or []
+        if not rows:
+            return None
+        from datetime import datetime as _d
+        today = _charlie_now().strftime('%Y-%m-%d')
+        cur = next((r for r in rows if str(r['d']) == today), None)
+        if not cur:
+            return None
+        spent = float(cur['c'] or 0)
+        calls = int(cur['n'] or 0)
+
+        past = sorted(float(r['c'] or 0) for r in rows if str(r['d']) != today)
+        past_n = sorted(int(r['n'] or 0) for r in rows if str(r['d']) != today)
+        if len(past) < 3:
+            return None
+        usual = past[len(past) // 2]
+        usual_n = past_n[len(past_n) // 2] or 1
+
+        # the month against the budget
+        mrow = db.query("""SELECT ROUND(COALESCE(SUM(est_cost),0),2) t FROM api_usage_logs
+                           WHERE created_at >= date('now','start of month')""")
+        month = float(mrow[0]['t'] if mrow else 0)
+        budget = 25.0
+        try:
+            b = db.query("SELECT value FROM cost_settings WHERE key='monthly_budget'")
+            if b:
+                budget = float(b[0]['value'])
+        except Exception:
+            pass
+
+        why = []
+        if spent >= 0.20 and usual > 0 and spent >= usual * 3:
+            why.append("today is $" + ("%.2f" % spent) + ", about "
+                       + str(int(round(spent / usual))) + " times a normal day")
+        if budget and month >= budget * 0.5:
+            why.append("$" + ("%.2f" % month) + " of the $" + ("%.0f" % budget)
+                       + " month gone")
+        if calls >= usual_n * 3 and calls > 200:
+            why.append(str(calls) + " calls today against about " + str(usual_n) + " usually")
+        if not why:
+            return None
+        return "API spend: " + "; ".join(why) + "."
+    except Exception:
+        return None
+
+
 def _evening_closeout():
     """How the day actually went. No news - he has the briefing tab for that."""
     try:
@@ -942,6 +997,13 @@ def _evening_closeout():
                            (tomorrow,)) or []
             if due:
                 bits.append("Tomorrow: " + ", ".join(str(r['title'])[:40] for r in due) + ".")
+        except Exception:
+            pass
+
+        try:
+            _sp = _spend_out_of_the_ordinary()
+            if _sp:
+                bits.append(_sp + " Worth knowing tonight while he remembers today.")
         except Exception:
             pass
 
@@ -14547,6 +14609,14 @@ def today_strip():
                             f['opponent'].split()[-1] + " " +
                             k.strftime('%-I:%M%p').lower().replace(':00', ''),
                     "ask": "when are the " + f['team'].split()[-1] + " playing and who against?"})
+        except Exception:
+            pass
+
+        # the API spend, only when it is out of the ordinary
+        try:
+            _sp = _spend_out_of_the_ordinary()
+            if _sp:
+                out['decide'].append({"what": _sp, "ask": "what is my api cost"})
         except Exception:
             pass
 
