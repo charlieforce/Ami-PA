@@ -391,6 +391,14 @@ function Dashboard({ onLogout }) {
     scrollToBottom();
   }, [messages]);
 
+  // came back to chat from another tab - land at the latest, not halfway up
+  useEffect(() => {
+    if (activeTab !== 'home') return;
+    const t1 = setTimeout(scrollToBottom, 60);
+    const t2 = setTimeout(scrollToBottom, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [activeTab]);
+
   const handleMicClick = () => {
     if (recognition.current) {
       if (isListening) {
