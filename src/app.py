@@ -14466,11 +14466,12 @@ def sports_board():
                 when = "today" if dd == 0 else ("tomorrow" if dd == 1 else local)
             except Exception:
                 local, when = str(r['kickoff_utc'])[:16], ''
-            out.append({"league": r['league'], "team": r['team'], "opponent": r['opponent'],
+            out.append({"_at": str(r['kickoff_utc'])[:19],
+                        "league": r['league'], "team": r['team'], "opponent": r['opponent'],
                         "home_away": r['home_away'], "local": local, "when": when,
                         "mine": is_mine, "status": r.get('status'), "score": r.get('score'),
                         "played": bool(r.get('result'))})
-        out.sort(key=lambda x: (not x['mine'], x['local']))
+        out.sort(key=lambda x: (not x['mine'], x.get('_at') or ''))
         return {"status": "success", "games": out,
                 "teams": sorted(mine), "scope": scope}
     except Exception as e:
@@ -14729,9 +14730,9 @@ def today_strip():
         # a game today
         try:
             import pytz as _p2
-            for f in (db.query("""SELECT team, opponent, home_away, kickoff_utc FROM fixtures
-                                  WHERE result IS NULL AND substr(kickoff_utc,1,10) IN (?, ?)
-                                  ORDER BY kickoff_utc LIMIT 2""",
+            for f in (db.query("""SELECT f.team, f.opponent, f.home_away, f.kickoff_utc FROM fixtures f JOIN followed_teams t ON LOWER(t.team)=LOWER(f.team) AND t.active=1
+                                  WHERE f.result IS NULL AND substr(f.kickoff_utc,1,10) IN (?, ?)
+                                  ORDER BY f.kickoff_utc LIMIT 2""",
                                (today, (now + _td(days=1)).strftime('%Y-%m-%d'))) or []):
                 k = _p2.utc.localize(_d.strptime(str(f['kickoff_utc'])[:19], '%Y-%m-%dT%H:%M:%S'))
                 k = k.astimezone(_charlie_now().tzinfo)

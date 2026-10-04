@@ -104,7 +104,7 @@ export default function SportsTab() {
 
   return (
     <div style={S.page}>
-      <div style={S.head}>Sport</div>
+      <div style={S.head}>Sports schedule</div>
 
       <div style={S.chips}>
         {[['today', 'Today'], ['week', 'This week'], ['month', 'This month']].map(([k, l]) => (

@@ -917,7 +917,7 @@ const handleSendMessage = async (msgToSend = null) => {
           <div style={{padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px'}}>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('sports')}>
               <div style={{fontSize: '28px', marginBottom: '6px'}}>🏈</div>
-              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Sport</div>
+              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Sports</div>
               <div style={{fontSize: '12px', color: '#666'}}>Who is playing, and when</div>
             </div>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('notes')}>
