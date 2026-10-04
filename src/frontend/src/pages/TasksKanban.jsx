@@ -86,10 +86,10 @@ export default function TasksKanban({ amiImage }) {
   const [tags, setTags] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('kanban');
-  const [itemsPerPage] = useState(20);
-  const [displayedPending, setDisplayedPending] = useState(20);
-  const [displayedProgress, setDisplayedProgress] = useState(20);
-  const [displayedDone, setDisplayedDone] = useState(20);
+  const [itemsPerPage] = useState(8);
+  const [displayedPending, setDisplayedPending] = useState(8);
+  const [displayedProgress, setDisplayedProgress] = useState(8);
+  const [displayedDone, setDisplayedDone] = useState(5);
   const [statusFilter, setStatusFilter] = useState('all');
   const [ventureFilters, setVentureFilters] = useState([]);
   const [priorityFilters, setPriorityFilters] = useState([]);
@@ -870,26 +870,52 @@ export default function TasksKanban({ amiImage }) {
             {activeCol === 'pending' && (
               <div>
                 <KanbanColumn title="Backlog" status="pending" tasks={displayPending} />
-                {displayedPending < pending.length && (
-                  <button onClick={() => loadMoreCards('pending')}
-                    style={{ width: '100%', marginTop: '10px', padding: '12px', minHeight: '48px',
-                             background: '#2a2a2a', color: '#fff', border: 'none',
-                             borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                    Load more ({pending.length - displayedPending} left)
-                  </button>
+                {(displayedPending < pending.length || displayedPending > 8) && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                    {displayedPending < pending.length && (
+                      <button onClick={() => loadMoreCards('pending')}
+                        style={{ flex: 1, padding: '12px', minHeight: '46px',
+                                background: '#2a2a2a', color: '#fff', border: 'none',
+                                borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                        Load more ({pending.length - displayedPending} left)
+                      </button>
+                    )}
+                    {displayedPending > 8 && (
+                      <button onClick={() => setDisplayedPending(8)}
+                        style={{ flex: '0 0 auto', padding: '12px 16px', minHeight: '46px',
+                                background: 'transparent', color: '#8b8b9e',
+                                border: '1px solid #2c2c3a', borderRadius: '8px',
+                                cursor: 'pointer', fontSize: '13px' }}>
+                        Less
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
             {activeCol === 'in_progress' && (
               <div>
                 <KanbanColumn title="In Progress" status="in_progress" tasks={displayProgress} />
-                {displayedProgress < progress.length && (
-                  <button onClick={() => loadMoreCards('in_progress')}
-                    style={{ width: '100%', marginTop: '10px', padding: '12px', minHeight: '48px',
-                             background: '#2a2a2a', color: '#fff', border: 'none',
-                             borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                    Load more ({progress.length - displayedProgress} left)
-                  </button>
+                {(displayedProgress < progress.length || displayedProgress > 8) && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                    {displayedProgress < progress.length && (
+                      <button onClick={() => loadMoreCards('in_progress')}
+                        style={{ flex: 1, padding: '12px', minHeight: '46px',
+                                background: '#2a2a2a', color: '#fff', border: 'none',
+                                borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                        Load more ({progress.length - displayedProgress} left)
+                      </button>
+                    )}
+                    {displayedProgress > 8 && (
+                      <button onClick={() => setDisplayedProgress(8)}
+                        style={{ flex: '0 0 auto', padding: '12px 16px', minHeight: '46px',
+                                background: 'transparent', color: '#8b8b9e',
+                                border: '1px solid #2c2c3a', borderRadius: '8px',
+                                cursor: 'pointer', fontSize: '13px' }}>
+                        Less
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -902,13 +928,26 @@ export default function TasksKanban({ amiImage }) {
                   {showAllDone ? 'Show recent only' : 'Show everything ever completed'}
                 </button>
                 <KanbanColumn title="Complete" status="done" tasks={displayDone} />
-                {displayedDone < done.length && (
-                  <button onClick={() => loadMoreCards('done')}
-                    style={{ width: '100%', marginTop: '10px', padding: '12px', minHeight: '48px',
-                             background: '#2a2a2a', color: '#fff', border: 'none',
-                             borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                    Load more ({done.length - displayedDone} left)
-                  </button>
+                {(displayedDone < done.length || displayedDone > 5) && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                    {displayedDone < done.length && (
+                      <button onClick={() => loadMoreCards('done')}
+                        style={{ flex: 1, padding: '12px', minHeight: '46px',
+                                background: '#2a2a2a', color: '#fff', border: 'none',
+                                borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                        Load more ({done.length - displayedDone} left)
+                      </button>
+                    )}
+                    {displayedDone > 5 && (
+                      <button onClick={() => setDisplayedDone(5)}
+                        style={{ flex: '0 0 auto', padding: '12px 16px', minHeight: '46px',
+                                background: 'transparent', color: '#8b8b9e',
+                                border: '1px solid #2c2c3a', borderRadius: '8px',
+                                cursor: 'pointer', fontSize: '13px' }}>
+                        Less
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
