@@ -468,6 +468,60 @@ function TravelsList() {
 
   if (loading) return <div style={{ color: '#aaa' }}>Loading travels...</div>;
 
+  const today = new Date().toISOString().slice(0, 10);
+  const ahead = schedule.filter(e => String(e.travel_date || '').slice(0, 10) >= today);
+  const been = schedule.filter(e => String(e.travel_date || '').slice(0, 10) < today)
+                       .sort((a, b) => String(b.travel_date).localeCompare(String(a.travel_date)));
+
+  const Row = (entry, past) => (
+    <div key={entry.id} style={{ background: past ? '#232323' : '#2a2a2a', padding: '12px',
+                                 borderRadius: '8px', opacity: past ? 0.65 : 1 }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', color: past ? '#bbb' : '#fff' }}>
+        {past ? '\u2713' : '\uD83D\uDCC5'} {entry.travel_date}
+      </div>
+      <div style={{ fontSize: '12px', color: past ? '#888' : '#667eea', marginTop: '4px' }}>
+        \uD83C\uDF0D {entry.timezone}
+      </div>
+      {entry.location && (
+        <div style={{ fontSize: '11px', color: past ? '#777' : '#10b981', marginTop: '2px' }}>
+          {entry.location}
+        </div>
+      )}
+      {entry.notes && (
+        <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>{entry.notes}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <h3 style={{ color: '#fff', marginTop: 0 }}>📅 Still to come</h3>
+      {ahead.length === 0 ? (
+        <div style={{ color: '#999', fontSize: '13px', padding: '10px 0' }}>
+          Nothing booked after this.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {ahead.map(e => Row(e, false))}
+        </div>
+      )}
+
+      {been.length > 0 && (
+        <>
+          <h3 style={{ color: '#888', marginTop: '18px', fontSize: '14px' }}>
+            Where you have been ({been.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {been.slice(0, 6).map(e => Row(e, true))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function _TravelsListOld() {
+  const schedule = [];
   return (
     <div>
       <h3 style={{ color: '#fff', marginTop: 0 }}>📅 Upcoming Travels</h3>
