@@ -13054,9 +13054,14 @@ def _fixtures_for_context(query=''):
             now = _charlie_now().replace(tzinfo=None)
             here = _charlie_now().tzinfo
             _q = str(query or globals().get('_CURRENT_QUERY') or '')
-            if _rq.search(r"\b(any game|what game|games? (on|today|tonight|tomorrow)|"
-                          r"who(?:'s| is) playing|anything on|what(?:'s| is) on tonight)\b",
-                          _q.lower()):
+            # anything that sounds like "is there a game on" - not just his teams
+            if _rq.search(r"\b(any (game|match|football|nfl|nba)|what game|games? (on|today|"
+                          r"tonight|tomorrow)|who(?:'s| is) playing|anything on|"
+                          r"what(?:'s| is) on (tonight|today|tomorrow)|"
+                          r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday) "
+                          r"night (game|football)|night football|what time is the|"
+                          r"is there (a|any) (game|match)|nfl|nba|premier league|"
+                          r"how about (tonight|tomorrow|today))\b", _q.lower()):
                 _from = (now - _td2(hours=3)).strftime('%Y-%m-%dT%H:%M:%S')
                 _to = (now + _td2(hours=32)).strftime('%Y-%m-%dT%H:%M:%S')
                 _all = db.query("""SELECT team, opponent, home_away, kickoff_utc, league
