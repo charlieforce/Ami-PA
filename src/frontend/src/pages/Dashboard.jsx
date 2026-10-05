@@ -823,36 +823,6 @@ const handleSendMessage = async (msgToSend = null) => {
                 ))}
               </div>
 
-              {showEmojis && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px',
-                              padding: '8px', marginBottom: '6px', marginLeft: 'auto',
-                              width: 'fit-content', borderRadius: '12px',
-                              background: '#f5f5f5', border: '1px solid #ddd',
-                              boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-                  {['\uD83D\uDC4D\uD83C\uDFFF', '\uD83D\uDC4E\uD83C\uDFFF', '\u2764\uFE0F',
-                    '\uD83D\uDD25', '\uD83D\uDE0A', '\uD83D\uDE02', '\uD83D\uDE22',
-                    '\uD83E\uDD14', '\u2753', '\uD83D\uDE4C\uD83C\uDFFF'].map((em) => (
-                    <button
-                      key={em}
-                      onClick={() => {
-                        setShowEmojis(false);
-                        if (!message.trim()) {
-                          setMessage(em);
-                          setTimeout(() => handleSendMessage(), 50);
-                        } else {
-                          setMessage(message + ' ' + em);
-                        }
-                      }}
-                      style={{ fontSize: '26px', background: '#fff', border: '1px solid #e0e0e0',
-                               borderRadius: '10px', cursor: 'pointer', padding: '6px',
-                               minWidth: '46px', minHeight: '46px', flexShrink: 0, lineHeight: 1 }}
-                    >
-                      {em}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               <div className="chat-input-mobile">
                 <div className="input-wrapper">
                   <input
@@ -865,15 +835,6 @@ const handleSendMessage = async (msgToSend = null) => {
                     disabled={loading}
                     className="chat-input-field"
                   />
-                  <button
-                    onClick={() => setShowEmojis(!showEmojis)}
-                    style={{ fontSize: '20px', background: showEmojis ? '#4a4a4a' : 'none',
-                             border: 'none', borderRadius: '10px', cursor: 'pointer',
-                             padding: '6px', minWidth: '40px', minHeight: '40px' }}
-                    title="Emojis"
-                  >
-                    {'\uD83D\uDE00'}
-                  </button>
 
                   <button 
                     onClick={() => {
