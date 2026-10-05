@@ -3443,6 +3443,7 @@ def orchestrated_chat():
     try:
         data = request.get_json()
         query = data.get('message', '')
+        globals()['_CURRENT_QUERY'] = query      # before anything reads it
         print(f"🚀 orchestrated_chat started with query: '{query}'")
 
         # "do it" after she has laid out a plan
@@ -4834,7 +4835,7 @@ FIRST MESSAGE OF THE SESSION:
             pass
         try:
             if _rtg.search(r'\b(seahawk|newcastle|nfl|premier league|match|fixture|game|kick ?off|playing|football|soccer|score)\w*', (query or '').lower()):
-                context += _fixtures_for_context()
+                context += _fixtures_for_context(query)
         except Exception:
             pass
         if _hr_now() >= 17 or _rtg.search(r'\b(pushup|situp|press[- ]?up|cardio|goal|target|workout|train|exercise|gym|swim|run|jog|walk)\w*', (query or '').lower()):
@@ -13012,7 +13013,7 @@ def _sport_for_briefing():
         return ""
 
 
-def _fixtures_for_context():
+def _fixtures_for_context(query=''):
     """His teams' next games, in his own time, so she never has to guess."""
     try:
         from datetime import datetime as _d
@@ -13045,6 +13046,51 @@ def _fixtures_for_context():
         if last:
             lines.append("Last out: " + last[0]['team'] + " " + str(last[0]['result']) +
                          " to " + last[0]['opponent'] + ".")
+        # asked generally? then she needs the whole card, not just his teams.
+        # "tonight" runs to 4am - a game at half past midnight is still tonight.
+        try:
+            import re as _rq, pytz as _pz
+            from datetime import datetime as _dt2, timedelta as _td2
+            now = _charlie_now().replace(tzinfo=None)
+            here = _charlie_now().tzinfo
+            _q = str(query or globals().get('_CURRENT_QUERY') or '')
+            if _rq.search(r"\b(any game|what game|games? (on|today|tonight|tomorrow)|"
+                          r"who(?:'s| is) playing|anything on|what(?:'s| is) on tonight)\b",
+                          _q.lower()):
+                _from = (now - _td2(hours=3)).strftime('%Y-%m-%dT%H:%M:%S')
+                _to = (now + _td2(hours=32)).strftime('%Y-%m-%dT%H:%M:%S')
+                _all = db.query("""SELECT team, opponent, home_away, kickoff_utc, league
+                                   FROM fixtures
+                                   WHERE result IS NULL AND kickoff_utc >= ? AND kickoff_utc <= ?
+                                   ORDER BY kickoff_utc LIMIT 40""", (_from, _to)) or []
+                _seen, _out = set(), []
+                for _g in _all:
+                    _pair = tuple(sorted([_g['team'], _g['opponent'] or ''])) + (_g['kickoff_utc'],)
+                    if _pair in _seen or _g['home_away'] != 'home':
+                        continue
+                    _seen.add(_pair)
+                    try:
+                        _k = _pz.utc.localize(_dt2.strptime((str(_g['kickoff_utc'])[:19] + ':00')[:19],
+                                                         '%Y-%m-%dT%H:%M:%S')).astimezone(here)
+                    except Exception:
+                        continue
+                    _dd = (_k.date() - now.date()).days
+                    _lbl = ('tonight' if (_dd == 0 and _k.hour >= 17)
+                            else 'today' if _dd == 0
+                            else 'tonight' if (_dd == 1 and _k.hour < 4)
+                            else 'tomorrow' if _dd == 1 else _k.strftime('%a'))
+                    _out.append(_g['opponent'] + " at " + _g['team'] + " - " + _lbl + " "
+                                + _k.strftime('%-I:%M%p').lower().replace(':00', '')
+                                + " (" + str(_g['league']) + ")")
+                if _out:
+                    lines.append("")
+                    lines.append("EVERY GAME IN THE NEXT DAY OR SO (he asked generally, so "
+                                 "these are all the teams, not only his). A kick-off before "
+                                 "4am counts as tonight:")
+                    lines.extend(_out[:18])
+        except Exception as _eg:
+            print("all fixtures failed: " + str(_eg)[:60])
+
         past = db.query("""SELECT f.team, f.opponent, f.home_away, f.score, f.kickoff_utc
                            FROM fixtures f
                            JOIN followed_teams t ON LOWER(t.team) = LOWER(f.team)
