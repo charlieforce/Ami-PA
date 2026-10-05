@@ -9218,6 +9218,40 @@ def update_feature(feature_id):
 # ADMIN PORTAL - CONTACTS
 # ============================================================================
 
+def _who_else_is_called(name):
+    """Anyone already in his contacts by that name or first name. Six months from
+    now he will not remember whether he added this person, so say who is there."""
+    try:
+        nm = (name or '').strip()
+        if len(nm) < 2:
+            return []
+        first = nm.split()[0]
+        rows = db.query("""SELECT id, name, relationship, location, venture, background
+                           FROM contacts
+                           WHERE LOWER(name) = LOWER(?)
+                              OR LOWER(name) LIKE LOWER(?)
+                              OR LOWER(COALESCE(aliases,'')) LIKE LOWER(?)""",
+                        (nm, first + ' %', '%' + first + '%')) or []
+        return [{"id": r['id'], "name": r['name'],
+                 "who": "; ".join(x for x in (r.get('relationship'), r.get('location'),
+                                              r.get('venture')) if x)
+                        or (str(r.get('background') or '')[:60])}
+                for r in rows]
+    except Exception:
+        return []
+
+
+@app.get("/api/contacts/check")
+@require_password
+def contacts_check():
+    """Before he adds someone: is there already a Charles?"""
+    try:
+        return {"status": "success",
+                "existing": _who_else_is_called(request.args.get('name') or '')}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/admin/contacts")
 @require_password
 def get_contacts():
@@ -15547,6 +15581,22 @@ def today_strip():
         except Exception as _ef:
             print('strip fixtures: ' + str(_ef)[:70])
         
+        # what he is learning today - named if one or two, counted if more
+        try:
+            _dow = _charlie_now().strftime('%a')
+            _cls = [c['title'] for c in (db.query(
+                "SELECT title, days FROM course_schedule") or [])
+                if _dow in (c.get('days') or '').split(',')]
+            if _cls:
+                if len(_cls) <= 2:
+                    _what = " and ".join(_cls) + " today"
+                else:
+                    _what = str(len(_cls)) + " classes today"
+                out['decide'].append({"what": _what,
+                                      "ask": "what am I studying today?"})
+        except Exception:
+            pass
+
         # the API spend, only when it is out of the ordinary
         try:
             _sp = _spend_out_of_the_ordinary()

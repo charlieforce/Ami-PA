@@ -366,7 +366,27 @@ function ContactsManager() {
 
   const saveContact = async () => {
     if (!form.name.trim()) { alert('Name required'); return; }
-    
+
+    // six months from now he will not remember whether he added this person
+    if (!editingId) {
+      try {
+        const chk = await fetch(API + '/api/contacts/check?name='
+                                + encodeURIComponent(form.name.trim()),
+                                { headers: { 'X-Ami-Password': AMI_PASSWORD } });
+        const cj = await chk.json();
+        const hits = cj.existing || [];
+        if (hits.length) {
+          const who = hits.map(h => '  \u00b7 ' + h.name + (h.who ? ' - ' + h.who : ''))
+                          .join('\n');
+          const go = window.confirm(
+            'You already have:\n\n' + who +
+            '\n\nIs this a different person? Press OK to add them anyway, ' +
+            'or Cancel to go and edit the one you have.');
+          if (!go) return;
+        }
+      } catch (e) { /* if the check fails, do not block him */ }
+    }
+
     try {
       const method = editingId ? 'PUT' : 'POST';
       const url = editingId 
