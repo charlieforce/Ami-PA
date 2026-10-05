@@ -802,6 +802,27 @@ const handleSendMessage = async (msgToSend = null) => {
                 </div>
               )}
 
+              {/* quick emoji row - one tap, no picker */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px',
+                            justifyContent: 'flex-end' }}>
+                {['\uD83D\uDC4D', '\uD83D\uDE02', '\u2764\uFE0F',
+                  '\uD83D\uDD25', '\uD83D\uDE4F'].map((em) => (
+                  <button key={em}
+                    onClick={() => {
+                      if (!message.trim()) {
+                        handleSendMessage(em);        // straight out, no waiting
+                      } else {
+                        setMessage(message + ' ' + em);
+                      }
+                    }}
+                    style={{ background: 'transparent', border: 'none', fontSize: '21px',
+                             cursor: 'pointer', padding: '2px 4px', lineHeight: 1,
+                             opacity: 0.75 }}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+
               {showEmojis && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px',
                               padding: '8px', marginBottom: '6px', marginLeft: 'auto',
