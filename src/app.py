@@ -15511,23 +15511,42 @@ def today_strip():
         except Exception:
             pass
 
-        # a game today
+        # a game tonight - his teams, or the one big game if none of his are on.
+        # a kick-off before 4am belongs to tonight, not tomorrow.
         try:
             import pytz as _p2
-            for f in (db.query("""SELECT f.team, f.opponent, f.home_away, f.kickoff_utc FROM fixtures f JOIN followed_teams t ON LOWER(t.team)=LOWER(f.team) AND t.active=1
-                                  WHERE f.result IS NULL AND substr(f.kickoff_utc,1,10) IN (?, ?)
-                                  ORDER BY f.kickoff_utc LIMIT 2""",
-                               (today, (now + _td(days=1)).strftime('%Y-%m-%d'))) or []):
-                k = _p2.utc.localize(_d.strptime(str(f['kickoff_utc'])[:19], '%Y-%m-%dT%H:%M:%S'))
+            _wf = (now - _td(hours=2)).strftime('%Y-%m-%dT%H:%M:%S')
+            _wt = (now.replace(hour=23, minute=59) + _td(hours=4)).strftime('%Y-%m-%dT%H:%M:%S')
+            def _say(f, mine):
+                k = _p2.utc.localize(_d.strptime((str(f['kickoff_utc'])[:19] + ':00')[:19],
+                                                 '%Y-%m-%dT%H:%M:%S'))
                 k = k.astimezone(_charlie_now().tzinfo)
-                out['decide'].append({
-                    "what": f['team'].split()[-1] + " " + ("v " if f['home_away'] == 'home' else "at ") +
-                            f['opponent'].split()[-1] + " " +
-                            k.strftime('%-I:%M%p').lower().replace(':00', ''),
-                    "ask": "when are the " + f['team'].split()[-1] + " playing and who against?"})
-        except Exception:
-            pass
-
+                return {'what': f['team'].split()[-1] + ' '
+                        + ('v ' if f['home_away'] == 'home' else 'at ')
+                        + f['opponent'].split()[-1] + ' '
+                        + k.strftime('%-I:%M%p').lower().replace(':00', ''),
+                        'ask': ('when are the ' + f['team'].split()[-1] + ' playing?') if mine
+                               else 'any games tonight?'}
+            _his = db.query("""SELECT f.team, f.opponent, f.home_away, f.kickoff_utc
+                               FROM fixtures f
+                               JOIN followed_teams t ON LOWER(t.team) = LOWER(f.team)
+                                AND t.active = 1
+                               WHERE f.result IS NULL AND f.kickoff_utc >= ?
+                                 AND f.kickoff_utc <= ?
+                               ORDER BY f.kickoff_utc LIMIT 2""", (_wf, _wt)) or []
+            for f in _his:
+                out['decide'].append(_say(f, True))
+            if not _his:
+                _big = db.query("""SELECT team, opponent, home_away, kickoff_utc FROM fixtures
+                                   WHERE result IS NULL AND home_away = 'home'
+                                     AND league IN ('NFL','Champions League')
+                                     AND kickoff_utc >= ? AND kickoff_utc <= ?
+                                   ORDER BY kickoff_utc LIMIT 3""", (_wf, _wt)) or []
+                if _big and len(_big) <= 2:
+                    out['decide'].append(_say(_big[0], False))
+        except Exception as _ef:
+            print('strip fixtures: ' + str(_ef)[:70])
+        
         # the API spend, only when it is out of the ordinary
         try:
             _sp = _spend_out_of_the_ordinary()
