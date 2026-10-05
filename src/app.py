@@ -14860,6 +14860,15 @@ def project_create():
                 except Exception:
                     pass
 
+        # keep them so he can tick them later - they are not tasks yet
+        for t in proposed:
+            try:
+                if not db.query("SELECT id FROM proposed_tasks WHERE venture_id = ? "
+                                "AND title = ? AND status = 'waiting'", (pid, t['title'])):
+                    db.execute("INSERT INTO proposed_tasks (venture_id, title, why) "
+                               "VALUES (?, ?, ?)", (pid, t['title'], t.get('why') or ''))
+            except Exception:
+                pass
         return {"status": "success", "project_id": pid, "name": name,
                 "created": made, "proposed": proposed}
     except Exception as e:
@@ -14915,6 +14924,123 @@ def project_board(pid):
                 "counts": {"open": len([r for r in rows if r['status'] not in DONE]),
                            "done": len([r for r in rows if r['status'] in DONE]),
                            "total": len(rows)}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/projects/waiting")
+@require_password
+def projects_waiting():
+    """Tasks she drafted that he has not ticked yet."""
+    try:
+        rows = db.query("""SELECT p.id, p.venture_id, p.title, p.why, v.name AS project
+                           FROM proposed_tasks p
+                           JOIN ventures v ON v.id = p.venture_id
+                           WHERE p.status = 'waiting'
+                           ORDER BY p.venture_id, p.id""") or []
+        return {"status": "success", "waiting": rows, "count": len(rows)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/projects/waiting/decide")
+@require_password
+def projects_waiting_decide():
+    """keep: [ids] go on the board. drop: [ids] are binned."""
+    try:
+        d = request.get_json() or {}
+        added = dropped = 0
+        for i in (d.get('drop') or []):
+            db.execute("UPDATE proposed_tasks SET status = 'dropped' WHERE id = ?", (int(i),))
+            dropped += 1
+        for k in (d.get('keep') or []):
+            # he can send just an id, or {id, title, note} if he changed it
+            if isinstance(k, dict):
+                i, newtitle, note = k.get('id'), (k.get('title') or '').strip(), k.get('note')
+            else:
+                i, newtitle, note = k, '', None
+            r = db.query("SELECT * FROM proposed_tasks WHERE id = ? AND status = 'waiting'",
+                         (int(i),))
+            if not r:
+                continue
+            r = dict(r[0])
+            if newtitle:
+                r['title'] = newtitle[:90]
+            if note:
+                r['why'] = str(note)[:300]
+            if not db.query("SELECT id FROM tasks WHERE title = ? AND venture_id = ?",
+                            (r['title'], r['venture_id'])):
+                db.execute("""INSERT INTO tasks (title, description, status, priority,
+                                                 venture_id, source, created_at, updated_at)
+                              VALUES (?, ?, 'pending', 'medium', ?, 'from_ami',
+                                      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                           (r['title'], r.get('why') or '', r['venture_id']))
+                added += 1
+            db.execute("UPDATE proposed_tasks SET status = 'kept' WHERE id = ?", (r['id'],))
+        return {"status": "success", "added": added, "dropped": dropped}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/projects/<int:pid>/task")
+@require_password
+def project_add_task(pid):
+    """A task he writes himself, straight onto the project."""
+    try:
+        d = request.get_json() or {}
+        ttl = (d.get('title') or '').strip()[:90]
+        if len(ttl) < 3:
+            return {"error": "it needs a title"}, 400
+        db.execute("""INSERT INTO tasks (title, description, status, priority, venture_id,
+                                         due_date, source, created_at, updated_at)
+                      VALUES (?, ?, 'pending', ?, ?, ?, 'manual',
+                              CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                   (ttl, (d.get('note') or '')[:300], d.get('priority') or 'medium',
+                    pid, d.get('due_date')))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/projects/<int:pid>")
+@require_password
+def project_update(pid):
+    """Rename it, change what it is, move its stage."""
+    try:
+        d = request.get_json() or {}
+        sets, vals = [], []
+        for f, col in (('name', 'name'), ('about', 'description'),
+                       ('stage', 'stage'), ('next_action', 'next_action')):
+            if f in d:
+                sets.append(col + " = ?"); vals.append(d[f])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(pid)
+        db.execute("UPDATE ventures SET " + ", ".join(sets) + " WHERE id = ?", tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/project-board")
+@require_password
+def project_board_list():
+    """Every project and venture, with what is on each."""
+    try:
+        rows = db.query("""SELECT v.id, v.name, v.description, v.type, v.stage,
+                                  COUNT(CASE WHEN t.status NOT IN
+                                        ('done','completed','cancelled') THEN 1 END) AS open_n,
+                                  COUNT(CASE WHEN t.status IN ('done','completed')
+                                        THEN 1 END) AS done_n,
+                                  (SELECT COUNT(*) FROM proposed_tasks p
+                                   WHERE p.venture_id = v.id AND p.status = 'waiting')
+                                    AS waiting_n
+                           FROM ventures v
+                           LEFT JOIN tasks t ON t.venture_id = v.id
+                           WHERE COALESCE(v.active, 1) = 1
+                           GROUP BY v.id
+                           ORDER BY waiting_n DESC, open_n DESC, v.name""") or []
+        return {"status": "success", "projects": rows}
     except Exception as e:
         return {"error": str(e)}, 400
 
