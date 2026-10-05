@@ -13377,14 +13377,43 @@ def _make_many(text):
             if not title:
                 continue
             title = title[0].upper() + title[1:]
-            if kind == 'task':
-                db.execute("""INSERT INTO tasks (title, status, priority, source)
-                              VALUES (?, 'todo', 'medium', 'from Ami')""", (title,))
-            else:
-                db.execute("""INSERT INTO todos (title, status, due_date, origin)
-                              VALUES (?, 'pending', ?, 'from_ami')""",
-                           (title, (_d.now() + _td(days=1)).strftime('%Y-%m-%d')))
-            made.append(title)
+            # a reminder goes in the reminders table, and nothing counts as made
+            # until it is actually there
+            try:
+                if kind == 'task':
+                    db.execute("INSERT INTO tasks (title, status, priority, source, "
+                               "created_at, updated_at) VALUES (?, 'pending', 'medium', "
+                               "'from_ami', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", (title,))
+                    there = db.query("SELECT id FROM tasks WHERE title = ? ORDER BY id DESC "
+                                     "LIMIT 1", (title,))
+                elif kind == 'reminder':
+                    _when = _d.now().strftime('%Y-%m-%d')
+                    _time = '09:00'
+                    _m2 = _r.search(r'\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b',
+                                    title.lower())
+                    if _m2:
+                        _h = int(_m2.group(1)) % 12 + (12 if _m2.group(3) == 'pm' else 0)
+                        _time = "%02d:%s" % (_h, _m2.group(2) or '00')
+                    if 'tomorrow' in title.lower():
+                        _when = (_d.now() + _td(days=1)).strftime('%Y-%m-%d')
+                    db.execute("INSERT INTO reminders (title, due_date, due_time, status, "
+                               "priority, type, created_at) VALUES (?, ?, ?, 'pending', "
+                               "'normal', 'general', CURRENT_TIMESTAMP)", (title, _when, _time))
+                    there = db.query("SELECT id FROM reminders WHERE title = ? ORDER BY id "
+                                     "DESC LIMIT 1", (title,))
+                else:
+                    db.execute("INSERT INTO todos (title, status, due_date, origin) VALUES "
+                               "(?, 'pending', ?, 'from_ami')",
+                               (title, (_d.now() + _td(days=1)).strftime('%Y-%m-%d')))
+                    there = db.query("SELECT id FROM todos WHERE title = ? ORDER BY id DESC "
+                                     "LIMIT 1", (title,))
+                if there:
+                    made.append(title)
+                else:
+                    print("make many: " + kind + " did not save: " + title[:40])
+            except Exception as _e3:
+                print("make many insert failed: " + str(_e3)[:90])
+
         if not made:
             return None
         return ("YOU JUST MADE " + str(len(made)) + " " + kind0 + "s: " + "; ".join(made) +
