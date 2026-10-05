@@ -94,6 +94,7 @@ export default function TasksKanban({ amiImage }) {
   const [ventureFilters, setVentureFilters] = useState([]);
   const [priorityFilters, setPriorityFilters] = useState([]);
   const [statusFilters, setStatusFilters] = useState([]);
+  const [sourceFilters, setSourceFilters] = useState([]);
   const [dueDateFilters, setDueDateFilters] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [draggedTask, setDraggedTask] = useState(null);
@@ -505,6 +506,17 @@ export default function TasksKanban({ amiImage }) {
     
     // Status filter
     if (statusFilters.length > 0 && !statusFilters.includes(t.status)) return false;
+
+    // Where it came from
+    if (sourceFilters.length > 0) {
+      const src = (t.source || 'manual').toLowerCase();
+      const mine = !src || src === 'manual' || src === 'me';
+      const ok = sourceFilters.some(f =>
+        (f === 'ami' && src.includes('ami')) ||
+        (f === 'notes' && src.includes('note')) ||
+        (f === 'mine' && mine));
+      if (!ok) return false;
+    }
     
     // Due date filter
     if (dueDateFilters.length > 0) {
@@ -791,6 +803,24 @@ export default function TasksKanban({ amiImage }) {
               </div>
             </div>
             
+            {/* Where it came from */}
+            <div>
+              <h4 style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 8px 0' }}>Came from</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {[{val: 'ami', label: '\uD83D\uDCAC From Ami'},
+                  {val: 'notes', label: '\uD83D\uDCDD From notes'},
+                  {val: 'mine', label: '\u270D\uFE0F Added by me'}].map(f => (
+                  <label key={f.val} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={sourceFilters.includes(f.val)}
+                      onChange={(e) => setSourceFilters(e.target.checked
+                        ? [...sourceFilters, f.val]
+                        : sourceFilters.filter(x => x !== f.val))} />
+                    <span style={{ color: '#1a1a1a' }}>{f.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {/* Status Filter */}
             <div>
               <h4 style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Status</h4>
