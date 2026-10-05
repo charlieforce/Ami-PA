@@ -5035,12 +5035,7 @@ FIRST MESSAGE OF THE SESSION:
                 pass
 
             try:
-                import re as _rpr
-                _money = _rpr.search(
-                    r"\b(price|cost|how much|cheap|expensive|pay|paid|market|"
-                    r"buy|bought|sell|spend|spent|money|rate|budget|afford)\b",
-                    (query or '').lower())
-                _pc = [] if not _money else db.query("""SELECT item_name, country, city, COUNT(*) AS n,
+                _pc = db.query("""SELECT item_name, country, city, COUNT(*) AS n,
                                          ROUND(AVG(per_unit_usd),2) AS avg_usd,
                                          MAX(observed_on) AS last
                                   FROM price_entries GROUP BY item_name, country
@@ -5236,21 +5231,7 @@ FIRST MESSAGE OF THE SESSION:
 
     # His actual week - so she can find him time and connect meetings to work
     try:
-        # the calendar is 1,700 characters. it goes in when he asks about his day,
-        # or when something is close enough to matter - not on every message.
-        import re as _rcal
-        _wants_cal = bool(_rcal.search(
-            r"\b(today|tomorrow|calendar|schedule|diary|meeting|appointment|busy|free|"
-            r"what.?s on|my day|this week|next week|plans?|when (is|am|do)|"
-            r"morning|afternoon|evening|tonight)\b", (query or '').lower()))
-        if not _wants_cal:
-            try:
-                _soon = get_calendar_for_ami()
-                _wants_cal = bool(_soon and _rcal.search(
-                    r'in (\d{1,2}) (minutes?|hours?)', str(_soon)[:600]))
-            except Exception:
-                pass
-        _cal = get_calendar_for_ami() if _wants_cal else None
+        _cal = get_calendar_for_ami()
         if _cal and 'Error' not in str(_cal)[:40] and 'No events' not in str(_cal)[:60]:
             context += "\n\nHIS CALENDAR:\n" + str(_cal)[:1800]
             context += ("\nUse this properly. Do not read it back at him - he has a calendar tab. "
@@ -5284,12 +5265,7 @@ FIRST MESSAGE OF THE SESSION:
         _late = [r for r in _late if (r.get('title') or '').strip().lower() not in _tt]
         _now_todos = [r for r in _now_todos if (r.get('title') or '').strip().lower() not in _tt]
 
-        import re as _rpl
-        _wants_plate = bool(_rpl.search(
-            r"\b(task|todo|to-?do|due|overdue|list|work|doing|busy|plate|"
-            r"what.?s on|today|tomorrow|this week|finish|done|progress|late)\b",
-            (query or '').lower())) or bool(_late)
-        if _wants_plate and (_late or _now_todos or _task_today):
+        if _late or _now_todos or _task_today:
             context += "\n\nWHAT IS ON HIS PLATE:"
             if _now_todos:
                 context += "\nToday: " + "; ".join(r['title'] for r in _now_todos)
@@ -5310,18 +5286,8 @@ FIRST MESSAGE OF THE SESSION:
         print("todo context error: " + str(_te))
 
     # What his emojis mean, and how she should reply with hers
-    context += ("\n\nHIS EMOJIS: he rarely sends one. A thumbs up means yes or good, "
-                "a laughing face means he found it funny. Read it and act on it - "
-                "never say out loud that you noticed an emoji. Yours are your own: "
-                "use them as you like.")
     try:
-        # the full dictionary is 4,000 characters and he only ever sends two of
-        # them, so it travels only when he actually uses one
-        import re as _rem
-        _used = bool(_rem.search(r'[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u2764]',
-                                 str(query or '')))
-        _emo = (db.query("SELECT value FROM charlie_profile WHERE key='emoji_language'")
-                if _used else None)
+        _emo = db.query("SELECT value FROM charlie_profile WHERE key='emoji_language'")
         if _emo and (_emo[0].get('value') or '').strip():
             context += ("\n\nEMOJI LANGUAGE BETWEEN YOU TWO:\n" + _emo[0]['value'].strip() +
                         "\n\nThe RESPONSE EMOJIS above are HIS - your job is to READ them, not use them. "
@@ -5741,17 +5707,6 @@ FIRST MESSAGE OF THE SESSION:
         pass
     except Exception:
         pass
-    try:
-        import re as _rsz
-        _parts = _rsz.split(r'\n\n(?=[A-Z][A-Z \'-]{4,46}[:\n])', context)
-        _sz = []
-        for _p in _parts:
-            _h = _p.split(chr(10))[0][:40].strip().rstrip(':')
-            if len(_p) > 200:
-                _sz.append(str(len(_p)) + " " + _h)
-        print("BLOCKS: " + " | ".join(sorted(_sz, key=lambda x: -int(x.split()[0]))[:14]))
-    except Exception as _e:
-        print("block sizing failed: " + str(_e)[:50])
     prompt = f"{context}{engine_text}\n\n{birthday_context}\n\n{time_context}\n\n{curriculum_content}\n\nRECENT MEMORY:\n{memory}\n\n{tone_guide}\n{response_length}\n\nCharlie: {query}\n\nRespond as Ami - be yourself!"
     try:
         print('PROMPT SIZE: ' + str(len(prompt)) + ' chars'
