@@ -111,6 +111,38 @@ export default function TasksKanban({ amiImage }) {
   const [showOrganizer, setShowOrganizer] = useState(false);
   const [organizerLoading, setOrganizerLoading] = useState(false);
   const [organizerSuggestions, setOrganizerSuggestions] = useState([]);
+  const [organizerMode, setOrganizerMode] = useState('group');
+  const [groupSuggestions, setGroupSuggestions] = useState([]);
+  const [groupPicked, setGroupPicked] = useState({});
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupNote, setGroupNote] = useState('');
+
+  const runGrouping = async () => {
+    if (groupBusy) return;
+    setGroupBusy(true); setGroupNote(''); setGroupSuggestions([]); setGroupPicked({});
+    try {
+      const r = await fetch(API + '/api/tasks/group', { method: 'POST', headers: { 'X-Ami-Password': AMI_PASSWORD } });
+      const j = await r.json();
+      setGroupSuggestions(j.suggestions || []);
+      setGroupNote(j.note || j.error || '');
+    } catch (e) { setGroupNote(String(e)); }
+    setGroupBusy(false);
+  };
+
+  const applyGrouping = async () => {
+    const picks = groupSuggestions.filter((_, i) => groupPicked[i]);
+    if (!picks.length) { setShowOrganizer(false); return; }
+    setGroupBusy(true);
+    try {
+      await fetch(API + '/api/tasks/group/apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json',
+                                   'X-Ami-Password': AMI_PASSWORD },
+        body: JSON.stringify({ apply: picks }) });
+      setShowOrganizer(false);
+      loadTasks();
+    } catch (e) { setGroupNote(String(e)); }
+    setGroupBusy(false);
+  };
   const [selectedSuggestions, setSelectedSuggestions] = useState({});
   const [statusSearch, setStatusSearch] = useState('');
   
@@ -643,6 +675,136 @@ export default function TasksKanban({ amiImage }) {
     }
   };
 
+  if (showOrganizer) {
+    const groups = organizerMode === 'group' ? groupSuggestions : [];
+    const tabStyle = (on) => ({
+      padding: '8px 14px', borderRadius: '16px', cursor: 'pointer', fontSize: '13px',
+      border: '1px solid ' + (on ? '#4f46e5' : '#ddd'),
+      background: on ? '#eef2ff' : '#fff',
+      color: on ? '#4f46e5' : '#666',
+    });
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000, padding: '16px' }}>
+        <div style={{ background: 'white', borderRadius: '12px', padding: '22px',
+                      maxWidth: '620px', width: '100%', maxHeight: '86vh',
+                      overflowY: 'auto' }}>
+          <h2 style={{ marginTop: 0, marginBottom: '12px', fontSize: '18px' }}>
+            Sort out the board
+          </h2>
+
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+            <button style={tabStyle(organizerMode === 'group')}
+                    onClick={() => { setOrganizerMode('group');
+                                     if (!groupSuggestions.length && !groupBusy)
+                                       runGrouping(); }}>
+              What belongs together
+            </button>
+            <button style={tabStyle(organizerMode === 'text')}
+                    onClick={() => { setOrganizerMode('text');
+                                     if (!organizerSuggestions.length) runOrganizer(); }}>
+              Tidy the wording
+            </button>
+          </div>
+
+          <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '16px',
+                        border: '1px solid #eee', borderRadius: '8px', padding: '10px' }}>
+
+            {organizerMode === 'group' && groupBusy && (
+              <p style={{ textAlign: 'center', color: '#999' }}>Looking at the board...</p>
+            )}
+
+            {organizerMode === 'group' && !groupBusy && groups.length === 0 && (
+              <p style={{ textAlign: 'center', color: '#999' }}>
+                {groupNote || 'Nothing stood out as belonging together.'}
+              </p>
+            )}
+
+            {organizerMode === 'group' && groups.map((g, i) => (
+              <div key={i} style={{ background: '#f9fafb', padding: '12px',
+                                    marginBottom: '8px', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', gap: '9px', cursor: 'pointer',
+                                alignItems: 'flex-start' }}>
+                  <input type="checkbox" checked={groupPicked[i] || false}
+                         onChange={(e) => setGroupPicked({ ...groupPicked, [i]: e.target.checked })}
+                         style={{ marginTop: '4px' }} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px',
+                                   color: g.kind === 'duplicate' ? '#b45309' : '#4f46e5' }}>
+                      {g.kind === 'duplicate' ? 'THE SAME THING TWICE'
+                        : g.kind === 'group' ? 'THESE GO TOGETHER'
+                        : 'THIS BELONGS TO ' + String(g.venture || '').toUpperCase()}
+                    </span>
+                    <div style={{ fontWeight: 600, fontSize: '14px', margin: '2px 0', color: '#1a1a1a' }}>
+                      {g.label}{g.venture ? ' • ' + g.venture : ''}
+                    </div>
+                    {(g.titles || []).map((t, k) => (
+                      <div key={k} style={{ fontSize: '12px', color: '#555' }}>• {t}</div>
+                    ))}
+                    {g.why && (
+                      <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{g.why}</div>
+                    )}
+                  </span>
+                </label>
+              </div>
+            ))}
+
+            {organizerMode === 'text' && organizerSuggestions.length === 0 && (
+              <p style={{ textAlign: 'center', color: '#999' }}>Nothing to tidy.</p>
+            )}
+
+            {organizerMode === 'text' && organizerSuggestions.map((sugg, idx) => (
+              <div key={idx} style={{ background: '#f9fafb', padding: '12px',
+                                      marginBottom: '8px', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', gap: '9px', cursor: 'pointer',
+                                alignItems: 'flex-start' }}>
+                  <input type="checkbox" checked={selectedSuggestions[idx] || false}
+                         onChange={(e) => setSelectedSuggestions({ ...selectedSuggestions,
+                                                                   [idx]: e.target.checked })}
+                         style={{ marginTop: '4px' }} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px',
+                                   color: '#4f46e5' }}>
+                      {String(sugg.type || '').toUpperCase()}
+                    </span>
+                    {sugg.current && (
+                      <div style={{ fontSize: '13px', margin: '2px 0' }}>{sugg.current}</div>
+                    )}
+                    {sugg.suggested && (
+                      <div style={{ fontSize: '13px', color: '#059669' }}>
+                        \u2192 {sugg.suggested}
+                      </div>
+                    )}
+                    {sugg.reason && (
+                      <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                        {sugg.reason}
+                      </div>
+                    )}
+                  </span>
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowOrganizer(false)}
+                    style={{ padding: '10px 16px', background: '#eee', border: 'none',
+                             borderRadius: '8px', cursor: 'pointer' }}>
+              Close
+            </button>
+            <button onClick={organizerMode === 'group' ? applyGrouping : applyOrganizer}
+                    style={{ padding: '10px 18px', background: '#4f46e5', color: '#fff',
+                             border: 'none', borderRadius: '8px', cursor: 'pointer',
+                             fontWeight: 600 }}>
+              Apply what I ticked
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
       <div draggable="true" onDragStart={(e) => handleDragStart(task, e)} onDragEnd={(e) => { setDraggedTask(null); e.currentTarget.dataset.dragged = '1'; setTimeout(() => { if (e.currentTarget) e.currentTarget.dataset.dragged = ''; }, 200); }} style={{ background: '#1e1e1e', borderLeft: '4px solid ' + (task.status === 'done' ? '#10b981' : task.status === 'in_progress' ? '#f59e0b' : '#6b7280'), border: draggedTask?.id === task.id ? '2px solid #667eea' : '1px solid #333', borderRadius: '8px', padding: '16px', marginBottom: '12px', cursor: draggedTask?.id === task.id ? 'grabbing' : 'grab', transition: 'all 0.2s', boxShadow: draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 1px 3px rgba(0,0,0,0.08)', opacity: draggedTask?.id === task.id ? 0.7 : 1 }} onClick={(e) => { if (e.currentTarget.dataset.dragged === '1') return; openEditModal(task); }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 4px 8px rgba(0,0,0,0.12)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 1px 3px rgba(0,0,0,0.08)'}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px', gap: '8px' }}>
@@ -753,7 +915,7 @@ export default function TasksKanban({ amiImage }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '6px' }}>
               <button onClick={() => { setEditingTask(null); resetForm(); setShowAddModal(true); setShowMenuMobile(false); }} style={{ padding: '10px 16px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>+ New Task</button>
               <button onClick={() => { setShowSettings(!showSettings); setShowMenuMobile(false); }} style={{ padding: '10px 16px', background: '#555', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>⚙️ Settings</button>
-              <button onClick={() => { setShowOrganizer(true); runOrganizer(); setShowMenuMobile(false); }} disabled={organizerLoading} style={{ padding: '10px 16px', background: organizerLoading ? '#999' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>{organizerLoading ? '⏳ Analyzing...' : '🤖 AI Organize'}</button>
+              <button onClick={() => { setShowOrganizer(true); setOrganizerMode('group'); runGrouping(); setShowMenuMobile(false); }} disabled={groupBusy} style={{ padding: '10px 16px', background: groupBusy ? '#999' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>{groupBusy ? '⏳ Looking...' : '🧹 Sort out the board'}</button>
             </div>
           )}
         </div>
@@ -1118,45 +1280,6 @@ export default function TasksKanban({ amiImage }) {
             
           
   // AI Organizer Modal
-  if (showOrganizer) {
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 25px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ marginTop: 0, marginBottom: '16px' }}>🤖 AI Task Organizer</h2>
-          <p style={{ color: '#666', marginBottom: '16px' }}>Found {organizerSuggestions.length} suggestions to improve your tasks</p>
-          
-          <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px' }}>
-            {organizerSuggestions.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#999' }}>No suggestions yet...</p>
-            ) : (
-              organizerSuggestions.map((sugg, idx) => (
-                <div key={idx} style={{ background: '#f9fafb', padding: '12px', marginBottom: '8px', borderRadius: '6px', borderLeft: '4px solid #667eea' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedSuggestions[idx] || false}
-                    onChange={(e) => setSelectedSuggestions({...selectedSuggestions, [idx]: e.target.checked})}
-                    style={{ marginRight: '8px' }}
-                  />
-                  <strong>{sugg.type.toUpperCase()}</strong>
-                  <p style={{ margin: '4px 0', fontSize: '13px', color: '#666' }}>
-                    {sugg.task_title && `Task: ${sugg.task_title}`}
-                  </p>
-                  {sugg.current && <p style={{ margin: '4px 0', fontSize: '12px' }}>Current: "{sugg.current}"</p>}
-                  {sugg.suggested && <p style={{ margin: '4px 0', fontSize: '12px', color: '#10b981' }}>Suggested: "{sugg.suggested}"</p>}
-                  {sugg.reason && <p style={{ margin: '4px 0', fontSize: '12px', color: '#666', fontStyle: 'italic' }}>Reason: {sugg.reason}</p>}
-                </div>
-              ))
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowOrganizer(false)} style={{ padding: '8px 16px', background: '#999', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-            <button onClick={applyOrganizer} disabled={Object.values(selectedSuggestions).some(v => v) === false} style={{ padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>✅ Apply Selected</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
               <>
