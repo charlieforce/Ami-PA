@@ -15196,7 +15196,7 @@ def project_update(pid):
 def project_board_list():
     """Every project and venture, with what is on each."""
     try:
-        rows = db.query("""SELECT v.id, v.name, v.description, v.type, v.stage,
+        rows = db.query("""SELECT v.id, v.name, v.description, v.type, v.stage, v.parent_id,
                                   COUNT(CASE WHEN t.status NOT IN
                                         ('done','completed','cancelled') THEN 1 END) AS open_n,
                                   COUNT(CASE WHEN t.status IN ('done','completed')
@@ -15210,6 +15210,164 @@ def project_board_list():
                            GROUP BY v.id
                            ORDER BY waiting_n DESC, open_n DESC, v.name""") or []
         return {"status": "success", "projects": rows}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/projects/<int:pid>/document")
+@require_password
+def project_add_document(pid):
+    """Attach a PRD, a spec, a quote - whatever the project actually runs on."""
+    try:
+        import os as _os
+        from datetime import datetime as _dd
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return {"error": "no file"}, 400
+        _os.makedirs('data/project_docs', exist_ok=True)
+        safe = _dd.now().strftime('%Y%m%d%H%M%S') + "_" + _os.path.basename(f.filename)[:60]
+        path = _os.path.join('data/project_docs', safe)
+        f.save(path)
+        db.execute("""INSERT INTO project_documents (venture_id, title, kind, file_path, notes)
+                      VALUES (?, ?, ?, ?, ?)""",
+                   (pid, request.form.get('title') or f.filename,
+                    request.form.get('kind') or 'prd', path,
+                    request.form.get('notes') or ''))
+        return {"status": "success", "file": safe}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/projects/<int:pid>/documents")
+@require_password
+def project_documents(pid):
+    try:
+        rows = db.query("""SELECT id, title, kind, created_at FROM project_documents
+                           WHERE venture_id = ? ORDER BY id DESC""", (pid,)) or []
+        return {"status": "success", "documents": rows}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.delete("/api/projects/document/<int:did>")
+@require_password
+def project_remove_document(did):
+    try:
+        import os as _os
+        r = db.query("SELECT file_path FROM project_documents WHERE id = ?", (did,))
+        if r:
+            try:
+                _os.remove(r[0]['file_path'])
+            except Exception:
+                pass
+        db.execute("DELETE FROM project_documents WHERE id = ?", (did,))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/projects/<int:pid>/generate")
+@require_password
+def project_generate_tasks(pid):
+    """Draft tasks from whatever the project has - the PRD if there is one,
+    the description if there is not."""
+    try:
+        import json as _j, re as _r, os as _os, base64 as _b64
+        v = db.query("SELECT name, description FROM ventures WHERE id = ?", (pid,))
+        if not v:
+            return {"error": "no such project"}, 404
+        name = v[0]['name']
+        about = v[0].get('description') or ''
+
+        docs = db.query("""SELECT title, file_path FROM project_documents
+                           WHERE venture_id = ? ORDER BY id DESC LIMIT 2""", (pid,)) or []
+        already = [r['title'] for r in (db.query(
+            "SELECT title FROM tasks WHERE venture_id = ?", (pid,)) or [])]
+        # and whatever is already drafted and waiting, so pressing the button
+        # twice does not give him the same job worded two ways
+        already += [r['title'] for r in (db.query(
+            "SELECT title FROM proposed_tasks WHERE venture_id = ? AND status = 'waiting'",
+            (pid,)) or [])]
+
+        ask = ("This is Charlie's project: " + name + "\n\n"
+               + ("What it is: " + about[:900] + "\n\n" if about else "")
+               + ("Already on the board, do not repeat these: "
+                  + "; ".join(already[:20]) + "\n\n" if already else "")
+               + "Turn this into the actual work. Rules:\n"
+               "- Between 4 and 12 tasks, each a real piece of work he could start\n"
+               "- Each title under 70 characters, starting with a verb\n"
+               "- In the order he should do them\n"
+               "- Nothing vague like 'plan the project' or 'do research'\n"
+               "- Nothing that is really a phase heading\n\n"
+               'Reply with ONLY a JSON array:\n'
+               '[{"title":"Map the first 20 fundis in Freetown","why":"nothing works '
+               'without supply"}]')
+
+        parts = [ask]
+        used_doc = None
+        for dmeta in docs:
+            p = dmeta.get('file_path') or ''
+            if not p or not _os.path.exists(p):
+                continue
+            ext = p.lower().rsplit('.', 1)[-1]
+            try:
+                if ext == 'pdf':
+                    from google.genai import types as _gt
+                    with open(p, 'rb') as fh:
+                        parts.append(_gt.Part.from_bytes(data=fh.read(),
+                                                         mime_type='application/pdf'))
+                    used_doc = dmeta['title']
+                elif ext in ('txt', 'md'):
+                    with open(p, 'r', errors='ignore') as fh:
+                        parts.append("\n\nTHE DOCUMENT (" + str(dmeta['title']) + "):\n"
+                                     + fh.read()[:12000])
+                    used_doc = dmeta['title']
+            except Exception as _e:
+                print("could not read " + p + ": " + str(_e)[:60])
+            if used_doc:
+                break
+
+        if not used_doc and len(about) < 25:
+            return {"status": "success", "proposed": [],
+                    "note": "Tell me a bit more about it, or attach the PRD."}
+
+        import google.genai as genai
+        client = genai.Client()
+        resp = gemini_guard() or note_gemini_call() or _ask_gemini(
+            client, prompt=(parts if len(parts) > 1 else ask))
+        note_gemini_tokens(resp)
+        raw = _r.sub(r'^```(?:json)?|```$', '', (resp.text or '').strip(), flags=_r.M)
+        m = _r.search(r'\[[\s\S]*\]', raw)
+        proposed = []
+        if m:
+            try:
+                _seen = [str(a).lower() for a in already]
+                def _close(x):
+                    xw = {w for w in x.lower().split() if len(w) > 3}
+                    for a in _seen:
+                        aw = {w for w in a.split() if len(w) > 3}
+                        if xw and aw and len(xw & aw) >= max(2, int(len(xw) * 0.6)):
+                            return True
+                    return False
+                for t in _j.loads(m.group(0))[:12]:
+                    ttl = str(t.get('title') or '').strip()[:90]
+                    if len(ttl) > 5 and not _close(ttl):
+                        proposed.append({"title": ttl, "why": str(t.get('why') or '')[:110]})
+            except Exception:
+                pass
+
+        for t in proposed:
+            try:
+                if not db.query("SELECT id FROM proposed_tasks WHERE venture_id = ? "
+                                "AND title = ? AND status = 'waiting'", (pid, t['title'])):
+                    db.execute("INSERT INTO proposed_tasks (venture_id, title, why) "
+                               "VALUES (?, ?, ?)", (pid, t['title'], t['why']))
+            except Exception:
+                pass
+
+        return {"status": "success", "proposed": proposed,
+                "from": used_doc or "what you wrote",
+                "note": ("" if proposed else "Nothing clear enough to draft from.")}
     except Exception as e:
         return {"error": str(e)}, 400
 

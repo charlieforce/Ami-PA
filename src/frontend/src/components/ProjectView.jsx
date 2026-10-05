@@ -53,6 +53,45 @@ export default function ProjectView() {
   const [form, setForm] = useState({});
   const [adding, setAdding] = useState(false);
   const [fresh, setFresh] = useState({ name: '', about: '' });
+  const [docs, setDocs] = useState([]);
+  const [genNote, setGenNote] = useState('');
+
+  const loadDocs = async (pid) => {
+    try {
+      const r = await fetch(API + '/api/projects/' + pid + '/documents', { headers: AUTH });
+      const j = await r.json();
+      setDocs(j.documents || []);
+    } catch (e) { /* not important enough to shout about */ }
+  };
+
+  const uploadDoc = async (file) => {
+    if (!file) return;
+    setBusy(true); setGenNote('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('title', file.name);
+      await fetch(API + '/api/projects/' + open + '/document',
+                  { method: 'POST', headers: AUTH, body: fd });
+      await loadDocs(open);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
+  const generateTasks = async () => {
+    setBusy(true); setGenNote('');
+    try {
+      const r = await fetch(API + '/api/projects/' + open + '/generate',
+                            { method: 'POST', headers: H });
+      const j = await r.json();
+      setGenNote(j.note || (j.proposed?.length
+        ? 'Drafted ' + j.proposed.length + ' from ' + (j.from || 'what you wrote')
+          + ' - tick what is right.'
+        : 'Nothing new to draft.'));
+      await loadOne(open);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
 
   const makeProject = async () => {
     if (fresh.name.trim().length < 3) return;
@@ -95,7 +134,7 @@ export default function ProjectView() {
   };
 
   useEffect(() => { loadList(); }, []);
-  useEffect(() => { if (open) loadOne(open); }, [open]);
+  useEffect(() => { if (open) { loadOne(open); loadDocs(open); } }, [open]);
 
   const setEdit = (id, patch) =>
     setEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
@@ -146,6 +185,8 @@ export default function ProjectView() {
   if (!open) {
     if (err) return <div style={S.wrap}><div style={S.empty}>{err}</div></div>;
     if (!projects) return <div style={S.wrap}><div style={S.empty}>Loading...</div></div>;
+    const byId = {};
+    projects.forEach(p => { byId[p.id] = p; });
     const busyOnes = projects.filter(p => p.open_n > 0 || p.waiting_n > 0);
     const quiet = projects.filter(p => p.open_n === 0 && p.waiting_n === 0);
     const Card = (p) => (
@@ -157,6 +198,7 @@ export default function ProjectView() {
           )}
         </div>
         <div style={S.sub}>
+          {p.parent_id && byId[p.parent_id] ? 'under ' + byId[p.parent_id].name + ' \u00b7 ' : ''}
           {p.open_n} open{p.done_n ? ' \u00b7 ' + p.done_n + ' done' : ''}
           {p.stage ? ' \u00b7 ' + p.stage : ''}
         </div>
@@ -239,6 +281,34 @@ export default function ProjectView() {
                     onClick={() => setEditing(false)}>Cancel</button>
           </div>
         </div>
+      )}
+
+      {/* the document the project actually runs on */}
+      <div style={S.label}>The paperwork</div>
+      {docs.length === 0 && (
+        <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px' }}>
+          No PRD or spec attached. She will work from the description instead.
+        </div>
+      )}
+      {docs.map(d => (
+        <div key={d.id} style={{ fontSize: '13px', padding: '6px 0', color: '#444' }}>
+          \uD83D\uDCC4 {d.title}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+        <label style={{ ...S.btn('#eee'), color: '#444', cursor: 'pointer',
+                        display: 'inline-block' }}>
+          Attach a document
+          <input type="file" style={{ display: 'none' }}
+                 accept=".pdf,.txt,.md,.doc,.docx"
+                 onChange={e => uploadDoc(e.target.files?.[0])} />
+        </label>
+        <button style={S.btn('#4f46e5')} onClick={generateTasks} disabled={busy}>
+          {busy ? 'Reading...' : 'Draft the tasks'}
+        </button>
+      </div>
+      {genNote && (
+        <div style={{ fontSize: '12px', color: '#4f46e5', marginTop: '8px' }}>{genNote}</div>
       )}
 
       {/* what she drafted, waiting on him */}

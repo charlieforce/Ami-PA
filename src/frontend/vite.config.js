@@ -14,6 +14,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // the service worker caches hard, which means a change can be in the
+      // file, served by vite, and still not on screen. off while developing.
+      devOptions: { enabled: false },
       manifest: {
         name: 'The Real Ami PA',
         short_name: 'Ami PA',
