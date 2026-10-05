@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SourceBadge from '../components/SourceBadge';
 import SettingsPage from './SettingsPage';
+import ProjectView from '../components/ProjectView';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -906,6 +907,7 @@ export default function TasksKanban({ amiImage }) {
             <option value="kanban">Kanban</option>
             <option value="list">List</option>
             <option value="calendar">Calendar</option>
+            <option value="project">By project</option>
           </select>
           {/* Hamburger Menu Button */}
           <button onClick={() => setShowMenuMobile(!showMenuMobile)} style={{ padding: '10px 14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '18px' }}>☰ Menu</button>
@@ -1240,6 +1242,8 @@ export default function TasksKanban({ amiImage }) {
             ))}
           </div>
         </div>
+      )}{viewMode === 'project' && (
+        <ProjectView />
       )}{viewMode === 'calendar' && (
         <div style={{ padding: '20px', maxWidth: '100%' }}>
           <h2 style={{ color: '#1a1a1a', marginBottom: '20px' }}>Calendar View</h2>
