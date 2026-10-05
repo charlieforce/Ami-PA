@@ -4310,9 +4310,9 @@ def get_weather(location="Freetown"):
         import google.genai as genai
         client = genai.Client()
         query = f"Current weather in {location} today - temperature, conditions, forecast"
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
             model=AMI_MODEL,
-            contents=query,
+            prompt=query,
             tools=[genai.protos.Tool(google_search=genai.protos.GoogleSearch())]
         )
         note_gemini_tokens(response)
@@ -6896,9 +6896,9 @@ For each suggestion, return JSON with:
 Return ONLY valid JSON, no other text."""
         
         client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(
-            model='models/gemini-3.6-flash',
-            contents=prompt
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
+            model=AMI_MODEL,
+            prompt=prompt
         )
         note_gemini_tokens(response)
         
@@ -7103,10 +7103,10 @@ def generate_description():
         import google.generativeai as genai
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY', ''))
         
-        model = genai.GenerativeModel('models/gemini-3.6-flash')
+        model = genai.GenerativeModel(AMI_MODEL)
         prompt = f"Write a brief, clear task description (2-3 sentences) for a task titled: '{title}'. Be concise and actionable."
         
-        response = gemini_guard() or note_gemini_call() or model.generate_content(prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         description = response.text.strip()
         
@@ -8485,7 +8485,7 @@ def check_grammar():
 
 {text}"""
         
-        response = gemini_guard() or note_gemini_call() or model.generate_content(prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         corrected = response.text.strip()
         
@@ -8837,8 +8837,8 @@ def create_todo_from_note():
         with open(temp_path, 'rb') as f:
             audio_data = f.read()
         
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(
-            model='models/gemini-3.6-flash',
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
+            model=AMI_MODEL,
             contents=[
                 "Transcribe this audio to text. Only provide the transcription, nothing else.",
                 {"mime_type": "audio/webm", "data": audio_data}
@@ -8915,9 +8915,9 @@ def ai_transform():
     
     try:
         client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-        response = gemini_guard() or note_gemini_call() or client.models.generate_content(
-            model='models/gemini-3.6-flash',
-            contents=prompt
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
+            model=AMI_MODEL,
+            prompt=prompt
         )
         note_gemini_tokens(response)
         return {"result": response.text, "status": "success"}, 200
@@ -12223,8 +12223,8 @@ def fitness_suggest():
         if guard:
             return {"error": "Gemini is off or over its limit - check Settings"}, 400
         note_gemini_call()
-        resp = client.models.generate_content(
-            model=AMI_MODEL, contents=prompt,
+        resp = _ask_gemini(
+            client, model=AMI_MODEL, prompt=prompt,
             config=_t.GenerateContentConfig(thinking_config=_t.ThinkingConfig(thinking_level='low')))
         note_gemini_tokens(resp)
         raw = (resp.text or '').strip()
@@ -12334,8 +12334,8 @@ def fitness_programme():
             return {"error": "Gemini is off or over its limit - check Settings"}, 400
         client = genai.Client()
         note_gemini_call()
-        resp = client.models.generate_content(
-            model=AMI_MODEL, contents=prompt,
+        resp = _ask_gemini(
+            client, model=AMI_MODEL, prompt=prompt,
             config=_t.GenerateContentConfig(thinking_config=_t.ThinkingConfig(thinking_level='low')))
         note_gemini_tokens(resp)
         raw = (resp.text or '').strip()
@@ -17274,7 +17274,7 @@ def search_all_interests_grounding():
         
         for query in ALL_SEARCHES:
             try:
-                response = gemini_guard() or note_gemini_call() or client.models.generate_content(
+                response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
                     model=AMI_MODEL,
                     contents=f"Give me the top 2-3 news items about: {query}. Be specific with dates and facts.",
                     config=genai.types.GenerateContentConfig(
@@ -17885,7 +17885,7 @@ def analyze_note_api():
         note_title = data.get('title', '')
         
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-        model = genai.GenerativeModel("models/gemini-3.6-flash")
+        model = genai.GenerativeModel(AMI_MODEL)
         
         from datetime import datetime as _d
         _today = _d.now()
@@ -17966,7 +17966,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 }}}}
 """
         
-        response = gemini_guard() or note_gemini_call() or model.generate_content(prompt)
+        response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         try:
             extracted = json.loads(response.text)
