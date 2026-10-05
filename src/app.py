@@ -484,6 +484,40 @@ def _interval_meds_due():
     return out
 
 
+def kickoff_nudge():
+    """One of his teams is about to start. No model, just the clock."""
+    try:
+        from datetime import datetime as _dk, timedelta as _tk
+        import pytz as _pk
+        if in_dnd():
+            return
+        now = _dk.utcnow()
+        soon = (now + _tk(minutes=20)).strftime('%Y-%m-%dT%H:%M:%S')
+        rows = db.query("""SELECT f.id, f.team, f.opponent, f.home_away, f.kickoff_utc, f.league
+                           FROM fixtures f
+                           JOIN followed_teams t
+                             ON LOWER(t.team) = LOWER(f.team) AND t.active = 1
+                           WHERE f.result IS NULL
+                             AND f.kickoff_utc >= ? AND f.kickoff_utc <= ?""",
+                        (now.strftime('%Y-%m-%dT%H:%M:%S'), soon)) or []
+        for r in rows:
+            key = 'kick' + str(r['id'])
+            if not _nudge_due(key):
+                continue
+            _nudge_said(key)
+            k = _pk.utc.localize(_dk.strptime((str(r['kickoff_utc'])[:19] + ':00')[:19],
+                                              '%Y-%m-%dT%H:%M:%S')).astimezone(_charlie_now().tzinfo)
+            mins = max(1, int((k - _charlie_now()).total_seconds() // 60))
+            msg = ("\U0001F3C8 " + r['team'] + " " +
+                   ("v " if r['home_away'] == 'home' else "at ") + r['opponent'] +
+                   " kicks off in " + str(mins) + " minutes.")
+            db.execute("INSERT INTO conversations (user_message, ami_response) VALUES (?, ?)",
+                       ("", msg))
+            print("kickoff nudge: " + r['team'])
+    except Exception as e:
+        print("kickoff nudge error: " + str(e)[:70])
+
+
 def interval_med_nudge():
     """A tablet taken every so many days - one nudge on the day it is due."""
     try:
@@ -1086,6 +1120,8 @@ try:
                               id='med_times', replace_existing=True)
             scheduler.add_job(lambda: refresh_fixtures(), 'interval', hours=12,
                               id='fixtures_refresh', replace_existing=True)
+            scheduler.add_job(lambda: kickoff_nudge(), 'interval', minutes=5,
+                              id='kickoff_nudge', replace_existing=True)
             scheduler.add_job(lambda: interval_med_nudge(), 'interval', minutes=120,
                               id='interval_med_nudge', replace_existing=True)
             scheduler.add_job(lambda: meeting_nudges(), 'interval', minutes=10,

@@ -28,6 +28,7 @@ const AmiTaskView = () => {
   const [todos, setTodos] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [expandedSection, setExpandedSection] = useState(null);
+  const [calShow, setCalShow] = useState(6);
   const [filterVenture, setFilterVenture] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -407,7 +408,7 @@ const AmiTaskView = () => {
           </div>
           {expandedSection === 'calendar' && (
             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #444' }}>
-              {calendar.map(event => (
+              {calendar.slice(0, calShow).map(event => (
                 <div key={event.id} style={{ 
                   background: '#2a2820', 
                   padding: '12px', 
@@ -421,6 +422,23 @@ const AmiTaskView = () => {
                   {event.description && <div style={{ fontSize: '12px', color: '#ccc', marginTop: '4px', maxHeight: '60px', overflow: 'hidden' }}>{event.description}</div>}
                 </div>
               ))}
+              {calendar.length > calShow && (
+                <button onClick={() => setCalShow(calShow + 10)}
+                        style={{ width: '100%', padding: '10px', marginTop: '8px',
+                                 background: '#2a2a2a', color: '#aaa', border: 'none',
+                                 borderRadius: '8px', cursor: 'pointer', fontSize: '12px' }}>
+                  Show the other {calendar.length - calShow}
+                </button>
+              )}
+              {calShow > 6 && (
+                <button onClick={() => setCalShow(6)}
+                        style={{ width: '100%', padding: '8px', marginTop: '6px',
+                                 background: 'transparent', color: '#777',
+                                 border: '1px solid #333', borderRadius: '8px',
+                                 cursor: 'pointer', fontSize: '12px' }}>
+                  Show less
+                </button>
+              )}
             </div>
           )}
         </div>
