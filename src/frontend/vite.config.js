@@ -31,6 +31,8 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // the push handler rides along inside the generated worker
+        importScripts: ['/push-handler.js'],
         navigateFallback: '/index.html',
         runtimeCaching: [
           {

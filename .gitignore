@@ -27,3 +27,8 @@ src/frontend/dist/
 src/data/
 data/
 src/uploads/
+
+# push notification keys - never commit these
+*.pem
+src/data/vapid_private.pem
+src/data/vapid_public.txt

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NotificationSetup from './NotificationSetup';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
 const API = import.meta.env.VITE_API_URL || API + '';
@@ -124,6 +125,7 @@ export default function SettingsTab() {
 
   return (
     <div style={S.wrap}>
+      <NotificationSetup />
       {err && (
         <div style={{ background: '#7f1d1d', padding: '10px', borderRadius: '6px', marginBottom: '10px', fontSize: '13px' }}>
           ⚠️ {err}
