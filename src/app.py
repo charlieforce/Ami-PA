@@ -15712,12 +15712,17 @@ def _place_quick_note(text):
 
     # --- something she should simply know ---------------------------------
     try:
-        db.execute("""INSERT INTO learned_facts (fact, source, created_at)
-                      VALUES (?, 'quick note', CURRENT_TIMESTAMP)""", (raw[:300],))
-        return ('known', raw[:60],
-                "\U0001F9E0 A don hold dat one for mi head: " + raw[:70] + ".")
-    except Exception:
-        return (None, None, None)
+        db.execute("""INSERT INTO learned_facts (fact, category, timestamp)
+                      VALUES (?, 'from a quick note', CURRENT_TIMESTAMP)""", (raw[:300],))
+        # never say it landed without looking
+        if db.query("SELECT id FROM learned_facts WHERE fact = ? ORDER BY id DESC LIMIT 1",
+                    (raw[:300],)):
+            return ('known', raw[:60],
+                    "\U0001F9E0 A don hold dat one for mi head: " + raw[:70] + ".")
+        return (None, None, "\U0001F4DD Saved as a note - a no fit file am anywhere else.")
+    except Exception as _e:
+        print("quick note: could not keep the fact - " + str(_e)[:70])
+        return (None, None, "\U0001F4DD Saved as a note.")
 
 
 @app.post("/api/notes/quick")
