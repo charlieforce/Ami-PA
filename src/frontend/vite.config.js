@@ -16,7 +16,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // the service worker caches hard, which means a change can be in the
       // file, served by vite, and still not on screen. off while developing.
-      devOptions: { enabled: false },
+      devOptions: { enabled: true, type: 'module' },   // needed for push in development
       manifest: {
         name: 'The Real Ami PA',
         short_name: 'Ami PA',
