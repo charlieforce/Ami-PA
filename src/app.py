@@ -14798,11 +14798,28 @@ def sunday_review():
 def chat_history():
     """What was said on a given day - today unless asked otherwise."""
     try:
-        day = (request.args.get('day') or '').strip() or _charlie_now().strftime('%Y-%m-%d')
-        rows = db.query("""SELECT id, user_message, ami_response, timestamp
-                           FROM conversations
-                           WHERE DATE(timestamp) = ?
-                           ORDER BY id""", (day,)) or []
+        # a named day if he asked, otherwise the last 24 hours - and if that
+        # is thin, the last 30 messages, so it never opens blank after midnight
+        day = (request.args.get('day') or '').strip()
+        if day:
+            rows = db.query("""SELECT id, user_message, ami_response, timestamp
+                               FROM conversations
+                               WHERE DATE(timestamp) = ?
+                               ORDER BY id""", (day,)) or []
+        else:
+            # the last 40 exchanges, whatever day they fall on. he scrolls up
+            # for more; the day dividers show where one day ends.
+            _before = request.args.get('before')
+            if _before:
+                rows = db.query("""SELECT id, user_message, ami_response, timestamp
+                                   FROM (SELECT * FROM conversations WHERE id < ?
+                                         ORDER BY id DESC LIMIT 40)
+                                   ORDER BY id""", (int(_before),)) or []
+            else:
+                rows = db.query("""SELECT id, user_message, ami_response, timestamp
+                                   FROM (SELECT * FROM conversations
+                                         ORDER BY id DESC LIMIT 40)
+                                   ORDER BY id""") or []
         out = []
         for r in rows:
             if (r.get('user_message') or '').strip():
