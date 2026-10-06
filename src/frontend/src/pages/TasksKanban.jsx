@@ -638,9 +638,6 @@ export default function TasksKanban({ amiImage }) {
     return tag ? tag.color : '#667eea';
   };
 
-  const TaskCard = ({ task }) => {
-    const priority = priorityConfig[task.priority] || { label: 'None', color: '#999', bg: '#eee' };
-  
   const runOrganizer = async () => {
     setOrganizerLoading(true);
     try {
@@ -806,6 +803,10 @@ export default function TasksKanban({ amiImage }) {
     );
   }
 
+
+  const TaskCard = ({ task }) => {
+    const priority = priorityConfig[task.priority] || { label: 'None', color: '#999', bg: '#eee' };
+  
   return (
       <div draggable="true" onDragStart={(e) => handleDragStart(task, e)} onDragEnd={(e) => { setDraggedTask(null); e.currentTarget.dataset.dragged = '1'; setTimeout(() => { if (e.currentTarget) e.currentTarget.dataset.dragged = ''; }, 200); }} style={{ background: '#1e1e1e', borderLeft: '4px solid ' + (task.status === 'done' ? '#10b981' : task.status === 'in_progress' ? '#f59e0b' : '#6b7280'), border: draggedTask?.id === task.id ? '2px solid #667eea' : '1px solid #333', borderRadius: '8px', padding: '16px', marginBottom: '12px', cursor: draggedTask?.id === task.id ? 'grabbing' : 'grab', transition: 'all 0.2s', boxShadow: draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 1px 3px rgba(0,0,0,0.08)', opacity: draggedTask?.id === task.id ? 0.7 : 1 }} onClick={(e) => { if (e.currentTarget.dataset.dragged === '1') return; openEditModal(task); }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 4px 8px rgba(0,0,0,0.12)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = draggedTask?.id === task.id ? '0 8px 16px rgba(102, 126, 234, 0.3)' : '0 1px 3px rgba(0,0,0,0.08)'}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px', gap: '8px' }}>
