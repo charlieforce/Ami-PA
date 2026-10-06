@@ -9,6 +9,7 @@ export default function QuickNotesForm({ onSave }) {
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [loading, setLoading] = useState(false);
+  const [wentTo, setWentTo] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [tempInterimText, setTempInterimText] = useState('');
   const [voices, setVoices] = useState([]);
@@ -58,6 +59,19 @@ export default function QuickNotesForm({ onSave }) {
       });
 
       if (response.ok) {
+        // put it where it belongs - a reminder, a task, a birthday, or
+        // something she simply knows. the note is kept either way.
+        try {
+          const r2 = await fetch(API + '/api/notes/quick', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json',
+                       'X-Ami-Password': AMI_PASSWORD },
+            body: JSON.stringify({ text: newContent || newTitle }),
+          });
+          const j2 = await r2.json();
+          setWentTo(j2.said || '');
+        } catch (e) { setWentTo(''); }
+
         setNewTitle('');
         setNewContent('');
         fetchQuickNotes();
@@ -151,6 +165,14 @@ export default function QuickNotesForm({ onSave }) {
 
   return (
     <div className="quick-notes-container">
+      {wentTo && (
+        <div style={{ background: '#1d2e1d', border: '1px solid #2f5f2f',
+                      borderRadius: '8px', padding: '10px 12px', marginBottom: '10px',
+                      fontSize: '13px', color: '#9fd89f' }}
+             onClick={() => setWentTo('')}>
+          {wentTo}
+        </div>
+      )}
       <h2>📌 Quick Notes</h2>
       
       <div className="create-note-simple">

@@ -32,6 +32,12 @@ export default function AIToolbar({ text, setText, disabled = false }) {
   const readAloud = () => {
     if (!text.trim()) return;
     const utterance = new SpeechSynthesisUtterance(text);
+    // his own writing, read in an American woman's voice
+    const _vs = window.speechSynthesis.getVoices();
+    const _v = _vs.find(v => /Samantha|Google US English|Ava|Allison|Susan|Zira/.test(v.name))
+            || _vs.find(v => v.lang === 'en-US');
+    if (_v) utterance.voice = _v;
+    utterance.lang = 'en-US';
     utterance.rate = 1;
     window.speechSynthesis.speak(utterance);
   };

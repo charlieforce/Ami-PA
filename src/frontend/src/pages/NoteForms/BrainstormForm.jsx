@@ -65,6 +65,12 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
     if (!challenge.trim()) { alert('No text to read!'); return; }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(challenge);
+    // his own writing, read in an American woman's voice
+    const _vs = window.speechSynthesis.getVoices();
+    const _v = _vs.find(v => /Samantha|Google US English|Ava|Allison|Susan|Zira/.test(v.name))
+            || _vs.find(v => v.lang === 'en-US');
+    if (_v) utterance.voice = _v;
+    utterance.lang = 'en-US';
     if (voices[selectedVoiceIndex]) utterance.voice = voices[selectedVoiceIndex];
     utterance.rate = 1.0;
     utterance.pitch = 1.0;

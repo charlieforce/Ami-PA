@@ -130,6 +130,12 @@ export default function MemoirEdit({ memoirId, onSave, onBack }) {
     window.speechSynthesis.cancel(); // Clear any lingering speech
     const textToSpeak = content || 'Your memoir';
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    // his own writing, read in an American woman's voice
+    const _vs = window.speechSynthesis.getVoices();
+    const _v = _vs.find(v => /Samantha|Google US English|Ava|Allison|Susan|Zira/.test(v.name))
+            || _vs.find(v => v.lang === 'en-US');
+    if (_v) utterance.voice = _v;
+    utterance.lang = 'en-US';
     utterance.rate = 0.9;
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
