@@ -900,41 +900,85 @@ export default function TasksKanban({ amiImage }) {
 
   return (
     <div style={{ background: '#f5f7fa', minHeight: '100vh', padding: '16px' }}>
-      <div style={{ position: 'sticky', top: 0, background: 'white', zIndex: 100, padding: '16px', borderRadius: '8px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input type="text" placeholder="Search tasks..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', color: '#1a1a1a', background: '#ffffff' }} />
-          <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', color: '#1a1a1a', cursor: 'pointer', background: '#ffffff' }}>
-            <option value="kanban">Kanban</option>
-            <option value="list">List</option>
-            <option value="calendar">Calendar</option>
-            <option value="project">By project</option>
-          </select>
-          {/* Hamburger Menu Button */}
-          <button onClick={() => setShowMenuMobile(!showMenuMobile)} style={{ padding: '10px 14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '18px' }}>☰ Menu</button>
-          
-          {/* Menu Expanded */}
-          {showMenuMobile && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '6px' }}>
-              <button onClick={() => { setEditingTask(null); resetForm(); setShowAddModal(true); setShowMenuMobile(false); }} style={{ padding: '10px 16px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>+ New Task</button>
-              <button onClick={() => { setShowSettings(!showSettings); setShowMenuMobile(false); }} style={{ padding: '10px 16px', background: '#555', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>⚙️ Settings</button>
-              <button onClick={() => { setShowOrganizer(true); setOrganizerMode('group'); runGrouping(); setShowMenuMobile(false); }} disabled={groupBusy} style={{ padding: '10px 16px', background: groupBusy ? '#999' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>{groupBusy ? '⏳ Looking...' : '🧹 Sort out the board'}</button>
-            </div>
-          )}
+      <div style={{ position: 'sticky', top: 0, background: 'white', zIndex: 100,
+                    padding: '10px 12px', borderBottom: '1px solid #e4e4ec' }}>
+        {/* one row: find something, add something, everything else */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input type="text" placeholder="Search tasks..." value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+                 style={{ flex: 1, minWidth: 0, padding: '10px 12px',
+                          border: '1px solid #ddd', borderRadius: '8px', fontSize: '14px' }} />
+          <button onClick={() => { setEditingTask(null); resetForm(); setShowAddModal(true); }}
+                  style={{ padding: '10px 14px', background: '#667eea', color: 'white',
+                           border: 'none', borderRadius: '8px', cursor: 'pointer',
+                           fontWeight: 700, fontSize: '15px' }}>+</button>
+          <button onClick={() => setShowMenuMobile(!showMenuMobile)}
+                  style={{ padding: '10px 13px', background: '#f0f0f4', color: '#333',
+                           border: 'none', borderRadius: '8px', cursor: 'pointer',
+                           fontSize: '15px' }}>☰</button>
         </div>
+      
+        {/* the chips - one tap, worth the room */}
+        <div style={{ display: 'flex', gap: '6px', marginTop: '8px', overflowX: 'auto' }}>
+          {[['all', 'All', tasks.length],
+            ['pending', 'Backlog', pending.length],
+            ['in_progress', 'Doing', progress.length],
+            ['done', 'Done', done.length]].map(([k, label, n]) => (
+            <button key={k} onClick={() => setStatusFilter(k)}
+                    style={{ padding: '7px 13px', borderRadius: '16px', flexShrink: 0,
+                             border: '1px solid ' + (statusFilter === k ? '#667eea' : '#e0e0e8'),
+                             background: statusFilter === k ? '#eef0ff' : '#fff',
+                             color: statusFilter === k ? '#4f46e5' : '#666',
+                             fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}>
+              {label} {n}
+            </button>
+          ))}
+        </div>
+      
+        {/* the menu holds the rest */}
+        {showMenuMobile && (
+          <div style={{ marginTop: '10px', padding: '12px', background: '#f7f7fb',
+                        borderRadius: '10px', display: 'flex', flexDirection: 'column',
+                        gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}
+                      style={{ flex: 1, padding: '9px', borderRadius: '8px',
+                               border: '1px solid #ddd', fontSize: '13px' }}>
+                <option value="kanban">Kanban</option>
+                <option value="list">List</option>
+                <option value="calendar">Calendar</option>
+                <option value="project">By project</option>
+              </select>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                      style={{ flex: 1, padding: '9px', borderRadius: '8px',
+                               border: '1px solid #ddd', fontSize: '13px' }}>
+                <option value="due_date">Soonest first</option>
+                <option value="priority">Priority</option>
+                <option value="title">A to Z</option>
+              </select>
+            </div>
+            <button onClick={() => { setShowFilters(!showFilters); }}
+                    style={{ padding: '10px', background: '#fff', border: '1px solid #ddd',
+                             borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
+              {showFilters ? 'Hide filters' : 'Filters'}
+            </button>
+            <button onClick={() => { setShowOrganizer(true); setOrganizerMode('group');
+                                     runGrouping(); setShowMenuMobile(false); }}
+                    disabled={groupBusy}
+                    style={{ padding: '10px', background: '#10b981', color: '#fff',
+                             border: 'none', borderRadius: '8px', cursor: 'pointer',
+                             fontSize: '13px', fontWeight: 600 }}>
+              {groupBusy ? 'Looking...' : 'Sort out the board'}
+            </button>
+            <button onClick={() => { setShowSettings(!showSettings); setShowMenuMobile(false); }}
+                    style={{ padding: '10px', background: '#fff', border: '1px solid #ddd',
+                             borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
+              Settings
+            </button>
+          </div>
+        )}
       </div>
-
-      {/* Stats Bar */}
-      <div style={{ background: 'white', padding: '12px 20px', borderBottom: '1px solid #ddd', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-        <button onClick={() => setStatusFilter('all')} style={{ padding: '8px 16px', background: statusFilter === 'all' ? '#667eea' : '#f0f0f0', color: statusFilter === 'all' ? 'white' : '#1a1a1a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>📊 All ({filtered.length})</button>
-        <button onClick={() => setStatusFilter('pending')} style={{ padding: '8px 16px', background: statusFilter === 'pending' ? '#667eea' : '#f0f0f0', color: statusFilter === 'pending' ? 'white' : '#1a1a1a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>📋 Pending ({pending.length})</button>
-        <button onClick={() => setStatusFilter('in_progress')} style={{ padding: '8px 16px', background: statusFilter === 'in_progress' ? '#667eea' : '#f0f0f0', color: statusFilter === 'in_progress' ? 'white' : '#1a1a1a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>⏳ Progress ({progress.length})</button>
-        <button onClick={() => setStatusFilter('done')} style={{ padding: '8px 16px', background: statusFilter === 'done' ? '#667eea' : '#f0f0f0', color: statusFilter === 'done' ? 'white' : '#1a1a1a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>✅ Done ({done.length})</button>
-      </div>
-
-      {/* Filter Panel */}
-      <div style={{ background: '#f9f9f9', padding: '12px 20px', borderBottom: '1px solid #ddd' }}>
-        <button onClick={() => setShowFilters(!showFilters)} style={{ padding: '8px 12px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>🔽 {showFilters ? 'Hide' : 'Show'} Filters</button>
-        
+      
         {showFilters && (
           <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             {/* Venture Filter */}
@@ -1012,32 +1056,6 @@ export default function TasksKanban({ amiImage }) {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Bulk Actions Toolbar */}
-      {selectedTasks.length > 0 && (
-        <div style={{ background: '#667eea', padding: '12px 20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>✓ {selectedTasks.length} Task{selectedTasks.length !== 1 ? 's' : ''} Selected</span>
-          <select onChange={(e) => { if (e.target.value) bulkMoveTask(e.target.value); e.target.value = ''; }} style={{ padding: '8px 12px', background: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
-            <option value="">Move to...</option>
-            <option value="pending">Pending</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-          </select>
-          <button onClick={bulkDeleteTask} style={{ padding: '8px 14px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>🗑️ Delete</button>
-          <button onClick={() => setSelectedTasks([])} style={{ padding: '8px 14px', background: '#999', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>Clear</button>
-        </div>
-      )}
-
-      {/* Sort Toolbar */}
-      <div style={{ background: '#f9f9f9', padding: '14px 20px', borderBottom: '1px solid #e0e0e0', display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontWeight: '600', fontSize: '13px', color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>📊 Sort:</span>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ padding: '10px 14px', background: 'white', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px', color: '#1a1a1a', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <option value="due_date">📅 Due Date (Soonest)</option>
-          <option value="priority">⚡ Priority (High→Low)</option>
-          <option value="title">🔤 Title (A→Z)</option>
-        </select>
-      </div>
 
       {showSettings ? (<SettingsPage />) : (<>{viewMode === 'kanban' && (
         isNarrow ? (
