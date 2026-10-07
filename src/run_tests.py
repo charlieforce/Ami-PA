@@ -16,6 +16,9 @@ REAL_DB = "data/ami_memory.db"
 TEST_DB = "data/ami_memory.TEST.db"
 
 PASS, FAIL, SKIP = [], [], []
+SRC = 'app.py'
+LOG = '/tmp/flask.log'
+
 def ok(name, extra=""):    PASS.append(name); print("  ok    " + name + ((" - " + extra) if extra else ""))
 def bad(name, why=""):     FAIL.append((name, why)); print("  FAIL  " + name + ((" - " + str(why)[:110]) if why else ""))
 def skip(name, why=""):    SKIP.append(name); print("  skip  " + name + ((" - " + why) if why else ""))
@@ -365,6 +368,7 @@ def main():
         check_database()
         check_backup()
         check_deploy_ready()
+        check_actually_does_something()
     finally:
         stop(p)
 
@@ -378,6 +382,250 @@ def main():
         print("\nNot ready to deploy.")
         sys.exit(1)
     print("\nEverything passed.")
+
+
+# ---------------------------------------------------------------------------
+#  Does it actually do anything?
+#
+#  Everything below exists because something passed a test and still did
+#  nothing: a job that was never scheduled, a slot that was never filled,
+#  a claim that was never checked.
+# ---------------------------------------------------------------------------
+
+def test_jobs_actually_run(app):
+    """A function that exists is not a function that runs."""
+    import re
+    src = open('app.py').read()
+    # anything that looks like a scheduled job
+    defined = set(re.findall(r'^def (\w*(?:nudge|briefing|reminder|refresh|backup|'
+                             r'review|notification|closeout|warnings)\w*)\(', src, re.M))
+    scheduled = set()
+    for m in re.finditer(r"add_job\((?:lambda:\s*)?(\w+)", src):
+        scheduled.add(m.group(1))
+    for m in re.finditer(r"id='(\w+)'", src):
+        scheduled.add(m.group(1))
+    orphans = sorted(d for d in defined
+                     if d not in scheduled
+                     and not any(d in s or s in d for s in scheduled))
+    if orphans:
+        return (False, "defined but never scheduled: " + ", ".join(orphans[:4]))
+    return (True, str(len(defined)) + " jobs, all wired to the scheduler")
+
+
+def test_nothing_she_reads_is_empty(app, db):
+    """A slot she reads on every message, with nothing in it, is invisible."""
+    import re
+    src = open('app.py').read()
+    keys = set(re.findall(r"charlie_profile WHERE key = \?\", \(\"(\w+)\",\)", src))
+    keys |= set(re.findall(r"charlie_profile WHERE key = '(\w+)'", src))
+    empty = []
+    for k in sorted(keys):
+        r = db.query("SELECT length(value) n FROM charlie_profile WHERE key = ?", (k,))
+        if not r or not (r[0]['n'] or 0):
+            empty.append(k)
+    # water_target is allowed to be empty - the app has a sensible default
+    empty = [e for e in empty if e not in ('water_target',)]
+    if empty:
+        return (False, "she reads these and they are empty: " + ", ".join(empty))
+    return (True, str(len(keys)) + " context slots, all filled")
+
+
+def test_prompt_has_not_crept(app):
+    """It grew to 35,000 characters without anyone noticing."""
+    import io, contextlib
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            with app.test_request_context('/api/chat/orchestrated', method='POST',
+                                          json={"message": "hello"},
+                                          headers={'X-Ami-Password': os.getenv('AMI_PASSWORD', 'charlie')}):
+                app.view_functions['orchestrated_chat']()
+    except Exception:
+        pass
+    out = buf.getvalue()
+    import re
+    m = re.search(r'PROMPT SIZE: (\d+)', out)
+    if not m:
+        return (None, "could not measure it")
+    n = int(m.group(1))
+    if n > 30000:
+        return (False, str(n) + " characters on a plain hello - it has crept again")
+    return (True, str(n) + " characters on a plain hello")
+
+
+def test_she_never_claims_a_save_she_did_not_make(app, db):
+    """The worst bug of the project, three times over."""
+    before = db.query("SELECT COUNT(*) c FROM tasks")[0]['c']
+    with app.test_request_context('/api/chat/orchestrated', method='POST',
+                                  json={"message": "delete the task about painting the moon"},
+                                  headers={'X-Ami-Password': os.getenv('AMI_PASSWORD', 'charlie')}):
+        import io, contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            r = app.view_functions['orchestrated_chat']()
+    body = r[0] if isinstance(r, tuple) else r
+    said = str(body.get('response', '')).lower()
+    after = db.query("SELECT COUNT(*) c FROM tasks")[0]['c']
+    if after != before:
+        return (False, "it deleted something for a task that does not exist")
+    claimed = any(w in said for w in ('komot', 'deleted', 'removed', 'done:'))
+    if claimed:
+        return (False, "she said she removed something that was never there")
+    return (True, "she says she cannot find it, and removes nothing")
+
+
+def test_every_table_she_writes_has_the_columns(app, db):
+    """Two quick notes failed silently because the column did not exist."""
+    import re
+    src = open('app.py').read()
+    bad = []
+    for m in re.finditer(r"INSERT INTO (\w+)\s*\(([^)]{3,200})\)", src):
+        table, cols = m.group(1), m.group(2)
+        try:
+            have = {r[1] for r in db.query("PRAGMA table_info(" + table + ")") or []}
+        except Exception:
+            continue
+        if not have:
+            continue
+        for c in [c.strip() for c in cols.split(',')]:
+            c = c.strip('`"\' ')
+            if c and c not in have:
+                bad.append(table + "." + c)
+    if bad:
+        return (False, "writes to columns that do not exist: " + ", ".join(sorted(set(bad))[:4]))
+    return (True, "every insert matches its table")
+
+
+def test_one_door_to_the_model(app):
+    """Four ways of calling Gemini meant a fix landed in one of them."""
+    import re
+    src = open('app.py').read()
+    direct = len(re.findall(r"client\.models\.generate_content\(", src))
+    old = len(re.findall(r"genai\.GenerativeModel\(", src))
+    # one inside the helper, one for streaming, and the old-style client setup
+    if direct > 2:
+        return (False, str(direct) + " direct model calls - they should go through _ask_gemini")
+    return (True, "model calls go through one function")
+
+
+def test_no_component_inside_a_component(app):
+    """A whole modal was defined inside every task card. The page went black."""
+    import re, glob
+    bad = []
+    for path in glob.glob('frontend/src/**/*.jsx', recursive=True):
+        src = open(path).read()
+        # a component defined at two levels of indentation, with a return far below
+        for m in re.finditer(r"\n  const ([A-Z]\w+) = \(\{[^}]*\}\) => \{", src):
+            start = src[:m.start()].count('\n')
+            after = src[m.end():m.end() + 9000]
+            # another function defined before this one returns?
+            r_at = after.find('return (')
+            f_at = after.find('const run')
+            if 0 <= f_at < r_at:
+                bad.append(os.path.basename(path) + ":" + m.group(1))
+    if bad:
+        return (False, "a function is defined inside a component: " + ", ".join(bad[:3]))
+    return (True, "no components with other things nested inside them")
+
+
+def check_actually_does_something():
+    """Everything here exists because something passed a test and did nothing."""
+    import re, glob
+    head("Does it actually do anything?")
+    src = open(SRC).read()
+
+    # --- a job that is never scheduled will never run ----------------------
+    defined = set(re.findall(r'^def (\w+_(?:nudge|nudges|briefing|notifications|closeout|warnings|reminders))\(', src, re.M))
+    wired = set(re.findall(r"add_job\((?:lambda:\s*)?(\w+)", src))
+    wired |= set(re.findall(r"id='(\w+)'", src))
+    orphans = sorted(d for d in defined
+                     if d not in wired and not any(d in w or w in d for w in wired))
+    if orphans:
+        bad("every scheduled job runs", "never scheduled: " + ", ".join(orphans[:4]))
+    else:
+        ok("every scheduled job runs", str(len(defined)) + " of them")
+
+    # --- a slot she reads, with nothing in it, is invisible -----------------
+    keys = set(re.findall(r'charlie_profile WHERE key = \?", \("(\w+)"', src))
+    keys |= set(re.findall(r"charlie_profile WHERE key = '(\w+)'", src))
+    empty = []
+    for k in sorted(keys):
+        if k in ('water_target',):      # the app has a sensible default
+            continue
+        r = q("SELECT length(value) AS n FROM charlie_profile WHERE key = ?", (k,))
+        if not r or not (r[0][0] or 0):
+            empty.append(k)
+    if empty:
+        bad("nothing she reads is empty", "empty: " + ", ".join(empty))
+    else:
+        ok("nothing she reads is empty", str(len(keys)) + " slots")
+
+    # --- writing to a column that does not exist fails quietly --------------
+    wrong = []
+    for m in re.finditer(r"INSERT INTO (\w+) \(([a-z_, ]{3,160})\)\s*VALUES", src):
+        table, cols = m.group(1), m.group(2)
+        if '(' in cols or 'SELECT' in cols.upper():
+            continue
+        have = {r[1] for r in (q("PRAGMA table_info(" + table + ")") or [])}
+        if not have:
+            continue
+        for c in [x.strip().strip(chr(39)).strip(chr(34)) for x in cols.split(',')]:
+            if c and c not in have:
+                wrong.append(table + "." + c)
+    if wrong:
+        bad("every insert matches its table", ", ".join(sorted(set(wrong))[:4]))
+    else:
+        ok("every insert matches its table")
+
+    # --- four ways of calling the model means a fix lands in one ------------
+    direct = len(re.findall(r"client\.models\.generate_content\(", src))
+    if direct > 2:
+        bad("one door to the model", str(direct) + " direct calls")
+    else:
+        ok("one door to the model")
+
+    # --- a component defined inside a component kills the page --------------
+    nested = []
+    for path in glob.glob('frontend/src/**/*.jsx', recursive=True):
+        try:
+            js = open(path).read()
+        except Exception:
+            continue
+        for m in re.finditer(r"\n  const ([A-Z]\w+) = \(\{[^}]*\}\) => \{", js):
+            after = js[m.end():m.end() + 9000]
+            r_at = after.find('return (')
+            f_at = after.find('const run')
+            if 0 <= f_at < r_at:
+                nested.append(os.path.basename(path) + ":" + m.group(1))
+    if nested:
+        bad("nothing nested inside a component", ", ".join(nested[:3]))
+    else:
+        ok("nothing nested inside a component")
+
+    # --- she must never claim a save she did not make -----------------------
+    before = (q("SELECT COUNT(*) AS c FROM tasks") or [[0]])[0][0]
+    s, body = call("POST", "/api/chat/orchestrated",
+                   {"message": "delete the task about painting the moon"}, timeout=90)
+    after = (q("SELECT COUNT(*) AS c FROM tasks") or [[0]])[0][0]
+    said = str((body or {}).get('response', '')).lower()
+    if after != before:
+        bad("no false claims", "it removed something that was never asked for")
+    elif any(w in said for w in ('komot:', 'deleted', 'removed:', 'done:')):
+        bad("no false claims", "she said she removed something that is not there")
+    else:
+        ok("no false claims", "says she cannot find it, removes nothing")
+
+    # --- the prompt crept to 35,000 characters unnoticed --------------------
+    import subprocess as _sp
+    try:
+        out = _sp.run(["grep", "-a", "PROMPT SIZE", LOG], capture_output=True,
+                      text=True, timeout=10).stdout.strip().split("\n")[-1]
+        n = int(re.search(r"PROMPT SIZE: (\d+)", out).group(1))
+        if n > 30000:
+            bad("the prompt has not crept", str(n) + " characters")
+        else:
+            ok("the prompt has not crept", str(n) + " characters")
+    except Exception:
+        skip("the prompt has not crept", "nothing in the log yet")
 
 if __name__ == "__main__":
     main()

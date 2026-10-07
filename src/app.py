@@ -1122,6 +1122,8 @@ try:
                               id='fixtures_refresh', replace_existing=True)
             scheduler.add_job(lambda: meeting_notifications(), 'interval', minutes=2,
                               id='meeting_push', replace_existing=True)
+            scheduler.add_job(lambda: check_snoozed_reminders(), 'interval',
+                              minutes=15, id='snoozed', replace_existing=True)
             scheduler.add_job(lambda: kickoff_nudge(), 'interval', minutes=5,
                               id='kickoff_nudge', replace_existing=True)
             scheduler.add_job(lambda: interval_med_nudge(), 'interval', minutes=120,
@@ -4269,10 +4271,17 @@ def store_correction_if_found(query):
             if len(parts) == 2:
                 wrong = parts[0].strip()
                 right = parts[1].strip()
-                db.execute("INSERT INTO corrections (query, correction) VALUES (?, ?)", (wrong, right))
-                print(f"LEARNED: {wrong} → {right}")
-    except:
-        pass
+                db.execute("""INSERT INTO corrections
+                              (incorrect_text, correct_text, context, category, created_at)
+                              VALUES (?, ?, 'he corrected me in chat', 'chat',
+                                      CURRENT_TIMESTAMP)""", (wrong, right))
+                if db.query("SELECT id FROM corrections WHERE incorrect_text = ? "
+                            "ORDER BY id DESC LIMIT 1", (wrong,)):
+                    print("LEARNED: " + wrong + " -> " + right)
+                else:
+                    print("correction did NOT save: " + wrong)
+    except Exception as _ec:
+        print("correction failed: " + str(_ec)[:70])
 
 
 def get_current_time_context():
@@ -8177,7 +8186,7 @@ def handle_reminder_command(command_text):
 def create_note():
     """Create a new note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8244,7 +8253,7 @@ def create_note():
 def get_notes_list():
     """Get all notes"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     conn = sqlite3.connect(AMI_DB)
@@ -8264,7 +8273,7 @@ def get_notes_list():
 def get_single_note(note_id):
     """Get single note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     conn = sqlite3.connect(AMI_DB)
@@ -8328,7 +8337,7 @@ def get_single_note(note_id):
 def update_note(note_id):
     """Update a note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8358,7 +8367,7 @@ def update_note(note_id):
 def delete_single_note(note_id):
     """Delete a note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     conn = sqlite3.connect(AMI_DB)
@@ -8375,7 +8384,7 @@ def delete_single_note(note_id):
 def upload_attachment(note_id):
     """Upload attachment to note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     if 'file' not in request.files:
@@ -8411,7 +8420,7 @@ def upload_attachment(note_id):
 def get_attachments(note_id):
     """Get attachments for note"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     conn = sqlite3.connect(AMI_DB)
@@ -8437,7 +8446,7 @@ def get_attachments(note_id):
 def delete_attachment(note_id, attachment_id):
     """Delete attachment"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     conn = sqlite3.connect(AMI_DB)
@@ -8464,7 +8473,7 @@ def delete_attachment(note_id, attachment_id):
 def check_grammar():
     """Correct spelling and grammar errors"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8501,7 +8510,7 @@ def transform_text():
     """Transform text (expand, simplify, professional)"""
     try:
         password = request.headers.get('X-Ami-Password')
-        if password != 'charlie':
+        if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
             return {"error": "Unauthorized"}, 401
         
         data = request.get_json()
@@ -8531,7 +8540,7 @@ def generate_title():
     """Generate title from text"""
     try:
         password = request.headers.get('X-Ami-Password')
-        if password != 'charlie':
+        if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
             return {"error": "Unauthorized"}, 401
         
         data = request.get_json()
@@ -8553,7 +8562,7 @@ def generate_title():
 def expand_text():
     """Expand text with more detail"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8581,7 +8590,7 @@ def expand_text():
 def summarize_text():
     """Summarize text - make it more concise"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8609,7 +8618,7 @@ def summarize_text():
 def professional_text():
     """Make text professional/formal tone"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8639,7 +8648,7 @@ def professional_text():
 def change_tone():
     """Change text tone"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8668,7 +8677,7 @@ def change_tone():
 def bullet_points():
     """Convert text to bullet points"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8696,7 +8705,7 @@ def bullet_points():
 def simplify_text():
     """Simplify technical/complex text"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8749,7 +8758,7 @@ def text_generate_title():
 def create_task_from_note():
     """Create task from note analysis"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8787,7 +8796,7 @@ def create_task_from_note():
 def create_todo_from_note():
     """Create todo from note analysis"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8820,7 +8829,7 @@ def create_todo_from_note():
 
     """Transcribe audio to text"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     if 'audio' not in request.files:
@@ -8860,7 +8869,7 @@ def create_todo_from_note():
 def create_reminder_from_note():
     """Create reminder from note analysis"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8896,7 +8905,7 @@ def create_reminder_from_note():
 def ai_transform():
     """Transform text using AI"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     data = request.json
@@ -8930,7 +8939,7 @@ def ai_transform():
 def search_notes():
     """Search notes by title, content, or project"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     query = request.args.get('q', '').lower()
@@ -8994,7 +9003,7 @@ def search_notes():
 def calendar_briefing():
     """Get today's calendar briefing for Ami"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     try:
@@ -9023,7 +9032,7 @@ def calendar_briefing():
 def calendar_summary():
     """Get calendar summary for Ami to use in chat"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     try:
@@ -17623,7 +17632,7 @@ def export_note_docx(note_id):
     """Export memoir as Word document"""
     try:
         password = request.headers.get('X-Ami-Password')
-        if password != 'charlie':
+        if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
             return {"error": "Unauthorized"}, 401
         
         conn = sqlite3.connect(AMI_DB)
@@ -17674,7 +17683,7 @@ def export_note_docx(note_id):
 def get_ami_briefing():
     """Get Ami's latest briefing with all interests"""
     password = request.headers.get('X-Ami-Password')
-    if password != 'charlie':
+    if not hmac.compare_digest(str(password or ''), AMI_PASSWORD):
         return {"error": "Unauthorized"}, 401
     
     try:
