@@ -15908,6 +15908,45 @@ def ami_transcribe():
         return {"error": str(e)}, 400
 
 
+@app.get("/api/meetings/history")
+@require_password
+def meeting_history():
+    """What happened last time with this person. He meets the same people
+    often, and what they owed him is exactly what goes quiet."""
+    try:
+        who = (request.args.get('who') or '').strip()
+        if len(who) < 2:
+            return {"status": "success", "history": []}
+        first = who.split()[0]
+        rows = db.query("""SELECT id, title, content, analysis, created_at
+                           FROM notes
+                           WHERE capture_type LIKE '%eeting%'
+                             AND (content LIKE ? OR title LIKE ?
+                                  OR COALESCE(meeting_attendees,'') LIKE ?)
+                             AND COALESCE(deleted_at,'') = ''
+                           ORDER BY id DESC LIMIT 3""",
+                        ('%' + first + '%', '%' + first + '%', '%' + first + '%')) or []
+        out = []
+        for r in rows:
+            import json as _j
+            a = {}
+            try:
+                a = _j.loads(r.get('analysis') or '{}')
+            except Exception:
+                pass
+            out.append({
+                "id": r['id'],
+                "title": r['title'],
+                "when": str(r.get('created_at') or '')[:10],
+                "decided": (a.get('decisions') or [])[:3],
+                "he_owed": [x for x in (a.get('he_owes') or [])][:3],
+                "waiting_on": [x for x in (a.get('waiting_on') or [])][:3],
+            })
+        return {"status": "success", "who": who, "history": out}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
