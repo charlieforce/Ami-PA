@@ -4495,6 +4495,8 @@ def _reconcile_fact(person, existing, fact, client):
         )
         gemini_guard()
         note_gemini_call()
+        import google.genai as _gg
+        client = _gg.Client()
         resp = _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(resp)
         raw = (resp.text or "").strip().replace("```json", "").replace("```", "").strip()
@@ -4774,6 +4776,8 @@ import threading as _thr_stream
 _stream_state = _thr_stream.local()
 
 
+import google.genai as _gg
+client = _gg.Client()
 def _ask_gemini(client, prompt=None, model=None, tries=3, **kw):
     model = model or AMI_MODEL
     """They get busy. Wait a beat and ask again before giving up on him."""
@@ -6907,6 +6911,8 @@ For each suggestion, return JSON with:
 Return ONLY valid JSON, no other text."""
         
         client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
             model=AMI_MODEL,
             prompt=prompt
@@ -7117,6 +7123,8 @@ def generate_description():
         model = genai.GenerativeModel(AMI_MODEL)
         prompt = f"Write a brief, clear task description (2-3 sentences) for a task titled: '{title}'. Be concise and actionable."
         
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         description = response.text.strip()
@@ -8496,6 +8504,8 @@ def check_grammar():
 
 {text}"""
         
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         corrected = response.text.strip()
@@ -8579,6 +8589,8 @@ def expand_text():
     prompt = "Expand this text by adding more detail, context, and elaboration. Keep the same meaning but make it more comprehensive. Return ONLY the expanded text:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8607,6 +8619,8 @@ def summarize_text():
     prompt = "Make this text more concise. Keep the key points but remove unnecessary details. Return ONLY the summarized text:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8635,6 +8649,8 @@ def professional_text():
     prompt = "Rewrite this text in a professional and formal business tone. Keep the same information but make it more polished. Return ONLY the professional text:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8666,6 +8682,8 @@ def change_tone():
     prompt = f"Rewrite this text in a {tone} tone. Return ONLY the rewritten text:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8694,6 +8712,8 @@ def bullet_points():
     prompt = "Convert this text into a clean, well-organized bullet point list. Keep the same information but make it structured. Return ONLY the bullet points:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8722,6 +8742,8 @@ def simplify_text():
     prompt = "Simplify this text to make it easier to understand. Use simple words and short sentences. Return ONLY the simplified text:\n\n" + text
     
     try:
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, model=AMI_MODEL, prompt=prompt)
         note_gemini_tokens(response)
         return jsonify({"original": text, "transformed": response.text.strip()}), 200
@@ -8848,6 +8870,8 @@ def create_todo_from_note():
         with open(temp_path, 'rb') as f:
             audio_data = f.read()
         
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
             model=AMI_MODEL,
             contents=[
@@ -8926,6 +8950,8 @@ def ai_transform():
     
     try:
         client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
             model=AMI_MODEL,
             prompt=prompt
@@ -17662,6 +17688,8 @@ def search_all_interests_grounding():
         
         for query in ALL_SEARCHES:
             try:
+                import google.genai as _gg
+                client = _gg.Client()
                 response = gemini_guard() or note_gemini_call() or _ask_gemini(client,
                     model=AMI_MODEL,
                     contents=f"Give me the top 2-3 news items about: {query}. Be specific with dates and facts.",
@@ -18354,11 +18382,18 @@ Return ONLY valid JSON (no markdown, no explanation):
 }}}}
 """
         
+        import google.genai as _gg
+        client = _gg.Client()
         response = gemini_guard() or note_gemini_call() or _ask_gemini(client, prompt=prompt)
         note_gemini_tokens(response)
         try:
-            extracted = json.loads(response.text)
-        except:
+            import re as _rj
+            _raw = (response.text or '').strip()
+            _raw = _rj.sub(r'^```(?:json)?|```$', '', _raw, flags=_rj.M).strip()
+            _m = _rj.search(r'\{[\s\S]*\}', _raw)
+            extracted = json.loads(_m.group(0) if _m else _raw)
+        except Exception as _ej:
+            print("note analysis could not be read: " + str(_ej)[:70])
             extracted = {"tasks": [], "reminders": [], "todos": []}
         
         return {"status": "success", "extracted": extracted}
