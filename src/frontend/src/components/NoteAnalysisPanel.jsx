@@ -200,6 +200,7 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
   const pushedCount = KINDS.reduce((n, k) => n + (pushed[k.key] || []).length, 0);
 
   return (
+    <div style={S.panel}>
 
       {/* a meeting leaves more behind than action items */}
       {(() => {
@@ -209,7 +210,7 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
           ['What was decided', a.decisions, '#10b981'],
           ['You said you would', a.he_owes, '#f59e0b'],
           ['Waiting on someone', a.waiting_on, '#a78bfa'],
-        ].filter(([, v]) => Array.isArray(v) && v.length);
+        ].filter(b => Array.isArray(b[1]) && b[1].length);
         if (!bits.length) return null;
         return (
           <div style={{ marginBottom: '14px', padding: '12px',
@@ -219,14 +220,13 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
                           marginBottom: '8px' }}>
               What came out of the room
             </div>
-            {bits.map(([label, items, colour]) => (
-              <div key={label} style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '11px', color: colour, fontWeight: 600 }}>{label}</div>
-                {items.map((x, n) => (
+            {bits.map(b => (
+              <div key={b[0]} style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '11px', color: b[2], fontWeight: 600 }}>{b[0]}</div>
+                {b[1].map((x, n) => (
                   <div key={n} style={{ fontSize: '13px', color: '#ddd', paddingLeft: '8px' }}>
-                    · {typeof x === 'string' ? x
-                        : (x.what || x.title || x.name || JSON.stringify(x))}
-                    {x && x.who ? ' — ' + x.who : ''}
+                    {typeof x === 'string' ? x : (x.what || x.title || x.name || '')}
+                    {x && x.who ? ' - ' + x.who : ''}
                   </div>
                 ))}
               </div>
@@ -234,7 +234,6 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
           </div>
         );
       })()}
-    <div style={S.panel}>
       {err && (
         <div style={{ background: '#7f1d1d', padding: '8px 10px', borderRadius: '6px',
                       marginBottom: '10px', fontSize: '13px' }}>⚠️ {err}</div>
