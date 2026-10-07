@@ -14761,6 +14761,75 @@ def _money_from_chat(query):
                      + "{:,.0f}".format(float(m0['was'] or 0)) + ".")
         return line
 
+    # --- who do I owe on this job, and how much ---------------------------
+    m = _rm.search(r"\bwho\s+(?:do\s+)?i\s+owe\b(?:.*?\b(?:on|for|in)\s+"
+                   r"(?:di\s+|the\s+)?([a-z][a-z ]{2,28}?))?\s*\??$", low)
+    if m:
+        where = (m.group(1) or '').strip()
+        if where:
+            v = db.query("""SELECT id, name FROM ventures WHERE LOWER(name) LIKE ?
+                            AND COALESCE(active,1) = 1 ORDER BY LENGTH(name) LIMIT 1""",
+                         ('%' + where + '%',))
+            ids = _all_under(v[0]['id']) if v else []
+            label = v[0]['name'] if v else where
+        else:
+            ids, label = [], "everything"
+        where_sql = ("AND p.venture_id IN (" + ",".join(str(i) for i in ids) + ")") if ids else ""
+        rows = db.query("""SELECT p.name, v.name AS project,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_quotes q
+                                   WHERE q.person_id = p.id) AS quoted,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_payments y
+                                   WHERE y.person_id = p.id) AS paid
+                           FROM job_people p
+                           LEFT JOIN ventures v ON v.id = p.venture_id
+                           WHERE COALESCE(p.active,1) = 1 """ + where_sql) or []
+        owing = [(r['name'], float(r['quoted'] or 0) - float(r['paid'] or 0),
+                  r.get('project') or '')
+                 for r in rows if float(r['quoted'] or 0) > float(r['paid'] or 0)]
+        if not owing:
+            return "Yu no owe anybody right now, bo."
+        owing.sort(key=lambda x: -x[1])
+        bits = [a + " " + "{:,.0f}".format(b) + ((" (" + c + ")") if not where and c else "")
+                for a, b, c in owing[:8]]
+        total = sum(b for _, b, _ in owing)
+        return ("Owing pan " + str(label) + ": " + "; ".join(bits)
+                + ". Total " + "{:,.0f}".format(total) + ".")
+
+    # --- what is outstanding across everything ----------------------------
+    if _rm.search(r"\b(outstanding|all my (?:project|balance)|balances?)\b", low):
+        rows = db.query("""SELECT v.name,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_quotes q
+                                   WHERE q.venture_id = v.id) AS quoted,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_payments y
+                                   WHERE y.venture_id = v.id) AS paid
+                           FROM ventures v WHERE COALESCE(v.active,1) = 1""") or []
+        out = [(r['name'], float(r['quoted'] or 0) - float(r['paid'] or 0))
+               for r in rows if float(r['quoted'] or 0) > float(r['paid'] or 0)]
+        if not out:
+            return "Nothing outstanding pan any job, bo."
+        out.sort(key=lambda x: -x[1])
+        return ("Still owing: " + "; ".join(a + " " + "{:,.0f}".format(b) for a, b in out)
+                + ". Altogether " + "{:,.0f}".format(sum(b for _, b in out)) + ".")
+
+    # --- when did I last pay him ------------------------------------------
+    m = _rm.search(r"\b(?:how much|when)\s+(?:did\s+)?i\s+(?:last\s+)?(?:pay|paid|send|sent)\s+"
+                   r"([a-z][a-z .'-]{1,28}?)(?:\s+last(?:\s+time)?)?\s*\??$", low)
+    if m:
+        person, project = _money_person(m.group(1).strip())
+        if not person:
+            return None
+        last = db.query("""SELECT amount, paid_on FROM job_payments
+                           WHERE person_id = ? ORDER BY id DESC LIMIT 3""",
+                        (person['id'],)) or []
+        if not last:
+            return "Yu never pay " + person['name'] + " yet, bo."
+        bits = ["{:,.0f}".format(float(r['amount'] or 0)) + " pan " + str(r['paid_on'])
+                for r in last]
+        quoted, paid, owed = _money_sum(person['id'], person['venture_id'])
+        return ("Last payment to " + person['name'] + ": " + bits[0]
+                + (" (before dat: " + "; ".join(bits[1:]) + ")" if len(bits) > 1 else "")
+                + ". Still owing " + "{:,.0f}".format(owed) + ".")
+
     # --- what has the whole job cost -------------------------------------
     m = _rm.search(r"\b(?:how much|what)\s+(?:has|have|did|do)?\s*"
                    r"(?:di\s+|the\s+)?([a-z][a-z ]{2,30}?)\s+"
