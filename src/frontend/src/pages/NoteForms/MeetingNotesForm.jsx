@@ -11,6 +11,24 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
   const [content, setContent] = useState('');
   const [attendees, setAttendees] = useState('');
   const [meetingTime, setMeetingTime] = useState('');
+  const [lastTime, setLastTime] = useState(null);
+
+  // he meets the same people often. what they owed him is what goes quiet.
+  useEffect(() => {
+    const who = (attendees || '').split(/[,;]/)[0].trim();
+    if (who.length < 2) { setLastTime(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(API + '/api/meetings/history?who=' + encodeURIComponent(who),
+                              { headers: { 'X-Ami-Password': AMI_PASSWORD } });
+        const j = await r.json();
+        const h = (j.history || [])[0];
+        setLastTime(h && (h.he_owed?.length || h.waiting_on?.length || h.decided?.length)
+                    ? h : null);
+      } catch (e) { setLastTime(null); }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [attendees]);
   const [duration, setDuration] = useState('');
   const [transcript, setTranscript] = useState('');
   const [nextMeeting, setNextMeeting] = useState('');
@@ -287,6 +305,30 @@ const handleSave = async () => {
 
   return (
     <div className="note-form meeting-notes-form">
+      {lastTime && (
+        <div style={{ background: '#1d1d28', border: '1px solid #33334a',
+                      borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase',
+                        letterSpacing: '0.6px', fontWeight: 700, marginBottom: '6px' }}>
+            Last time ({lastTime.when})
+          </div>
+          {(lastTime.waiting_on || []).map((x, i) => (
+            <div key={'w' + i} style={{ fontSize: '13px', color: '#a78bfa' }}>
+              You were waiting on: {typeof x === 'string' ? x : (x.what || x.title || '')}
+            </div>
+          ))}
+          {(lastTime.he_owed || []).map((x, i) => (
+            <div key={'o' + i} style={{ fontSize: '13px', color: '#f59e0b' }}>
+              You said you would: {typeof x === 'string' ? x : (x.what || x.title || '')}
+            </div>
+          ))}
+          {(lastTime.decided || []).slice(0, 2).map((x, i) => (
+            <div key={'d' + i} style={{ fontSize: '13px', color: '#10b981' }}>
+              Agreed: {typeof x === 'string' ? x : (x.what || x.title || '')}
+            </div>
+          ))}
+        </div>
+      )}
       <h2>📝 Meeting Notes</h2>
       
       <input
