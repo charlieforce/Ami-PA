@@ -196,6 +196,8 @@ const RemindersList = () => {
   };
 
   // Snooze reminder
+  const [snoozeOpen, setSnoozeOpen] = useState(null);
+
   const snoozeReminder = async (id, minutes) => {
     try {
       await fetch(`${API_URL}/api/reminders/${id}/snooze`, {
@@ -203,6 +205,7 @@ const RemindersList = () => {
         headers: { 'X-Ami-Password': PASSWORD, 'Content-Type': 'application/json' },
         body: JSON.stringify({ minutes })
       });
+      setSnoozeOpen(null);
       loadReminders();
     } catch (e) {
       console.error('Error snoozing reminder:', e);
@@ -375,10 +378,24 @@ const RemindersList = () => {
                 {r.source && r.source !== 'manual' && <span style={{ fontSize: '11px', background: r.source === 'from_ami' ? '#667eea20' : r.source === 'from_notes' ? '#10b98120' : '#f59e0b20', color: r.source === 'from_ami' ? '#667eea' : r.source === 'from_notes' ? '#10b981' : '#f59e0b', padding: '4px 8px', borderRadius: '4px', fontWeight: '600', marginTop: '4px', display: 'inline-block' }}>📌 {r.source.replace('from_', '')}</span>}
               </div>
               <div style={buttonGroupStyle}>
-                <button onClick={() => snoozeReminder(r.id, 5)} style={{ ...smallButtonStyle, background: '#667eea', color: '#fff' }}>+5m</button>
+                <button onClick={() => setSnoozeOpen(snoozeOpen === r.id ? null : r.id)} style={{ ...smallButtonStyle, background: '#667eea', color: '#fff' }}>+5m</button>
                 <button onClick={() => completeReminder(r.id)} style={{ ...smallButtonStyle, background: '#10b981', color: '#fff' }}>✓</button>
                 <button onClick={() => deleteReminder(r.id)} style={{ ...smallButtonStyle, background: '#ef4444', color: '#fff' }}>🗑️</button>
               </div>
+              {snoozeOpen === r.id && (
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px',
+                              flexWrap: 'wrap' }}>
+                  {[['5m', 5], ['15m', 15], ['1h', 60], ['3h', 180],
+                    ['Tomorrow', 60 * 24]].map(([label, mins]) => (
+                    <button key={label} onClick={() => snoozeReminder(r.id, mins)}
+                            style={{ padding: '7px 12px', fontSize: '12px',
+                                     background: '#2a2a35', color: '#ddd', border: 'none',
+                                     borderRadius: '14px', cursor: 'pointer' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

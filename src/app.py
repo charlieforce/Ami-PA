@@ -1690,12 +1690,12 @@ def create_reminder():
 @require_password
 def complete_reminder(reminder_id):
     try:
-        db.execute("""
-            UPDATE reminders 
-            SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (reminder_id,))
-        
+        # there is no completed_at column - updated_at is the one that exists
+        db.execute("UPDATE reminders SET status = 'completed', "
+                   "updated_at = CURRENT_TIMESTAMP WHERE id = ?", (reminder_id,))
+        r = db.query("SELECT status FROM reminders WHERE id = ?", (reminder_id,))
+        if not r or str(r[0]['status']) != 'completed':
+            return {"error": "it did not save"}, 400
         return {"status": "success", "message": "Reminder completed! ✅"}
     except Exception as e:
         return {"error": str(e)}, 400
@@ -1704,26 +1704,24 @@ def complete_reminder(reminder_id):
 @require_password
 def snooze_reminder(reminder_id):
     try:
-        data = request.get_json()
-        snooze_type = data.get("snooze_type", "1hour")
-        
-        snooze_map = {
-            "1hour": "+1 hours",
-            "1day": "+1 days",
-            "1week": "+7 days"
-        }
-        
-        snooze_period = snooze_map.get(snooze_type, "+1 hours")
-        
-        db.execute(f"""
-            UPDATE reminders 
-            SET snoozed_until = datetime('now', '{snooze_period}'),
-                snooze_count = snooze_count + 1,
-                status = 'snoozed'
-            WHERE id = ?
-        """, (reminder_id,))
-        
-        return {"status": "success", "message": f"Snoozed for {snooze_type}! ⏰"}
+        d = request.get_json() or {}
+        # the screen sends plain minutes; older callers send a name
+        mins = d.get("minutes")
+        if not mins:
+            named = {"5min": 5, "15min": 15, "30min": 30, "1hour": 60,
+                     "3hours": 180, "tomorrow": 60 * 24}
+            mins = named.get(str(d.get("snooze_type") or "1hour"), 60)
+        mins = max(1, min(int(mins), 60 * 24 * 7))
+        db.execute("UPDATE reminders SET snoozed_until = "
+                   "datetime('now', ? ), status = 'snoozed', "
+                   "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                   ("+" + str(mins) + " minutes", reminder_id))
+        r = db.query("SELECT snoozed_until FROM reminders WHERE id = ?", (reminder_id,))
+        if not r or not r[0]['snoozed_until']:
+            return {"error": "the snooze did not save"}, 400
+        nice = (str(mins) + " minutes" if mins < 60
+                else str(round(mins / 60)) + " hours" if mins < 60 * 24 else "tomorrow")
+        return {"status": "success", "message": "Back in " + nice + " ⏰"}
     except Exception as e:
         return {"error": str(e)}, 400
 
