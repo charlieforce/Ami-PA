@@ -23,6 +23,7 @@ import AdminPortal from './AdminPortal';
 import '../styles/DashboardMobile.css';
 import ReportTab from '../components/ReportTab';
 import SportsTab from '../components/SportsTab';
+import MoneyTab from '../components/MoneyTab';
 import MedicalTab from '../components/MedicalTab';
 import LearningTab from '../components/LearningTab';
 import SubscriptionsTab from '../components/SubscriptionsTab';
@@ -901,6 +902,7 @@ const handleSendMessage = async (msgToSend = null) => {
       {activeTab === 'medical' && <MedicalTab />}
       {activeTab === 'report' && <ReportTab />}
       {activeTab === 'sports' && <SportsTab />}
+      {activeTab === 'money' && <MoneyTab />}
       {activeTab === 'admin' && <AdminPortal />}
       {activeTab === 'birthdays' && <BirthdayCalendar />}
         {activeTab === 'menu' && (
@@ -909,6 +911,11 @@ const handleSendMessage = async (msgToSend = null) => {
               <div style={{fontSize: '28px', marginBottom: '6px'}}>🏈</div>
               <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Sports</div>
               <div style={{fontSize: '12px', color: '#666'}}>Who is playing, and when</div>
+            </div>
+            <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('money')}>
+              <div style={{fontSize: '28px', marginBottom: '6px'}}>💰</div>
+              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Money</div>
+              <div style={{fontSize: '12px', color: '#666'}}>What the jobs cost, and who is owed</div>
             </div>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('notes')}>
               <div style={{fontSize: '28px', marginBottom: '6px'}}>📝</div>
