@@ -14698,6 +14698,71 @@ def _money_sum(person_id, venture_id):
     return float(q), float(p), float(q) - float(p)
 
 
+def _money_breakdown(query):
+    """Everything paid to one person, or everything on one job. He asks for
+    the detail when he is checking against Aminata's book."""
+    import re as _rb
+    low = (query or '').strip().lower()
+    if not _rb.search(r"\b(show|list|break\s*down|breakdown|everything|all)\b", low):
+        return None
+    if not _rb.search(r"\b(paid|payment|spent|cost)\b", low):
+        return None
+
+    # everything paid to one person
+    m = _rb.search(r"(?:paid|payments? to|spent on)\s+([a-z][a-z .'-]{1,28}?)\s*\??$", low)
+    if m:
+        person, project = _money_person(m.group(1).strip())
+        if person:
+            rows = db.query("""SELECT amount, what, paid_on FROM job_payments
+                               WHERE person_id = ? ORDER BY paid_on, id""",
+                            (person['id'],)) or []
+            if not rows:
+                return "Yu never pay " + person['name'] + " anything yet, bo."
+            cur = _job_currency(person['venture_id'])
+            lines = [person['name'] + " - everything yu don pay am:"]
+            total = 0.0
+            for r in rows:
+                a = float(r['amount'] or 0)
+                total += a
+                lines.append("  " + str(r['paid_on'] or '') + "  "
+                             + "{:,.0f}".format(a)
+                             + (("  " + str(r['what'])[:40]) if r.get('what') else ""))
+            quoted, paid, owed = _money_sum(person['id'], person['venture_id'])
+            lines.append("  Total " + _money_line(total, cur)
+                         + ", still owing " + _money_line(owed, cur) + ".")
+            return "\n".join(lines)
+
+    # everything on one job
+    m = _rb.search(r"\b(?:for|on|pan)\s+(?:di\s+|the\s+)?([a-z][a-z ]{2,30}?)\s*\??$", low)
+    if m:
+        v = db.query("""SELECT id, name FROM ventures WHERE LOWER(name) LIKE ?
+                        AND COALESCE(active,1) = 1 ORDER BY LENGTH(name) LIMIT 1""",
+                     ('%' + m.group(1).strip() + '%',))
+        if v:
+            pid = v[0]['id']
+            ids = _all_under(pid)
+            inlist = ",".join(str(i) for i in ids)
+            rows = db.query("""SELECT y.amount, y.what, y.paid_on, p.name
+                               FROM job_payments y
+                               LEFT JOIN job_people p ON p.id = y.person_id
+                               WHERE y.venture_id IN (""" + inlist + """)
+                               ORDER BY y.paid_on, y.id""") or []
+            if not rows:
+                return "Nothing don go out pan " + str(v[0]['name']) + " yet, bo."
+            cur = _job_currency(pid)
+            lines = [str(v[0]['name']) + " - everything wey don go out:"]
+            total = 0.0
+            for r in rows:
+                a = float(r['amount'] or 0)
+                total += a
+                lines.append("  " + str(r['paid_on'] or '') + "  "
+                             + "{:,.0f}".format(a) + "  "
+                             + str(r.get('name') or r.get('what') or '')[:38])
+            lines.append("  Total " + _money_line(total, cur) + ".")
+            return "\n".join(lines)
+    return None
+
+
 def _money_from_chat(query):
     """Money talk about a job. Returns a reply, or None to carry on."""
     import re as _rm
@@ -14709,6 +14774,11 @@ def _money_from_chat(query):
     if not _rm.search(r"\b(owe|owed|paid|pay|paying|cost|quote[ds]?|spent|budget|"
                       r"charge[ds]?|balance)\b", low):
         return None
+
+    # he wants the whole list, not just the total
+    _bd = _money_breakdown(q)
+    if _bd:
+        return _bd
 
     money = r"(?:usd|\$|sle|le|ksh|gh[sc])?\s*([\d][\d,]*(?:\.\d+)?)\s*(?:usd|dollars?|sle|le|k)?"
 
