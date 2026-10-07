@@ -18351,6 +18351,14 @@ DATE RULES (resolve against TODAY above - a past date is always wrong):
 PRIORITY: Based on urgency language (asap, urgent, critical = high, etc)
 CONFIDENCE: high/medium/low - if you're unsure about a date/interpretation, mark medium/low
 
+IF THIS IS A MEETING (people talking, decisions made, things agreed), also give:
+- "attendees": who was in it, by name. Only people actually there.
+- "decisions": what was settled. One line each. Not opinions - decisions.
+- "he_owes": things HE said he would do for someone, each with who it is for.
+  "Send Ravi the figures" is one of these. This is what he forgets.
+- "waiting_on": what someone else owes HIM, and who. This is what goes quiet.
+Leave any of these out if the note is not a meeting.
+
 VENTURES: Detect from context - which project/venture is this about?
 
 Return ONLY valid JSON (no markdown, no explanation):
