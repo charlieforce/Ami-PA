@@ -272,7 +272,25 @@ export default function MoneyTab() {
           </button>
         )}
         <button style={S.btn('#4f46e5')} onClick={getReport} disabled={busy}>
-          Report for Aminata
+          Create report
+        </button>
+        <button style={S.btn('#2a2a35')} disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const r = await fetch(API + '/api/money/' + open + '/report.pdf',
+                                          { headers: AUTH });
+                    const b = await r.blob();
+                    const u = URL.createObjectURL(b);
+                    const a = document.createElement('a');
+                    a.href = u;
+                    a.download = (board.project || 'job') + ' money.pdf';
+                    a.click();
+                    URL.revokeObjectURL(u);
+                  } catch (e) { setErr(String(e)); }
+                  setBusy(false);
+                }}>
+          PDF
         </button>
       </div>
 
