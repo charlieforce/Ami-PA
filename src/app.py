@@ -15960,6 +15960,360 @@ def meeting_history():
         return {"error": str(e)}, 400
 
 
+def _money_for(pid):
+    """Everything about one project's money, worked out rather than stored."""
+    people = db.query("""SELECT id, name, trade FROM job_people
+                         WHERE venture_id = ? AND COALESCE(active,1) = 1
+                         ORDER BY name""", (pid,)) or []
+    out = []
+    for p in people:
+        quotes = db.query("""SELECT id, what, amount, status FROM job_quotes
+                             WHERE person_id = ? AND venture_id = ?
+                             ORDER BY id""", (p['id'], pid)) or []
+        quoted = sum(float(q['amount'] or 0) for q in quotes)
+        paid = (db.query("""SELECT COALESCE(SUM(amount),0) AS s FROM job_payments
+                            WHERE person_id = ? AND venture_id = ?""",
+                         (p['id'], pid)) or [{"s": 0}])[0]['s'] or 0
+        drift = []
+        for q in quotes:
+            h = db.query("""SELECT was, now_is, why, changed_at FROM job_quote_history
+                            WHERE quote_id = ? ORDER BY id""", (q['id'],)) or []
+            if h:
+                drift.append({"what": q['what'], "first": h[0]['was'],
+                              "now": q['amount'],
+                              "moves": len(h),
+                              "why": h[-1].get('why') or ''})
+        out.append({
+            "id": p['id'], "name": p['name'], "trade": p.get('trade') or '',
+            "quoted": round(quoted, 2), "paid": round(float(paid), 2),
+            "owed": round(quoted - float(paid), 2),
+            "quotes": [{"id": q['id'], "what": q['what'],
+                        "amount": q['amount'], "status": q['status']} for q in quotes],
+            "drift": drift,
+        })
+    materials = (db.query("""SELECT COALESCE(SUM(amount),0) AS s FROM job_payments
+                             WHERE venture_id = ? AND kind != 'labour'""",
+                          (pid,)) or [{"s": 0}])[0]['s'] or 0
+    return out, round(float(materials), 2)
+
+
+@app.get("/api/money/<int:pid>")
+@require_password
+def money_board(pid):
+    """What this job has cost, and what is still owed."""
+    try:
+        v = db.query("SELECT name FROM ventures WHERE id = ?", (pid,))
+        people, materials = _money_for(pid)
+        quoted = sum(p['quoted'] for p in people)
+        paid = sum(p['paid'] for p in people)
+        return {"status": "success",
+                "project": (v[0]['name'] if v else ''),
+                "people": people,
+                "materials": materials,
+                "totals": {"quoted": round(quoted, 2),
+                           "paid_labour": round(paid, 2),
+                           "materials": materials,
+                           "spent": round(paid + materials, 2),
+                           "still_owed": round(quoted - paid, 2)}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/money/<int:pid>/person")
+@require_password
+def money_add_person(pid):
+    """Mr Allie. The paint guy. The wells guy."""
+    try:
+        d = request.get_json() or {}
+        name = (d.get('name') or '').strip()[:60]
+        if len(name) < 2:
+            return {"error": "he needs a name"}, 400
+        if db.query("SELECT id FROM job_people WHERE venture_id = ? AND LOWER(name) = LOWER(?)",
+                    (pid, name)):
+            return {"error": "you already have someone by that name on this job"}, 400
+        db.execute("""INSERT INTO job_people (venture_id, name, trade, phone, notes)
+                      VALUES (?, ?, ?, ?, ?)""",
+                   (pid, name, (d.get('trade') or '')[:40], (d.get('phone') or '')[:30],
+                    (d.get('notes') or '')[:200]))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/money/<int:pid>/quote")
+@require_password
+def money_add_quote(pid):
+    """What he said it would cost."""
+    try:
+        d = request.get_json() or {}
+        who = d.get('person_id')
+        what = (d.get('what') or '').strip()[:90]
+        amount = float(d.get('amount') or 0)
+        if not who or not what or amount <= 0:
+            return {"error": "who, what, and how much"}, 400
+        db.execute("""INSERT INTO job_quotes (venture_id, person_id, what, amount,
+                                              currency, agreed_on, notes)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (pid, int(who), what, amount, (d.get('currency') or 'USD')[:4],
+                    d.get('agreed_on') or None, (d.get('notes') or '')[:200]))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/money/quote/<int:qid>")
+@require_password
+def money_change_quote(qid):
+    """It went up. Keep what it was - that is the number worth having."""
+    try:
+        d = request.get_json() or {}
+        new = float(d.get('amount') or 0)
+        if new <= 0:
+            return {"error": "how much now?"}, 400
+        r = db.query("SELECT amount, what FROM job_quotes WHERE id = ?", (qid,))
+        if not r:
+            return {"error": "no such quote"}, 404
+        was = float(r[0]['amount'] or 0)
+        if abs(was - new) > 0.004:
+            db.execute("""INSERT INTO job_quote_history (quote_id, was, now_is, why)
+                          VALUES (?, ?, ?, ?)""",
+                       (qid, was, new, (d.get('why') or '')[:140]))
+        db.execute("UPDATE job_quotes SET amount = ? WHERE id = ?", (new, qid))
+        return {"status": "success", "was": was, "now": new,
+                "over": round(new - was, 2)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/money/<int:pid>/payment")
+@require_password
+def money_add_payment(pid):
+    """Money out. Aminata pays them; he records it."""
+    try:
+        d = request.get_json() or {}
+        amount = float(d.get('amount') or 0)
+        if amount <= 0:
+            return {"error": "how much?"}, 400
+        from datetime import datetime as _dp
+        db.execute("""INSERT INTO job_payments (venture_id, person_id, quote_id, amount,
+                                                currency, kind, what, paid_on, paid_by, notes)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (pid, d.get('person_id'), d.get('quote_id'), amount,
+                    (d.get('currency') or 'USD')[:4], (d.get('kind') or 'labour')[:20],
+                    (d.get('what') or '')[:90],
+                    d.get('paid_on') or _dp.now().strftime('%Y-%m-%d'),
+                    (d.get('paid_by') or '')[:40], (d.get('notes') or '')[:200]))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/money/<int:pid>/report")
+@require_password
+def money_report(pid):
+    """The thing he sends Aminata. Who is owed what, and where the
+    estimates moved."""
+    try:
+        v = db.query("SELECT name FROM ventures WHERE id = ?", (pid,))
+        people, materials = _money_for(pid)
+        quoted = sum(p['quoted'] for p in people)
+        paid = sum(p['paid'] for p in people)
+
+        lines = []
+        name = v[0]['name'] if v else 'the job'
+        lines.append(name)
+        lines.append("")
+        lines.append("Quoted in total: " + "{:,.0f}".format(quoted).replace(",", ",") + " USD")
+        lines.append("Paid out so far: " + "{:,.0f}".format(paid) + " USD labour, "
+                     + "{:,.0f}".format(materials) + " USD materials")
+        lines.append("Still owed:      " + "{:,.0f}".format((quoted - paid)) + " USD")
+        lines.append("")
+        lines.append("Who is owed what")
+        for p in sorted(people, key=lambda x: -x['owed']):
+            if p['quoted'] or p['paid']:
+                lines.append("  " + p['name'] + (" (" + p['trade'] + ")" if p['trade'] else "")
+                             + " - quoted " + "{:,.0f}".format(p['quoted'])
+                             + ", paid " + "{:,.0f}".format(p['paid'])
+                             + ", owed " + "{:,.0f}".format(p['owed']))
+
+        moved = [(p, d) for p in people for d in p['drift']]
+        if moved:
+            lines.append("")
+            lines.append("Where the estimates moved")
+            for p, d in moved:
+                first = float(d['first'] or 0)
+                now = float(d['now'] or 0)
+                pct = (" (" + "{:+.0f}".format((now - first) / first * 100) + "%)") if first else ""
+                lines.append("  " + p['name'] + " - " + str(d['what']) + ": "
+                             + "{:,.0f}".format(first) + " then " + "{:,.0f}".format(now) + pct
+                             + (" - " + d['why'] if d['why'] else ""))
+
+        return {"status": "success", "report": "\n".join(lines),
+                "people": people, "materials": materials,
+                "totals": {"quoted": round(quoted, 2), "paid": round(paid, 2),
+                           "materials": materials,
+                           "still_owed": round(quoted - paid, 2)}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/money/compare")
+@require_password
+def money_compare():
+    """What the last job cost, against this one. So he knows what to expect."""
+    try:
+        rows = db.query("""SELECT v.id, v.name,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_quotes q
+                                   WHERE q.venture_id = v.id) AS quoted,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_payments p
+                                   WHERE p.venture_id = v.id) AS spent
+                           FROM ventures v
+                           WHERE EXISTS (SELECT 1 FROM job_payments p WHERE p.venture_id = v.id)
+                              OR EXISTS (SELECT 1 FROM job_quotes q WHERE q.venture_id = v.id)
+                           ORDER BY v.name""") or []
+        out = []
+        for r in rows:
+            q = float(r['quoted'] or 0)
+            s = float(r['spent'] or 0)
+            out.append({"id": r['id'], "name": r['name'],
+                        "quoted": round(q, 2), "spent": round(s, 2),
+                        "over_by": round(s - q, 2),
+                        "over_pct": (round((s - q) / q * 100) if q else None)})
+        return {"status": "success", "jobs": out}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/stipends/term")
+@require_password
+def stipend_new_term():
+    """A term, and what each person agreed to for it."""
+    try:
+        d = request.get_json() or {}
+        db.execute("""INSERT INTO stipend_terms (venture_id, name, starts_on, ends_on,
+                                                 currency, notes)
+                      VALUES (?, ?, ?, ?, ?, ?)""",
+                   (d.get('venture_id'), (d.get('name') or 'Term')[:60],
+                    d.get('starts_on'), d.get('ends_on'),
+                    (d.get('currency') or 'SLE')[:4], (d.get('notes') or '')[:200]))
+        t = db.query("SELECT id FROM stipend_terms ORDER BY id DESC LIMIT 1")
+        tid = t[0]['id'] if t else None
+        for p in (d.get('people') or []):
+            db.execute("""INSERT INTO stipend_people (term_id, name, role, monthly)
+                          VALUES (?, ?, ?, ?)""",
+                       (tid, str(p.get('name'))[:60], str(p.get('role') or '')[:40],
+                        float(p.get('monthly') or 0)))
+        return {"status": "success", "term_id": tid}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/stipends/<int:pid>")
+@require_password
+def stipend_board(pid):
+    """This term, who is on it, and which months have gone out."""
+    try:
+        t = db.query("""SELECT * FROM stipend_terms WHERE venture_id = ?
+                        ORDER BY id DESC LIMIT 1""", (pid,))
+        if not t:
+            return {"status": "success", "term": None}
+        t = t[0]
+        people = db.query("""SELECT id, name, role, monthly FROM stipend_people
+                             WHERE term_id = ? AND COALESCE(active,1) = 1
+                             ORDER BY name""", (t['id'],)) or []
+        runs = db.query("""SELECT month, amount, sent_to, sent_on FROM stipend_runs
+                           WHERE term_id = ? ORDER BY month""", (t['id'],)) or []
+        monthly = sum(float(p['monthly'] or 0) for p in people)
+        return {"status": "success",
+                "term": {"id": t['id'], "name": t['name'],
+                         "from": t['starts_on'], "to": t['ends_on'],
+                         "currency": t['currency']},
+                "people": people,
+                "monthly_total": round(monthly, 2),
+                "runs": runs,
+                "paid_so_far": round(sum(float(r['amount'] or 0) for r in runs), 2)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/stipends/<int:tid>/run")
+@require_password
+def stipend_run(tid):
+    """One month, sent to whoever hands it out."""
+    try:
+        from datetime import datetime as _ds
+        d = request.get_json() or {}
+        month = (d.get('month') or _ds.now().strftime('%Y-%m'))[:7]
+        people = db.query("""SELECT COALESCE(SUM(monthly),0) AS s FROM stipend_people
+                             WHERE term_id = ? AND COALESCE(active,1) = 1""", (tid,))
+        amount = float(d.get('amount') or (people[0]['s'] if people else 0) or 0)
+        db.execute("""INSERT OR REPLACE INTO stipend_runs
+                      (term_id, month, amount, sent_to, sent_on, note)
+                      VALUES (?, ?, ?, ?, ?, ?)""",
+                   (tid, month, amount, (d.get('sent_to') or 'Jeremiah')[:40],
+                    d.get('sent_on') or _ds.now().strftime('%Y-%m-%d'),
+                    (d.get('note') or '')[:140]))
+        return {"status": "success", "month": month, "amount": amount}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+def _all_under(pid):
+    """This project and everything beneath it, however deep."""
+    out, edge = [int(pid)], [int(pid)]
+    for _ in range(6):
+        if not edge:
+            break
+        rows = db.query("SELECT id FROM ventures WHERE parent_id IN ("
+                        + ",".join(str(int(x)) for x in edge) + ")") or []
+        edge = [r['id'] for r in rows if r['id'] not in out]
+        out.extend(edge)
+    return out
+
+
+@app.get("/api/money/rollup/<int:pid>")
+@require_password
+def money_rollup(pid):
+    """What everything under this has cost. Ask for GII and it counts Bo,
+    Kakuma, the school painting - the lot."""
+    try:
+        ids = _all_under(pid)
+        inlist = ",".join(str(i) for i in ids)
+        top = db.query("SELECT name FROM ventures WHERE id = ?", (pid,))
+        rows = db.query("""SELECT v.id, v.name, v.parent_id,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_quotes q
+                                   WHERE q.venture_id = v.id) AS quoted,
+                                  (SELECT COALESCE(SUM(amount),0) FROM job_payments p
+                                   WHERE p.venture_id = v.id) AS spent,
+                                  (SELECT COALESCE(SUM(r.amount),0) FROM stipend_runs r
+                                   JOIN stipend_terms t ON t.id = r.term_id
+                                   WHERE t.venture_id = v.id) AS stipends,
+                                  (SELECT COALESCE(SUM(sp.monthly),0) * 4 FROM stipend_people sp
+                                   JOIN stipend_terms t2 ON t2.id = sp.term_id
+                                   WHERE t2.venture_id = v.id
+                                     AND COALESCE(sp.active,1) = 1) AS committed
+                           FROM ventures v WHERE v.id IN (""" + inlist + """)
+                           ORDER BY v.name""") or []
+        parts, quoted, spent = [], 0.0, 0.0
+        for r in rows:
+            # a term of stipends is a commitment, same as a quote
+            q = float(r['quoted'] or 0) + float(r.get('committed') or 0)
+            sp = float(r['spent'] or 0) + float(r['stipends'] or 0)
+            if q or sp:
+                parts.append({"id": r['id'], "name": r['name'],
+                              "quoted": round(q, 2), "spent": round(sp, 2),
+                              "stipends": round(float(r['stipends'] or 0), 2)})
+            quoted += q
+            spent += sp
+        return {"status": "success",
+                "under": (top[0]['name'] if top else ''),
+                "projects": parts,
+                "totals": {"quoted": round(quoted, 2), "spent": round(spent, 2),
+                           "still_owed": round(quoted - spent, 2)}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
