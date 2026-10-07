@@ -14499,6 +14499,10 @@ def _find_item(name, only_open=True):
         for row in (db.query("SELECT id, title, status FROM reminders WHERE "
                              + ("status != 'completed'" if only_open else "1=1")) or []):
             found.append(('reminder', row['id'], row['title'] or ''))
+        # the shopping list too - "take milk off the list"
+        for row in (db.query("SELECT id, title FROM shopping_items WHERE "
+                             + ("COALESCE(is_checked,0) = 0" if only_open else "1=1")) or []):
+            found.append(('shopping', row['id'], row['title'] or ''))
     except Exception:
         return None
 
@@ -14586,7 +14590,8 @@ def _act_on_existing(query):
             return msg
         kind, i, title = hit
 
-    tbl = {'task': 'tasks', 'todo': 'todos', 'reminder': 'reminders'}[kind]
+    tbl = {'task': 'tasks', 'todo': 'todos', 'reminder': 'reminders',
+           'shopping': 'shopping_items'}[kind]
     try:
         if action == 'delete':
             db.execute("DELETE FROM " + tbl + " WHERE id = ?", (i,))
@@ -14597,6 +14602,9 @@ def _act_on_existing(query):
         if action == 'reopen':
             db.execute("UPDATE " + tbl + " SET status = 'pending' WHERE id = ?", (i,))
             return "\u21a9 Put back pan di list: " + title + "."
+        if kind == 'shopping':
+            db.execute("UPDATE shopping_items SET is_checked = 1 WHERE id = ?", (i,))
+            return "\u2705 Got am: " + title + "."
         done_val = 'completed' if kind == 'reminder' else 'done'
         db.execute("UPDATE " + tbl + " SET status = ? WHERE id = ?", (done_val, i))
         row = db.query("SELECT status FROM " + tbl + " WHERE id = ?", (i,))
