@@ -200,6 +200,40 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
   const pushedCount = KINDS.reduce((n, k) => n + (pushed[k.key] || []).length, 0);
 
   return (
+
+      {/* a meeting leaves more behind than action items */}
+      {(() => {
+        const a = (note && note.analysis) || {};
+        const bits = [
+          ['Who was there', a.attendees, '#8b8b9e'],
+          ['What was decided', a.decisions, '#10b981'],
+          ['You said you would', a.he_owes, '#f59e0b'],
+          ['Waiting on someone', a.waiting_on, '#a78bfa'],
+        ].filter(([, v]) => Array.isArray(v) && v.length);
+        if (!bits.length) return null;
+        return (
+          <div style={{ marginBottom: '14px', padding: '12px',
+                        background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '11px', letterSpacing: '0.6px', color: '#777',
+                          textTransform: 'uppercase', fontWeight: 700,
+                          marginBottom: '8px' }}>
+              What came out of the room
+            </div>
+            {bits.map(([label, items, colour]) => (
+              <div key={label} style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '11px', color: colour, fontWeight: 600 }}>{label}</div>
+                {items.map((x, n) => (
+                  <div key={n} style={{ fontSize: '13px', color: '#ddd', paddingLeft: '8px' }}>
+                    · {typeof x === 'string' ? x
+                        : (x.what || x.title || x.name || JSON.stringify(x))}
+                    {x && x.who ? ' — ' + x.who : ''}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     <div style={S.panel}>
       {err && (
         <div style={{ background: '#7f1d1d', padding: '8px 10px', borderRadius: '6px',
