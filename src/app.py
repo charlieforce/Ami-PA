@@ -3511,8 +3511,9 @@ def orchestrated_chat():
 
         # "do it" after she has laid out a plan
         try:
-            _proj = _maybe_make_project(query, session_id)
-        except Exception:
+            _proj = _maybe_make_project(query)
+        except Exception as _ep:
+            print("project from chat: " + str(_ep)[:70])
             _proj = None
         if _proj:
             try:
@@ -14472,8 +14473,7 @@ def _maybe_make_project(query, session_id=None):
     low = (query or '').strip().lower().rstrip('.!')
     if len(low) > 70:
         return None
-    if not _r.search(r"^(ok(ay)?,? )?(yes,? )?(lets?|let us|go|do|set|make|create|build|"
-                     r"start)\b.{0,40}$", low):
+    if not _r.search(r"^(ok(ay)?,? )?(yes,? )?(can you |could you |please )?(lets?|let us|go|do|set|make|create|build|start|add|put|save|track)\\b.{0,60}$", low):
         return None
     if not _r.search(r"\b(do it|set (it|that) up|make (it|that|the project)|create (it|that|"
                      r"the project)|lets do it|go ahead|build it|start it|set up the project|"
