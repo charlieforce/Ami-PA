@@ -261,7 +261,7 @@ const handleSave = async () => {
       </div>
 
       <button onClick={handleSave} disabled={saving} className="save-btn">
-        {saving ? '⏳ Saving...' : '💾 Save'}
+        {saving ? '⏳ Saving...' : '💾 Save & Analyze'}
       </button>
     </div>
   );

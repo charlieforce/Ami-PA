@@ -34,6 +34,7 @@ def detect_emotion_from_text(text):
     return detected or {'mood': 'neutral', 'energy': 5, 'tone': 'balanced'}
 
 
+import hmac
 import os
 import json
 from calendar_integration import CalendarIntegration

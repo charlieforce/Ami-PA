@@ -372,6 +372,8 @@ const NotesTab = () => {
               headers: { 'Content-Type': 'application/json', 'X-Ami-Password': AMI_PASSWORD },
               body: JSON.stringify({ analysis: analyzeData.extracted })
             }).catch(() => {});
+            // show him what came out of it, same as the other note types
+            setJustAnalysed({ id: newId, title, content });
           }
         }
 
