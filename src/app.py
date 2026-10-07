@@ -14631,6 +14631,30 @@ def _act_on_existing(query):
         return None
 
 
+def _in_usd(amount, currency):
+    """A rough USD figure beside the local one. Not accounting - an idea."""
+    try:
+        cur = (currency or 'USD').upper()[:4]
+        if cur == 'USD':
+            return float(amount or 0)
+        r = db.query("SELECT rate_to_usd FROM fx_rates WHERE currency = ?", (cur,))
+        if not r:
+            return None
+        return round(float(amount or 0) * float(r[0]['rate_to_usd'] or 0), 2)
+    except Exception:
+        return None
+
+
+def _money_line(amount, currency):
+    """1,500 SLE (~61 USD) - or just the number when it is already dollars."""
+    cur = (currency or 'USD').upper()[:4]
+    base = "{:,.0f}".format(float(amount or 0)) + " " + cur
+    if cur == 'USD':
+        return base
+    u = _in_usd(amount, cur)
+    return base + ((" (~" + "{:,.0f}".format(u) + " USD)") if u else "")
+
+
 def _money_person(name):
     """Find whoever he means, across every job. Returns (person, project)."""
     nm = (name or '').strip().lower()
@@ -14652,6 +14676,17 @@ def _money_person(name):
         if first and first in str(r['name']).lower().split():
             return r, r.get('project')
     return None, None
+
+
+def _job_currency(venture_id):
+    """Whatever this job is quoted in. SLe for Freetown, USD for a dev abroad."""
+    r = db.query("""SELECT currency FROM job_quotes WHERE venture_id = ?
+                    AND currency IS NOT NULL ORDER BY id DESC LIMIT 1""", (venture_id,))
+    if r:
+        return (r[0]['currency'] or 'USD').upper()[:4]
+    r = db.query("""SELECT currency FROM stipend_terms WHERE venture_id = ?
+                    ORDER BY id DESC LIMIT 1""", (venture_id,))
+    return ((r[0]['currency'] if r else 'USD') or 'USD').upper()[:4]
 
 
 def _money_sum(person_id, venture_id):
@@ -14701,9 +14736,10 @@ def _money_from_chat(query):
                            ORDER BY id DESC LIMIT 1""", (person['id'], amt)):
             return "A try for write am down but e no save. Try from di screen, bo."
         quoted, paid, owed = _money_sum(person['id'], person['venture_id'])
-        return ("\U0001F4B0 Noted: " + "{:,.0f}".format(amt) + " to " + person['name']
-                + ". Dat make " + "{:,.0f}".format(paid) + " paid, "
-                + "{:,.0f}".format(owed) + " still owing pan " + str(project or 'di job')
+        cur = _job_currency(person['venture_id'])
+        return ("\U0001F4B0 Noted: " + _money_line(amt, cur) + " to " + person['name']
+                + ". Dat make " + _money_line(paid, cur) + " paid, "
+                + _money_line(owed, cur) + " still owing pan " + str(project or 'di job')
                 + ".")
 
     # --- a quote moved ---------------------------------------------------
@@ -14748,9 +14784,10 @@ def _money_from_chat(query):
         quoted, paid, owed = _money_sum(person['id'], person['venture_id'])
         if not quoted and not paid:
             return ("Nothing down for " + person['name'] + " yet, bo.")
-        line = (person['name'] + ": quoted " + "{:,.0f}".format(quoted)
-                + ", paid " + "{:,.0f}".format(paid) + ", owing "
-                + "{:,.0f}".format(owed) + ".")
+        cur = _job_currency(person['venture_id'])
+        line = (person['name'] + ": quoted " + _money_line(quoted, cur)
+                + ", paid " + _money_line(paid, cur) + ", owing "
+                + _money_line(owed, cur) + ".")
         moved = db.query("""SELECT q.what, h.was, q.amount FROM job_quote_history h
                             JOIN job_quotes q ON q.id = h.quote_id
                             WHERE q.person_id = ? ORDER BY h.id DESC LIMIT 1""",
