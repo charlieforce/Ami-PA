@@ -14784,14 +14784,23 @@ def _birthday_from_chat(query):
         return None
 
     try:
-        found = db.query("SELECT id, date FROM user_birthdays WHERE LOWER(name) = LOWER(?)",
-                         (who,))
+        # he says "Nadine"; the contact is "Nadine Nikuze Mushimiyimana"
+        _c = db.query("""SELECT id, name FROM contacts
+                         WHERE LOWER(name) = LOWER(?) OR LOWER(name) LIKE LOWER(?)
+                         ORDER BY LENGTH(name) LIMIT 1""", (who, who + ' %'))
+        _cid = _c[0]['id'] if _c else None
+        if _c:
+            who = _c[0]['name']          # keep his real name on the list
+        found = db.query("SELECT id, date FROM user_birthdays WHERE LOWER(name) = LOWER(?) "
+                         "OR (contact_id IS NOT NULL AND contact_id = ?)",
+                         (who, _cid))
         if found:
             if str(found[0]['date']) == when:
                 return None          # she already knows, nothing to say
             db.execute("UPDATE user_birthdays SET date = ? WHERE id = ?", (when, found[0]['id']))
         else:
-            db.execute("INSERT INTO user_birthdays (name, date) VALUES (?, ?)", (who, when))
+            db.execute("INSERT INTO user_birthdays (name, date, contact_id) "
+                       "VALUES (?, ?, ?)", (who, when, _cid))
         back = db.query("SELECT date FROM user_birthdays WHERE LOWER(name) = LOWER(?)", (who,))
         if not back or str(back[0]['date']) != when:
             return "A try for save am but e no stick. Add am from di birthday screen, bo."
