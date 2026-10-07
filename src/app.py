@@ -2119,6 +2119,30 @@ MONTHS = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06',
 
 def _extract_birthday_date(text):
     """Pull an MM-DD out of free text. Returns None if there isn't one."""
+    # the way he actually says it: "the 26th of this month", "26th next month"
+    try:
+        import re as _rb2
+        from datetime import datetime as _db2
+        _low = str(text or '').lower()
+        _m2 = _rb2.search(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(this|next)\s+month', _low)
+        if not _m2:
+            _m2 = _rb2.search(r'\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\s+(?:of\s+)?(this|next)?\s*month', _low)
+        if _m2:
+            _day = int(_m2.group(1))
+            _now = _charlie_now()
+            _mon = _now.month
+            if (_m2.lastindex or 0) >= 2 and _m2.group(2) == 'next':
+                _mon = _mon % 12 + 1
+            if 1 <= _day <= 31:
+                return '%02d-%02d' % (_mon, _day)
+        # a bare "the 26th" when he is clearly answering about a birthday
+        _m3 = _rb2.search(r'^(?:it\s+is\s+|its\s+|on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\s*$', _low.strip())
+        if _m3:
+            _day = int(_m3.group(1))
+            if 1 <= _day <= 31:
+                return '%02d-%02d' % (_charlie_now().month, _day)
+    except Exception:
+        pass
     import re as _re
     if not text:
         return None
@@ -3498,6 +3522,20 @@ def orchestrated_chat():
                 pass
             return {"status": "success", "response": _proj, "role": "ami",
                     "engines_used": ["project"]}
+
+        # a birthday he gives her, in passing or when she asks
+        try:
+            _bd2 = _birthday_from_chat(query)
+        except Exception:
+            _bd2 = None
+        if _bd2:
+            try:
+                db.execute("INSERT INTO conversations (user_message, ami_response) VALUES (?,?)",
+                           (query, _bd2))
+            except Exception:
+                pass
+            return {"status": "success", "response": _bd2, "role": "ami",
+                    "engines_used": ["birthday"]}
 
         # money on a job - what he owes, what he paid, what a quote became
         try:
@@ -13482,6 +13520,11 @@ def _split_requests(text):
                       r'shopping\s*list\b[^:.]*[:.]\s*(.+)$', t, _r.I)
     if not m:
         m = _r.search(r'^shopping\s*list\s*[:-]\s*(.+)$', t, _r.I)
+    if not m:
+        # "a grocery shopping list with milk, bread" - with, containing, of
+        m = _r.search(r'shopping\s*list\b[^:.]{0,20}?\b(?:with|containing|of|for)\s+(.+)$', t, _r.I)
+    if not m:
+        m = _r.search(r'\b(?:grocery|groceries)\b[^:.]{0,30}?\b(?:with|list|of|:)\s*(.+)$', t, _r.I)
     if m:
         items = [x.strip(' .') for x in _r.split(r',|\band\b', m.group(1)) if 1 < len(x.strip()) < 60]
         if items:
@@ -14696,6 +14739,68 @@ def _money_sum(person_id, venture_id):
     p = (db.query("""SELECT COALESCE(SUM(amount),0) AS s FROM job_payments
                      WHERE person_id = ?""", (person_id,)) or [{"s": 0}])[0]['s'] or 0
     return float(q), float(p), float(q) - float(p)
+
+
+def _birthday_from_chat(query):
+    """A birthday he mentions, or gives when she asks. Saved, then read back.
+
+    "Nadine's birthday is the 26th" works on its own. So does "the 26th of
+    this month" when the thing before it was her asking whose birthday.
+    """
+    import re as _rk
+    low = (query or '').strip().lower()
+    if len(low) < 4 or len(low) > 140:
+        return None
+
+    who, when = None, None
+
+    # name and date in the one sentence
+    m = _rk.search(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:'s)?\s+"
+                   r"(?:birthday|bday|born)\b[^0-9A-Za-z]{0,12}(.+)$", query)
+    if m:
+        who = m.group(1).strip()
+        when = _extract_birthday_date(m.group(2))
+
+    # or he is answering her question from the turn before
+    if not who and _rk.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\b", low):
+        when = _extract_birthday_date(query)
+        if when:
+            last = db.query("""SELECT user_message, ami_response FROM conversations
+                               ORDER BY id DESC LIMIT 2""") or []
+            for row in last:
+                text = str(row.get('ami_response') or '') + " " + str(row.get('user_message') or '')
+                if 'birthday' not in text.lower() and 'bday' not in text.lower():
+                    continue
+                nm = _rk.search(r"\b([A-Z][a-z]{2,})\b(?:'s)?\s*(?:in|)\s*"
+                                r"(?:birthday|bday)", text)
+                if not nm:
+                    nm = _rk.search(r"(?:birthday|bday)[^A-Za-z]{0,10}"
+                                    r"(?:for|of)?\s*\b([A-Z][a-z]{2,})\b", text)
+                if nm and nm.group(1).lower() not in ('yu', 'his', 'her', 'the', 'and'):
+                    who = nm.group(1)
+                    break
+
+    if not who or not when:
+        return None
+
+    try:
+        found = db.query("SELECT id, date FROM user_birthdays WHERE LOWER(name) = LOWER(?)",
+                         (who,))
+        if found:
+            if str(found[0]['date']) == when:
+                return None          # she already knows, nothing to say
+            db.execute("UPDATE user_birthdays SET date = ? WHERE id = ?", (when, found[0]['id']))
+        else:
+            db.execute("INSERT INTO user_birthdays (name, date) VALUES (?, ?)", (who, when))
+        back = db.query("SELECT date FROM user_birthdays WHERE LOWER(name) = LOWER(?)", (who,))
+        if not back or str(back[0]['date']) != when:
+            return "A try for save am but e no stick. Add am from di birthday screen, bo."
+        from datetime import datetime as _dk
+        nice = _dk.strptime("2000-" + when, "%Y-%m-%d").strftime("%-d %B")
+        return "\U0001F382 " + who + " - " + nice + ". A don put am pan di list."
+    except Exception as e:
+        print("birthday from chat failed: " + str(e)[:70])
+        return None
 
 
 def _money_breakdown(query):
