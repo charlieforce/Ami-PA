@@ -13460,6 +13460,13 @@ def _split_requests(text):
     m = _r.search(r'\b(?:add|put|buy|get)\s+(.+?)\s+(?:to|on)\s+(?:my |the )?shopping\s*list\b', t, _r.I)
     if not m:
         m = _r.search(r'\bshopping list\b.{0,20}?\b(?:buy|get|add)\s+(.+)$', t, _r.I)
+    if not m:
+        # "create a shopping list for groceries: milk, bread, sugar" - the way
+        # he actually says it. the list is whatever follows the colon or stop.
+        m = _r.search(r'\b(?:create|make|start|new)\s+(?:a\s+|me\s+a\s+)?'
+                      r'shopping\s*list\b[^:.]*[:.]\s*(.+)$', t, _r.I)
+    if not m:
+        m = _r.search(r'^shopping\s*list\s*[:-]\s*(.+)$', t, _r.I)
     if m:
         items = [x.strip(' .') for x in _r.split(r',|\band\b', m.group(1)) if 1 < len(x.strip()) < 60]
         if items:
