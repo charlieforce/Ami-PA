@@ -17820,7 +17820,7 @@ def ledger_loans():
         from datetime import datetime as _dn
         rows = db.query("""SELECT e.*, p.name FROM ledger_entries e
                            JOIN ledger_people p ON p.id = e.person_id
-                           WHERE e.kind IN ('lent','borrowed')
+                           WHERE e.kind IN ('lent','borrowed','bought')
                            ORDER BY e.happened_on DESC""") or []
         out = []
         # repayments clear the oldest loan first, and only once
@@ -17841,7 +17841,9 @@ def ledger_loans():
             months = (int(left / per) + (1 if left % per else 0)) if per > 0 and left > 0 else None
             out.append({
                 "id": r['id'], "who": r['name'],
-                "direction": ("he lent" if r['kind'] == 'lent' else "he borrowed"),
+                "direction": ("he lent" if r['kind'] == 'lent'
+                              else ("they bought for him" if r['kind'] == 'bought'
+                                    else "he borrowed")),
                 "principal": principal, "repaid": round(float(back), 2),
                 "left": max(0, left), "currency": r['currency'],
                 "usd_left": _in_usd(max(0, left), r['currency']),
