@@ -4944,7 +4944,12 @@ FIRST MESSAGE OF THE SESSION:
         context += "\n\n" + _conv_note
     try:
         try:
-            context += _news_for_first_message()
+            _nf = _news_for_first_message()
+            if _nf:
+                context += (_nf + "\n\nORDER OF YOUR REPLY: answer what he actually "
+                            "asked FIRST, in full. Then leave a blank line and give "
+                            "him the morning news after it. Never bury his answer "
+                            "under the briefing.")
         except Exception:
             pass
         import re as _rtg
