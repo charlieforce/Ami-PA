@@ -102,10 +102,19 @@ export default function NoteAnalysisPanel({ note, onAnalysed }) {
 
   const runAnalysis = async () => {
     setBusy(true); setErr('');
+      // the list only carries a preview; analysis needs the whole thing
+      let fullNote = note;
+      try {
+        const one = await fetch(API + '/api/notes/' + note.id,
+                                { headers: { 'X-Ami-Password': AMI_PASSWORD } });
+        const oj = await one.json();
+        const got = oj.note || oj;
+        if (got && got.content) fullNote = got;
+      } catch (e) { /* fall back to what we have */ }
     try {
       const r = await fetch(`${API}/api/notes/analyze`, {
         method: 'POST', headers: H,
-        body: JSON.stringify({ title: note.title, content: note.content || note.preview })
+        body: JSON.stringify({ title: fullNote.title, content: fullNote.content })
       });
       const j = await r.json();
       const extracted = j.extracted || {};
