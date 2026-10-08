@@ -7,8 +7,8 @@ const H = { 'Content-Type': 'application/json', ...AUTH };
 
 const n0 = (v) => Math.round(Number(v) || 0).toLocaleString();
 const WORDS = {
-  agreed: 'agreed', paid: 'you paid', bought: 'they bought', lent: 'you lent',
-  borrowed: 'you borrowed', repaid: 'repaid', forgiven: 'written off', gift: 'a gift',
+  agreed: 'agreed', paid: 'you paid', bought: 'they bought', lent: 'Loan out',
+  borrowed: 'Loan', repaid: 'repaid', forgiven: 'written off', gift: 'a gift',
 };
 
 const S = {
@@ -68,7 +68,7 @@ export default function MoneyTab() {
   const loadAcct = async (id) => {
     setAcct(null); setReport(''); setAdding(''); setEditing(null);
     try {
-      const r = await fetch(API + '/api/ledger/person/' + id, { headers: AUTH });
+      const r = await fetch(API + '/api/ledger/account/' + id, { headers: AUTH });
       const j = await r.json();
       if (j.error) { setErr(j.error); return; }
       setAcct(j);
@@ -191,6 +191,13 @@ export default function MoneyTab() {
                    onChange={e => setForm({ ...form, note: e.target.value })} />
             <input style={S.input} type="date"
                    onChange={e => setForm({ ...form, happened_on: e.target.value })} />
+            {['paid', 'repaid'].includes(form.kind) && (
+              <select style={S.input} value={form.how_sent || ''}
+                      onChange={e => setForm({ ...form, how_sent: e.target.value })}>
+                <option value="">How did it go?</option>
+                {(acct.ways || []).map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            )}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button style={S.btn('#10b981')} disabled={busy}
                       onClick={() => save('/api/ledger/entry', { ...form, person_id: openId })}>
@@ -202,64 +209,82 @@ export default function MoneyTab() {
           </div>
         )}
 
-        <div style={S.label}>Everything, newest first</div>
-        {(acct.lines || []).length === 0 && (
-          <div style={{ fontSize: '13px', color: '#777' }}>Nothing yet.</div>
-        )}
-        {(acct.lines || []).map(l => (
-          <div key={l.id}>
-            {editing === l.id ? (
-              <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
-                <input style={S.input} type="number" defaultValue={l.amount}
-                       onChange={e => setEdit({ ...edit, amount: Number(e.target.value) })} />
-                <input style={S.input} defaultValue={l.note} placeholder="What was it for?"
-                       onChange={e => setEdit({ ...edit, note: e.target.value })} />
-                <input style={S.input} type="date" defaultValue={l.on}
-                       onChange={e => setEdit({ ...edit, happened_on: e.target.value })} />
-                {l.kind === 'agreed' && (
-                  <input style={S.input} placeholder="Why did the figure change?"
-                         onChange={e => setEdit({ ...edit, why: e.target.value })} />
-                )}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button style={S.btn('#4f46e5')} disabled={busy}
-                          onClick={() => save('/api/ledger/entry/' + l.id, edit, 'PUT')}>Save</button>
-                  <button style={S.btn('#2a2a35')}
-                          onClick={() => { setEditing(null); setEdit({}); }}>Cancel</button>
-                  <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
-                          onClick={() => removeLine(l.id)}>Remove</button>
-                </div>
-              </div>
-            ) : (
-              <div style={S.line} onClick={() => { setEditing(l.id); setEdit({}); }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '13px' }}>
-                    {WORDS[l.kind] || l.kind}
-                    {l.note ? <span style={{ color: '#8b8b9e' }}> &middot; {l.note}</span> : null}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#777' }}>
-                    {String(l.on || '').slice(0, 10)}
-                    {l.project ? ' \u00b7 ' + l.project : ''}
-                    {l.status === 'forgiven' ? ' \u00b7 written off' : ''}
-                  </div>
-                  {(l.moved || []).map((m, i) => (
-                    <div key={i} style={{ fontSize: '11px', color: '#f59e0b' }}>
-                      was {n0(m.was)}, now {n0(m.now_is)}{m.why ? ' \u2014 ' + m.why : ''}
+        {/* two hands: what came in, what went back */}
+        {['came_in', 'went_back', 'gifts'].map(side => {
+          const rows = acct[side] || [];
+          if (!rows.length) return null;
+          const heading = side === 'came_in' ? 'What came in'
+                        : side === 'went_back' ? 'What went back'
+                        : 'Gifts (not counted)';
+          return (
+            <div key={side}>
+              <div style={S.label}>{heading}</div>
+              {rows.map(l => (
+                editing === l.id ? (
+                  <div key={l.id} style={{ ...S.card, borderColor: '#3a3a5a' }}>
+                    <input style={S.input} type="number" defaultValue={l.amount}
+                           onChange={e => setEdit({ ...edit, amount: Number(e.target.value) })} />
+                    <input style={S.input} defaultValue={l.note} placeholder="What was it for?"
+                           onChange={e => setEdit({ ...edit, note: e.target.value })} />
+                    <input style={S.input} type="date" defaultValue={l.on}
+                           onChange={e => setEdit({ ...edit, happened_on: e.target.value })} />
+                    {side === 'went_back' && (
+                      <select style={S.input} defaultValue={l.how_sent || ''}
+                              onChange={e => setEdit({ ...edit, how_sent: e.target.value })}>
+                        <option value="">How did it go?</option>
+                        {(acct.ways || []).map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    )}
+                    {l.kind === 'agreed' && (
+                      <input style={S.input} placeholder="Why did the figure change?"
+                             onChange={e => setEdit({ ...edit, why: e.target.value })} />
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button style={S.btn('#4f46e5')} disabled={busy}
+                              onClick={() => save('/api/ledger/entry/' + l.id, edit, 'PUT')}>
+                        Save
+                      </button>
+                      <button style={S.btn('#2a2a35')}
+                              onClick={() => { setEditing(null); setEdit({}); }}>Cancel</button>
+                      <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
+                              onClick={() => removeLine(l.id)}>Remove</button>
                     </div>
-                  ))}
-                </div>
-                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <div style={{ fontSize: '14px',
-                                color: l.kind === 'gift' ? '#a78bfa'
-                                     : (['paid', 'repaid'].includes(l.kind) ? '#10b981' : '#e8e8f0'),
-                                textDecoration: l.status === 'forgiven' ? 'line-through' : 'none' }}>
-                    {n0(l.amount)} {l.currency}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#666' }}>tap to change</div>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+                ) : (
+                  <div key={l.id} style={S.line}
+                       onClick={() => { setEditing(l.id); setEdit({}); }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '13px' }}>
+                        {l.note || WORDS[l.kind] || l.kind}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#777' }}>
+                        {String(l.on || '').slice(0, 10)}
+                        {l.how_sent ? ' \u00b7 ' + l.how_sent : ''}
+                        {l.project ? ' \u00b7 ' + l.project : ''}
+                        {l.status === 'forgiven' ? ' \u00b7 written off' : ''}
+                      </div>
+                      {(l.moved || []).map((m, k) => (
+                        <div key={k} style={{ fontSize: '11px', color: '#f59e0b' }}>
+                          was {n0(m.was)}, now {n0(m.now_is)}{m.why ? ' \u2014 ' + m.why : ''}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '14px',
+                                    color: side === 'went_back' ? '#10b981'
+                                         : side === 'gifts' ? '#a78bfa' : '#e8e8f0',
+                                    textDecoration: l.status === 'forgiven'
+                                      ? 'line-through' : 'none' }}>
+                        {side === 'went_back' ? '\u2212' : ''}{n0(l.amount)} {l.currency}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#666' }}>tap to change</div>
+                    </div>
+                  </div>
+                )
+              ))}
+            </div>
+          );
+        })}
 
         {acct.older_not_shown > 0 && (
           <div style={{ fontSize: '12px', color: '#777', marginTop: '10px' }}>
