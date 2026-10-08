@@ -552,6 +552,14 @@ def interval_med_nudge():
 
 
 def medication_time_nudge():
+    # he asked for quiet - a flight, a meeting, whatever
+    try:
+        _q = db.query("SELECT value FROM user_settings WHERE key = 'meds_quiet_until'")
+        if _q and str(_q[0]['value']) > _charlie_now().strftime('%Y-%m-%d %H:%M:%S'):
+            return
+    except Exception:
+        pass
+
     """Runs every 5 minutes: nudge for any dose whose time has just come."""
     try:
         from datetime import datetime as _d
@@ -3523,6 +3531,15 @@ def orchestrated_chat():
                 pass
             return {"status": "success", "response": _proj, "role": "ami",
                     "engines_used": ["project"]}
+
+        # "remind me about my meds in 6 hours"
+        try:
+            _ml = _push_meds_later(query)
+        except Exception:
+            _ml = None
+        if _ml:
+            return {"status": "success", "response": _ml, "role": "ami",
+                    "engines_used": ["meds"]}
 
         # a birthday he gives her, in passing or when she asks
         try:
@@ -14814,6 +14831,36 @@ def _birthday_from_chat(query):
         return "\U0001F382 " + who + " - " + nice + ". A don put am pan di list."
     except Exception as e:
         print("birthday from chat failed: " + str(e)[:70])
+        return None
+
+
+def _push_meds_later(query):
+    """He is flying, or out, and cannot take them now. Nudge him later
+    instead of going quiet about it."""
+    import re as _rp
+    from datetime import timedelta as _tp
+    low = (query or '').strip().lower()
+    if not _rp.search(r"\b(med|meds|medication|pill|tablet)", low):
+        return None
+    m = _rp.search(r"\b(?:remind|nudge|tell|ask)\s+mi?e?\b.{0,24}?"
+                   r"\b(?:in|after)\s+(\d{1,2})\s*(hour|hr|minute|min)", low)
+    if not m:
+        m = _rp.search(r"\b(?:push|move|delay)\b.{0,24}?\b(\d{1,2})\s*(hour|hr|minute|min)", low)
+    if not m:
+        return None
+    n = int(m.group(1))
+    mins = n * 60 if m.group(2).startswith(('hour', 'hr')) else n
+    when = (_charlie_now() + _tp(minutes=mins)).strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        db.execute("INSERT OR REPLACE INTO user_settings (key, value) VALUES "
+                   "('meds_quiet_until', ?)", (when,))
+        back = db.query("SELECT value FROM user_settings WHERE key = 'meds_quiet_until'")
+        if not back:
+            return None
+        nice = (str(n) + " hours" if mins >= 60 else str(n) + " minutes")
+        return "\u23F0 Fine. A go remind yu about yu meds in " + nice + "."
+    except Exception as e:
+        print("meds later failed: " + str(e)[:60])
         return None
 
 
