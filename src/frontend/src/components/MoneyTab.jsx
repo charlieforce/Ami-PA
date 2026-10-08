@@ -59,8 +59,8 @@ export default function MoneyTab() {
         const r = await fetch(API + '/api/ledger/loans', { headers: AUTH });
         setLoans((await r.json()).loans || []);
       } else {
-        const r = await fetch(API + '/api/project-board', { headers: AUTH });
-        setProjects((await r.json()).projects || []);
+        const r = await fetch(API + '/api/ledger/jobs', { headers: AUTH });
+        setProjects((await r.json()).jobs || []);
       }
     } catch (e) { setErr(String(e)); }
   };
@@ -218,7 +218,18 @@ export default function MoneyTab() {
                         : 'Gifts (not counted)';
           return (
             <div key={side}>
-              <div style={S.label}>{heading}</div>
+              <div style={{ ...S.card, marginTop: '14px',
+                            borderLeft: '3px solid ' + (side === 'went_back' ? '#10b981'
+                                                      : side === 'gifts' ? '#a78bfa'
+                                                      : '#f59e0b') }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'baseline', marginBottom: '6px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>{heading}</span>
+                <span style={{ fontSize: '13px', color: '#8b8b9e' }}>
+                  {n0(rows.reduce((t, x) => t + (Number(x.amount) || 0), 0))}
+                  {' '}{rows[0] ? rows[0].currency : ''}
+                </span>
+              </div>
               {rows.map(l => (
                 editing === l.id ? (
                   <div key={l.id} style={{ ...S.card, borderColor: '#3a3a5a' }}>
@@ -282,6 +293,7 @@ export default function MoneyTab() {
                   </div>
                 )
               ))}
+              </div>
             </div>
           );
         })}
