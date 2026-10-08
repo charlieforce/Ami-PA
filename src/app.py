@@ -18168,6 +18168,72 @@ def ledger_report_pdf():
         return {"error": str(e)}, 400
 
 
+@app.delete("/api/ledger/entry/<int:eid>")
+@require_password
+def ledger_delete_entry(eid):
+    """A line that should never have been there. Not the same as forgiving
+    a debt - this is a typo, not a decision."""
+    try:
+        r = db.query("SELECT person_id FROM ledger_entries WHERE id = ?", (eid,))
+        if not r:
+            return {"error": "no such line"}, 404
+        pid = r[0]['person_id']
+        db.execute("DELETE FROM ledger_changes WHERE entry_id = ?", (eid,))
+        db.execute("DELETE FROM ledger_entries WHERE id = ?", (eid,))
+        if db.query("SELECT id FROM ledger_entries WHERE id = ?", (eid,)):
+            return {"error": "it did not go"}, 400
+        return {"status": "success", "balance": _ledger_balance(pid) if pid else {}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/entry/<int:eid>")
+@require_password
+def ledger_one_entry(eid):
+    try:
+        r = db.query("""SELECT e.*, v.name AS project, p.name AS person
+                        FROM ledger_entries e
+                        LEFT JOIN ventures v ON v.id = e.venture_id
+                        LEFT JOIN ledger_people p ON p.id = e.person_id
+                        WHERE e.id = ?""", (eid,))
+        if not r:
+            return {"error": "no such line"}, 404
+        e = dict(r[0])
+        e['moved'] = db.query("""SELECT was, now_is, why, changed_at FROM ledger_changes
+                                 WHERE entry_id = ? ORDER BY id""", (eid,)) or []
+        e['usd'] = _in_usd(e.get('amount'), e.get('currency'))
+        return {"status": "success", "entry": e}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/ledger/person/<int:pid>")
+@require_password
+def ledger_edit_person(pid):
+    """Their name, what they do, a phone number once he learns it."""
+    try:
+        d = request.get_json() or {}
+        sets, vals = [], []
+        for f, col in (('name', 'name'), ('what_they_do', 'what_they_do'),
+                       ('phone', 'phone'), ('notes', 'notes')):
+            if f in d:
+                sets.append(col + " = ?")
+                vals.append(str(d[f])[:200])
+        if 'name' in d:
+            cid, _full = _find_contact(str(d['name']))
+            if cid:
+                sets.append("contact_id = ?")
+                vals.append(cid)
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(pid)
+        db.execute("UPDATE ledger_people SET " + ", ".join(sets) + " WHERE id = ?",
+                   tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():

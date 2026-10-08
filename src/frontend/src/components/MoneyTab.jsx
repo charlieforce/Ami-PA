@@ -41,24 +41,6 @@ export default function MoneyTab() {
   const [form, setForm] = useState({});
   const [report, setReport] = useState('');
   const [sleeping, setSleeping] = useState([]);
-  const [naming, setNaming] = useState(false);
-  const [fresh, setFresh] = useState('');
-
-  // a new job, here or inside whatever he is looking at
-  const newProject = async () => {
-    if (fresh.trim().length < 2) return;
-    setBusy(true);
-    try {
-      await fetch(API + '/api/projects/create', {
-        method: 'POST', headers: H,
-        body: JSON.stringify({ name: fresh.trim(), parent_id: at || null,
-                               about: '', skip_tasks: true }),
-      });
-      setFresh(''); setNaming(false);
-      await load(at);
-    } catch (e) { setErr(String(e)); }
-    setBusy(false);
-  };
 
   const load = async (pid) => {
     setErr(''); setReport('');
@@ -136,25 +118,6 @@ export default function MoneyTab() {
 
   return (
     <div style={S.wrap}>
-      {/* a new job */}
-      {!naming ? (
-        <button style={{ ...S.btn('#2a2a35'), marginBottom: '12px', fontSize: '12px' }}
-                onClick={() => setNaming(true)}>
-          + New {at ? 'inside this' : 'project'}
-        </button>
-      ) : (
-        <div style={S.card}>
-          <input style={S.input} value={fresh} autoFocus
-                 placeholder={at ? 'Name it' : 'Name it - the chicken farm, say'}
-                 onChange={e => setFresh(e.target.value)}
-                 onKeyDown={e => { if (e.key === 'Enter') newProject(); }} />
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={S.btn('#4f46e5')} onClick={newProject} disabled={busy}>Create</button>
-            <button style={S.btn('#2a2a35')} onClick={() => setNaming(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
       {/* where we are */}
       {(data.trail || []).length > 0 && (
         <div style={{ fontSize: '12px', color: '#8b8b9e', marginBottom: '10px' }}>
