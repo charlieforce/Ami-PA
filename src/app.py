@@ -14473,22 +14473,27 @@ def _maybe_make_project(query, session_id=None):
     low = (query or '').strip().lower().rstrip('.!')
     if len(low) > 70:
         return None
-    if not _r.search(r"^(ok(ay)?,? )?(yes,? )?(can you |could you |please )?(lets?|let us|go|do|set|make|create|build|start|add|put|save|track)\\b.{0,60}$", low):
+    if not _r.search(r"^(ok(ay)?,? )?(yes,? )?(can you |could you |please )?(lets?|let us|go|do|set|make|create|build|start|add|put|save|track)\b.{0,60}$", low):
         return None
-    if not _r.search(r"\b(do it|set (it|that) up|make (it|that|the project)|create (it|that|"
-                     r"the project)|lets do it|go ahead|build it|start it|set up the project|"
-                     r"add the project|make the project)\b", low):
+    if not _r.search(r"\b(do it|set (it|that) up|make (it|that|the project)|create (it|that|the project)|lets do it|go ahead|build it|start it|set up the project|add the project|make the project|add (this|that|it|them|those|all)\b|add the (whole|entire|full)|put (this|that|them)\b|track (this|that|it)|save (this|that|it))", low):
         return None
 
     # what was she just talking about?
     rows = db.query("""SELECT user_message, ami_response FROM conversations
                        WHERE DATE(timestamp) >= date('now','-1 day')
-                       ORDER BY id DESC LIMIT 6""") or []
+                       ORDER BY id DESC LIMIT 14""") or []
     plan, idea = None, None
     for r in rows:
         resp = str(r.get('ami_response') or '')
         # a substantial reply of hers about something he raised is the plan.
         # do not insist it uses the word "phase" - she rarely does.
+        # skip her own asking-back and her refusals - they are not plans
+        if _r.search(r"which one|tell mi|a no get|a no fit|wetin yu mean", resp.lower()):
+            continue
+        # and skip the very message he is answering with
+        if _r.search(r"\\b(add|do it|set it up|track|save)\\b",
+                     str(r.get('user_message') or '').lower()) and len(resp) < 700:
+            continue
         if len(resp) > 300 and len(str(r.get('user_message') or '')) > 20:
             plan = resp
             idea = str(r.get('user_message') or '')
