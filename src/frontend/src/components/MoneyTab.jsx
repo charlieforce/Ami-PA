@@ -51,6 +51,11 @@ export default function MoneyTab() {
   const [job, setJob] = useState(null);
   const [jobAdd, setJobAdd] = useState('');
   const [jobForm, setJobForm] = useState({});
+  const [payWho, setPayWho] = useState(null);
+  const [pay, setPay] = useState({});
+  const [mats, setMats] = useState([]);
+  const [gotWhat, setGotWhat] = useState(null);
+  const [got, setGot] = useState({});
 
   const load = async () => {
     setErr('');
@@ -89,6 +94,11 @@ export default function MoneyTab() {
         const j = await r.json();
         setJob(j);
         setProjReport(j.report || '');
+        try {
+          const rm = await fetch(API + '/api/ledger/job/' + openProject + '/materials',
+                                 { headers: AUTH });
+          setMats((await rm.json()).materials || []);
+        } catch (e) { setMats([]); }
       } catch (e) { setErr(String(e)); }
     })();
   }, [openProject]);
@@ -350,6 +360,141 @@ export default function MoneyTab() {
                     </div>
                   </div>
                 </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
+                  <button style={{ ...S.btn('#10b981'), fontSize: '12px', padding: '7px 13px' }}
+                          onClick={(ev) => { ev.stopPropagation();
+                                             setPayWho(p.id); setPay({}); }}>
+                    Pay
+                  </button>
+                  <button style={{ ...S.btn('#2a2a35'), fontSize: '12px', padding: '7px 13px' }}
+                          onClick={(ev) => { ev.stopPropagation();
+                                             setOpenProject(null); setOpenId(p.id); }}>
+                    Open account
+                  </button>
+                </div>
+
+                {payWho === p.id && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px',
+                                borderTop: '1px solid #26262f' }}
+                       onClick={(ev) => ev.stopPropagation()}>
+                    <input style={S.input} type="number" autoFocus
+                           placeholder={'How much? (owing ' + n0(Math.abs(p.net)) + ')'}
+                           onChange={e => setPay({ ...pay, amount: Number(e.target.value) })} />
+                    <input style={S.input} type="date"
+                           onChange={e => setPay({ ...pay, happened_on: e.target.value })} />
+                    <select style={S.input} value={pay.how_sent || ''}
+                            onChange={e => setPay({ ...pay, how_sent: e.target.value })}>
+                      <option value="">How did it go?</option>
+                      {['cash', 'bank transfer', 'mobile money', 'PayPal', 'e-transfer',
+                        'cheque', 'other'].map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                    <input style={S.input} placeholder="Note"
+                           onChange={e => setPay({ ...pay, note: e.target.value })} />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button style={S.btn('#10b981')} disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  await fetch(API + '/api/ledger/pay', {
+                                    method: 'POST', headers: H,
+                                    body: JSON.stringify({ ...pay, person_id: p.id,
+                                                           venture_id: openProject }) });
+                                  setPayWho(null); setPay({});
+                                  const r = await fetch(API + '/api/ledger/job/' + openProject,
+                                                        { headers: AUTH });
+                                  const j = await r.json();
+                                  setJob(j); setProjReport(j.report || '');
+                                } catch (e) { setErr(String(e)); }
+                                setBusy(false);
+                              }}>Record it</button>
+                      <button style={S.btn('#2a2a35')}
+                              onClick={() => { setPayWho(null); setPay({}); }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {mats.length > 0 && (
+          <>
+            <div style={S.label}>Materials and equipment</div>
+            {mats.map(m => (
+              <div key={m.id} style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={S.name}>{m.what}</div>
+                    <div style={S.sub}>
+                      {m.quantity ? n0(m.quantity) + (m.unit ? ' ' + m.unit : '') : ''}
+                      {m.unit_price ? ' at ' + m.unit_price : ''}
+                      {m.quantity ? ' \u00b7 got ' + n0(m.got) : ''}
+                      {m.still_to_get ? ' \u00b7 ' + n0(m.still_to_get) + ' still to come' : ''}
+                    </div>
+                    {(m.moved || []).map((mv, k) => (
+                      <div key={k} style={{ fontSize: '11px', color: '#f59e0b' }}>
+                        was {n0(mv.was)}, now {n0(mv.now_is)}
+                        {mv.why ? ' \u2014 ' + mv.why : ''}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700,
+                                  color: m.done ? '#10b981' : '#e8e8f0' }}>
+                      {n0(m.amount)} {m.currency}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#777' }}>
+                      {m.done ? 'got it' : 'still to get'}
+                    </div>
+                  </div>
+                </div>
+
+                {gotWhat === m.id ? (
+                  <div style={{ marginTop: '10px', paddingTop: '10px',
+                                borderTop: '1px solid #26262f' }}>
+                    <input style={S.input} type="number"
+                           placeholder={'How many? (' + n0(m.still_to_get || m.quantity)
+                                        + ' outstanding)'}
+                           onChange={e => setGot({ ...got, quantity: Number(e.target.value) })} />
+                    <input style={S.input} type="number"
+                           placeholder={'Price each (was ' + (m.unit_price || '?') + ')'}
+                           onChange={e => setGot({ ...got,
+                                                   unit_price: Number(e.target.value) })} />
+                    <select style={S.input} value={got.how_sent || ''}
+                            onChange={e => setGot({ ...got, how_sent: e.target.value })}>
+                      <option value="">How did you pay?</option>
+                      {['cash', 'bank transfer', 'mobile money', 'PayPal', 'e-transfer',
+                        'cheque', 'other'].map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button style={S.btn('#10b981')} disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  await fetch(API + '/api/ledger/material/' + m.id + '/got', {
+                                    method: 'POST', headers: H, body: JSON.stringify(got) });
+                                  setGotWhat(null); setGot({});
+                                  const rm = await fetch(API + '/api/ledger/job/' + openProject
+                                                         + '/materials', { headers: AUTH });
+                                  setMats((await rm.json()).materials || []);
+                                } catch (e) { setErr(String(e)); }
+                                setBusy(false);
+                              }}>Got it</button>
+                      <button style={S.btn('#2a2a35')}
+                              onClick={() => { setGotWhat(null); setGot({}); }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  !m.done && (
+                    <button style={{ ...S.btn('#2a2a35'), fontSize: '12px',
+                                     padding: '7px 13px', marginTop: '9px' }}
+                            onClick={() => { setGotWhat(m.id);
+                                             setGot({ quantity: m.still_to_get || m.quantity,
+                                                      unit_price: m.unit_price }); }}>
+                      I got some
+                    </button>
+                  )
+                )}
               </div>
             ))}
           </>
@@ -383,10 +528,16 @@ export default function MoneyTab() {
           </div>
         ) : jobAdd === 'thing' ? (
           <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
-            <input style={S.input} placeholder="What is it? - fridge, cement" autoFocus
+            <input style={S.input} placeholder="What is it? - cement, fridge" autoFocus
                    onChange={e => setJobForm({ ...jobForm, what: e.target.value })} />
-            <input style={S.input} type="number" placeholder="Roughly how much?"
-                   onChange={e => setJobForm({ ...jobForm, amount: Number(e.target.value) })} />
+            <input style={S.input} type="number" placeholder="How many?"
+                   onChange={e => setJobForm({ ...jobForm,
+                                               quantity: Number(e.target.value) })} />
+            <input style={S.input} placeholder="Bags, litres, pieces"
+                   onChange={e => setJobForm({ ...jobForm, unit: e.target.value })} />
+            <input style={S.input} type="number" placeholder="Price each"
+                   onChange={e => setJobForm({ ...jobForm,
+                                               unit_price: Number(e.target.value) })} />
             <label style={{ fontSize: '13px', color: '#8b8b9e', display: 'block',
                             marginBottom: '8px' }}>
               <input type="checkbox" style={{ marginRight: '6px' }}
@@ -396,7 +547,7 @@ export default function MoneyTab() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button style={S.btn('#4f46e5')} disabled={busy}
                       onClick={async () => {
-                        await save('/api/ledger/job/' + openProject + '/thing', jobForm);
+                        await save('/api/ledger/job/' + openProject + '/material', jobForm);
                         setJobAdd(''); setJobForm({});
                         const r = await fetch(API + '/api/ledger/job/' + openProject,
                                               { headers: AUTH });
