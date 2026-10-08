@@ -1015,7 +1015,7 @@ def _evening_closeout():
                 "SELECT medication_id FROM medication_log WHERE taken_on = ?", (today,)) or [])}
             miss_m = [m['name'] for m in meds if m['id'] not in taken]
             if miss_m:
-                bits.append("Not ticked: " + ", ".join(miss_m) + ".")
+                _skip = ("" and "Not ticked: " + ", ".join(miss_m) + ".")
         except Exception:
             pass
 
@@ -1030,6 +1030,17 @@ def _evening_closeout():
                     break
             if first:
                 bits.append("Tomorrow starts with " + first[0] + " at " + first[1] + ".")
+            # what his teams are doing - he asked for this on Saturday
+            try:
+                _sp = _sport_for_briefing()
+                if _sp:
+                    # the block is written for her context - keep only its lines
+                    _sl = [x.strip('- ').strip() for x in _sp.split(chr(10))
+                           if x.strip().startswith('-')]
+                    if _sl:
+                        bits.append(' '.join(_sl[:2]))
+            except Exception:
+                pass
         except Exception:
             pass
 
