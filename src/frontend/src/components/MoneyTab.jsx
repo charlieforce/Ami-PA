@@ -57,6 +57,10 @@ export default function MoneyTab() {
   const [gotWhat, setGotWhat] = useState(null);
   const [got, setGot] = useState({});
   const [cameFrom, setCameFrom] = useState(null);
+  const [watchNotes, setWatchNotes] = useState([]);
+  const [coming, setComing] = useState(null);
+  const [hunt, setHunt] = useState('');
+  const [found, setFound] = useState(null);
 
   const load = async () => {
     setErr('');
@@ -85,6 +89,30 @@ export default function MoneyTab() {
   };
 
   useEffect(() => { load(); }, [view]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const w = await fetch(API + '/api/ledger/watch', { headers: AUTH });
+        setWatchNotes((await w.json()).notes || []);
+        const c = await fetch(API + '/api/ledger/coming', { headers: AUTH });
+        setComing(await c.json());
+      } catch (e) { /* not worth shouting about */ }
+    })();
+  }, []);
+
+  // searching across every line
+  useEffect(() => {
+    if (hunt.trim().length < 2) { setFound(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(API + '/api/ledger/search?q=' + encodeURIComponent(hunt.trim()),
+                              { headers: AUTH });
+        setFound((await r.json()).found || []);
+      } catch (e) { setFound([]); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [hunt]);
   useEffect(() => { if (openId) loadAcct(openId); }, [openId]);
   useEffect(() => {
     if (!openProject) { setProjReport(''); return; }
@@ -339,6 +367,25 @@ export default function MoneyTab() {
                           {l.status === 'done' ? 'Not finished after all' : 'Mark finished'}
                         </button>
                       )}
+                      <label style={{ ...S.btn('#2a2a35'), cursor: 'pointer' }}>
+                        {l.receipts ? l.receipts + ' receipt' + (l.receipts > 1 ? 's' : '')
+                                    : 'Add a receipt'}
+                        <input type="file" style={{ display: 'none' }}
+                               accept="image/*,.pdf"
+                               onChange={async (ev) => {
+                                 const f = ev.target.files && ev.target.files[0];
+                                 if (!f) return;
+                                 setBusy(true);
+                                 try {
+                                   const fd = new FormData();
+                                   fd.append('file', f);
+                                   await fetch(API + '/api/ledger/entry/' + l.id + '/receipt',
+                                               { method: 'POST', headers: AUTH, body: fd });
+                                   await loadAcct(openId);
+                                 } catch (e) { setErr(String(e)); }
+                                 setBusy(false);
+                               }} />
+                      </label>
                       <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
                               onClick={() => removeLine(l.id)}>Remove</button>
                     </div>
@@ -356,6 +403,7 @@ export default function MoneyTab() {
                         {l.project ? ' \u00b7 ' + l.project : ''}
                         {l.status === 'forgiven' ? ' \u00b7 written off' : ''}
                         {l.status === 'done' ? ' \u00b7 finished and settled' : ''}
+                        {l.receipts ? ' \u00b7 \uD83D\uDCCE' + l.receipts : ''}
                       </div>
                       {(l.moved || []).map((m, k) => (
                         <div key={k} style={{ fontSize: '11px', color: '#f59e0b' }}>
@@ -662,12 +710,98 @@ export default function MoneyTab() {
         <div style={{ ...S.card, borderColor: '#5f2a2a', color: '#f0a5a5', fontSize: '13px' }}
              onClick={() => setErr('')}>{err}</div>
       )}
+      {watchNotes.length > 0 && (
+        <div style={{ ...S.card, borderLeft: '3px solid #f59e0b', background: '#1f1a10' }}>
+          <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700,
+                        textTransform: 'uppercase', letterSpacing: '0.6px',
+                        marginBottom: '6px' }}>
+            Worth knowing
+          </div>
+          {watchNotes.map((w, i) => (
+            <div key={i} style={{ fontSize: '13px', color: '#d8c49a', padding: '2px 0' }}>
+              {w.says}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {coming && (coming.owed_usd > 0 || coming.stipends_a_month > 0) && (
+        <div style={S.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'baseline' }}>
+            <span style={{ fontSize: '12px', color: '#8b8b9e' }}>Owed altogether</span>
+            <span style={{ fontSize: '19px', fontWeight: 700 }}>
+              ~{n0(coming.owed_usd)} USD
+            </span>
+          </div>
+          {(coming.owed_now || []).length > 1 && (
+            <div style={{ fontSize: '12px', color: '#777', marginTop: '4px' }}>
+              {(coming.owed_now || []).map(x => n0(x.amount) + ' ' + x.currency).join('  \u00b7  ')}
+            </div>
+          )}
+          {(coming.stipends_a_month > 0 || coming.subscriptions_a_month > 0) && (
+            <div style={{ fontSize: '12px', color: '#777', marginTop: '6px' }}>
+              every month: {coming.stipends_a_month > 0
+                ? n0(coming.stipends_a_month) + ' in stipends' : ''}
+              {coming.stipends_a_month > 0 && coming.subscriptions_a_month > 0 ? ' \u00b7 ' : ''}
+              {coming.subscriptions_a_month > 0
+                ? n0(coming.subscriptions_a_month) + ' USD in subscriptions' : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      <input style={{ ...S.input, marginBottom: '12px' }} value={hunt}
+             placeholder="Find anything - a name, a note, a job"
+             onChange={e => setHunt(e.target.value)} />
+
+      {found && (
+        <div style={S.card}>
+          <div style={{ fontSize: '11px', color: '#777', textTransform: 'uppercase',
+                        letterSpacing: '0.6px', fontWeight: 700, marginBottom: '6px' }}>
+            {found.length} found
+          </div>
+          {found.map(f => (
+            <div key={f.id} style={{ ...S.line, cursor: f.person_id ? 'pointer' : 'default' }}
+                 onClick={() => { if (f.person_id) { setHunt(''); setFound(null);
+                                                     setOpenId(f.person_id); } }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '13px' }}>{f.note || f.kind}</div>
+                <div style={{ fontSize: '11px', color: '#777' }}>
+                  {String(f.on || '').slice(0, 10)}
+                  {f.person ? ' \u00b7 ' + f.person : ''}
+                  {f.job ? ' \u00b7 ' + f.job : ''}
+                  {f.how_sent ? ' \u00b7 ' + f.how_sent : ''}
+                </div>
+              </div>
+              <div style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                {n0(f.amount)} {f.currency}
+              </div>
+            </div>
+          ))}
+          {found.length === 0 && (
+            <div style={{ fontSize: '13px', color: '#777' }}>Nothing matches that.</div>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
         {[['people', 'People'], ['loans', 'Loans'], ['projects', 'Jobs']].map(([k, lbl]) => (
           <button key={k} style={S.tab(view === k)} onClick={() => setView(k)}>{lbl}</button>
         ))}
         <button style={{ ...S.tab(false), marginLeft: 'auto' }}
                 onClick={() => getReport('all')}>Everything</button>
+        <button style={S.tab(false)}
+                onClick={async () => {
+                  try {
+                    const r = await fetch(API + '/api/ledger/export.csv', { headers: AUTH });
+                    const b = await r.blob();
+                    const u = URL.createObjectURL(b);
+                    const a = document.createElement('a');
+                    a.href = u; a.download = 'money.csv'; a.click();
+                    URL.revokeObjectURL(u);
+                  } catch (e) { setErr(String(e)); }
+                }}>CSV</button>
       </div>
 
       {view === 'people' && (

@@ -18274,7 +18274,10 @@ def ledger_account(pid):
 
         came_in, went_back, gifts = [], [], []
         for r in rows:
-            line = {"id": r['id'], "kind": r['kind'], "amount": r['amount'],
+            _rc = (db.query("SELECT COUNT(*) AS n FROM ledger_receipts WHERE entry_id = ?",
+                            (r['id'],)) or [{"n": 0}])[0]['n']
+            line = {"id": r['id'], "receipts": _rc,
+                    "kind": r['kind'], "amount": r['amount'],
                     "currency": r['currency'], "usd": _in_usd(r['amount'], r['currency']),
                     "note": r.get('note') or '', "on": r.get('happened_on'),
                     "how_sent": r.get('how_sent') or '', "project": r.get('project'),
@@ -18851,6 +18854,74 @@ def ledger_export():
         return Response(buf.getvalue(), mimetype='text/csv',
                         headers={'Content-Disposition':
                                  'attachment; filename=money.csv'})
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/entry/<int:eid>/receipt")
+@require_password
+def ledger_add_receipt(eid):
+    """The photo of the transfer, or the paper from the shop."""
+    try:
+        import os as _or
+        from datetime import datetime as _dr
+        f = request.files.get('file') or request.files.get('photo')
+        if not f or not f.filename:
+            return {"error": "no file"}, 400
+        if not db.query("SELECT id FROM ledger_entries WHERE id = ?", (eid,)):
+            return {"error": "no such line"}, 404
+        _or.makedirs('data/receipts', exist_ok=True)
+        safe = (_dr.now().strftime('%Y%m%d%H%M%S') + "_"
+                + _or.path.basename(f.filename)[:50])
+        path = _or.path.join('data/receipts', safe)
+        f.save(path)
+        db.execute("""INSERT INTO ledger_receipts (entry_id, file_path, caption)
+                      VALUES (?, ?, ?)""",
+                   (eid, path, (request.form.get('caption') or '')[:140]))
+        n = (db.query("SELECT COUNT(*) AS n FROM ledger_receipts WHERE entry_id = ?",
+                      (eid,)) or [{"n": 0}])[0]['n']
+        return {"status": "success", "receipts": n}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/entry/<int:eid>/receipts")
+@require_password
+def ledger_receipts(eid):
+    try:
+        rows = db.query("""SELECT id, caption, created_at FROM ledger_receipts
+                           WHERE entry_id = ? ORDER BY id""", (eid,)) or []
+        return {"status": "success", "receipts": rows}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/receipt/<int:rid>")
+@require_password
+def ledger_receipt_file(rid):
+    try:
+        from flask import send_file
+        r = db.query("SELECT file_path FROM ledger_receipts WHERE id = ?", (rid,))
+        if not r:
+            return {"error": "no such receipt"}, 404
+        return send_file(r[0]['file_path'])
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.delete("/api/ledger/receipt/<int:rid>")
+@require_password
+def ledger_drop_receipt(rid):
+    try:
+        import os as _or
+        r = db.query("SELECT file_path FROM ledger_receipts WHERE id = ?", (rid,))
+        if r:
+            try:
+                _or.remove(r[0]['file_path'])
+            except Exception:
+                pass
+        db.execute("DELETE FROM ledger_receipts WHERE id = ?", (rid,))
+        return {"status": "success"}
     except Exception as e:
         return {"error": str(e)}, 400
 
