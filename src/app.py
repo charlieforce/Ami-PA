@@ -17340,6 +17340,333 @@ def fitness_plans_list():
         return {"error": str(e)}, 400
 
 
+def _ledger_balance(person_id, currency=None):
+    """What stands between him and this person. Positive means they owe him."""
+    rows = db.query("""SELECT kind, who_owes, amount, currency, status
+                       FROM ledger_entries WHERE person_id = ?""", (person_id,)) or []
+    by_cur = {}
+    for r in rows:
+        if str(r.get('status')) == 'forgiven':
+            continue
+        cur = (r.get('currency') or 'USD').upper()[:4]
+        amt = float(r.get('amount') or 0)
+        k = str(r.get('kind') or '')
+        side = str(r.get('who_owes') or 'them')
+        b = by_cur.setdefault(cur, {"they_owe": 0.0, "he_owes": 0.0})
+        if side == 'me':
+            # money he took, or something they bought for him
+            if k in ('borrowed', 'bought', 'agreed'):
+                b['he_owes'] += amt
+            elif k in ('repaid', 'paid'):
+                b['he_owes'] -= amt
+        else:
+            # work they agreed to do, or money he lent them
+            if k in ('agreed', 'lent'):
+                b['they_owe'] += amt
+            elif k in ('paid', 'repaid'):
+                b['they_owe'] -= amt
+            elif k == 'bought':
+                b['he_owes'] += amt
+    out = {}
+    for cur, b in by_cur.items():
+        net = round(b['they_owe'] - b['he_owes'], 2)
+        out[cur] = {"they_owe": round(b['they_owe'], 2),
+                    "he_owes": round(b['he_owes'], 2),
+                    "net": net,
+                    "usd": _in_usd(abs(net), cur)}
+    return out
+
+
+@app.get("/api/ledger/people")
+@require_password
+def ledger_people():
+    """Everyone he has money with, and where each stands."""
+    try:
+        rows = db.query("""SELECT id, name, what_they_do FROM ledger_people
+                           WHERE COALESCE(active,1) = 1 ORDER BY name""") or []
+        out = []
+        for r in rows:
+            bal = _ledger_balance(r['id'])
+            if not bal:
+                out.append({"id": r['id'], "name": r['name'],
+                            "what_they_do": r.get('what_they_do') or '',
+                            "balances": {}, "quiet": True})
+                continue
+            out.append({"id": r['id'], "name": r['name'],
+                        "what_they_do": r.get('what_they_do') or '',
+                        "balances": bal, "quiet": False})
+        return {"status": "success", "people": out}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/person")
+@require_password
+def ledger_add_person():
+    try:
+        d = request.get_json() or {}
+        name = (d.get('name') or '').strip()[:60]
+        if len(name) < 2:
+            return {"error": "they need a name"}, 400
+        if db.query("SELECT id FROM ledger_people WHERE LOWER(name) = LOWER(?)", (name,)):
+            return {"error": "you already have someone by that name"}, 400
+        cid, full = _find_contact(name)
+        db.execute("""INSERT INTO ledger_people (name, what_they_do, phone, contact_id, notes)
+                      VALUES (?,?,?,?,?)""",
+                   (full or name, (d.get('what_they_do') or '')[:40],
+                    (d.get('phone') or '')[:30], cid, (d.get('notes') or '')[:200]))
+        r = db.query("SELECT id FROM ledger_people ORDER BY id DESC LIMIT 1")
+        return {"status": "success", "id": (r[0]['id'] if r else None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/entry")
+@require_password
+def ledger_add_entry():
+    """One line of money. Everything is one of these."""
+    try:
+        from datetime import datetime as _dl
+        d = request.get_json() or {}
+        pid = d.get('person_id')
+        kind = (d.get('kind') or '').strip().lower()
+        amount = float(d.get('amount') or 0)
+        if not pid or kind not in ('agreed', 'paid', 'bought', 'lent', 'borrowed',
+                                   'repaid', 'forgiven'):
+            return {"error": "who, and what kind of line"}, 400
+        if amount <= 0 and kind != 'forgiven':
+            return {"error": "how much?"}, 400
+        side = d.get('who_owes')
+        if not side:
+            side = 'me' if kind in ('borrowed', 'bought') else 'them'
+        db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind, who_owes,
+                      amount, currency, note, happened_on, interest_rate,
+                      repay_amount, repay_every)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   (int(pid), d.get('venture_id'), kind, side, amount,
+                    (d.get('currency') or 'USD').upper()[:4], (d.get('note') or '')[:200],
+                    d.get('happened_on') or _dl.now().strftime('%Y-%m-%d'),
+                    d.get('interest_rate'), d.get('repay_amount'),
+                    (d.get('repay_every') or None)))
+        r = db.query("SELECT id FROM ledger_entries ORDER BY id DESC LIMIT 1")
+        if not r:
+            return {"error": "it did not save"}, 400
+        return {"status": "success", "id": r[0]['id'],
+                "balance": _ledger_balance(int(pid))}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/ledger/entry/<int:eid>")
+@require_password
+def ledger_change_entry(eid):
+    """An agreed figure moved. Keep the first number - it is the useful one."""
+    try:
+        d = request.get_json() or {}
+        r = db.query("SELECT amount, kind, person_id FROM ledger_entries WHERE id = ?", (eid,))
+        if not r:
+            return {"error": "no such line"}, 404
+        was = float(r[0]['amount'] or 0)
+        if 'amount' in d:
+            new = float(d.get('amount') or 0)
+            if new > 0 and abs(new - was) > 0.004:
+                db.execute("""INSERT INTO ledger_changes (entry_id, was, now_is, why)
+                              VALUES (?,?,?,?)""", (eid, was, new, (d.get('why') or '')[:160]))
+                db.execute("UPDATE ledger_entries SET amount = ? WHERE id = ?", (new, eid))
+        for f, col in (('note', 'note'), ('happened_on', 'happened_on'),
+                       ('venture_id', 'venture_id'), ('repay_amount', 'repay_amount'),
+                       ('repay_every', 'repay_every'), ('interest_rate', 'interest_rate')):
+            if f in d:
+                db.execute("UPDATE ledger_entries SET " + col + " = ? WHERE id = ?",
+                           (d[f], eid))
+        return {"status": "success", "balance": _ledger_balance(r[0]['person_id'])}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/entry/<int:eid>/forgive")
+@require_password
+def ledger_forgive(eid):
+    """He told them not to worry about it. Recorded, never deleted - the
+    reporting has to stay honest."""
+    try:
+        d = request.get_json() or {}
+        why = (d.get('why') or '').strip()[:200]
+        r = db.query("SELECT person_id, amount FROM ledger_entries WHERE id = ?", (eid,))
+        if not r:
+            return {"error": "no such line"}, 404
+        db.execute("UPDATE ledger_entries SET status = 'forgiven', note = "
+                   "COALESCE(note,'') || ' [written off: ' || ? || ']' WHERE id = ?",
+                   (why or 'no reason given', eid))
+        back = db.query("SELECT status FROM ledger_entries WHERE id = ?", (eid,))
+        if not back or str(back[0]['status']) != 'forgiven':
+            return {"error": "it did not save"}, 400
+        return {"status": "success", "balance": _ledger_balance(r[0]['person_id'])}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/person/<int:pid>")
+@require_password
+def ledger_person(pid):
+    """One account, itemised, newest last so it reads like a statement."""
+    try:
+        p = db.query("SELECT * FROM ledger_people WHERE id = ?", (pid,))
+        if not p:
+            return {"error": "no such person"}, 404
+        _lim = min(int(request.args.get('limit') or 60), 200)
+        rows = db.query("""SELECT e.*, v.name AS project FROM ledger_entries e
+                           LEFT JOIN ventures v ON v.id = e.venture_id
+                           WHERE e.person_id = ?
+                           ORDER BY e.happened_on DESC, e.id DESC LIMIT ?""",
+                        (pid, _lim)) or []
+        older = (db.query("SELECT COUNT(*) AS n FROM ledger_entries WHERE person_id = ?",
+                          (pid,)) or [{"n": 0}])[0]['n'] - len(rows)
+        lines = []
+        for r in rows:
+            lines.append({
+                "id": r['id'], "kind": r['kind'], "who_owes": r['who_owes'],
+                "amount": r['amount'], "currency": r['currency'],
+                "usd": _in_usd(r['amount'], r['currency']),
+                "note": r.get('note') or '', "on": r.get('happened_on'),
+                "project": r.get('project'), "status": r.get('status'),
+                "moved": (db.query("""SELECT was, now_is, why FROM ledger_changes
+                                      WHERE entry_id = ? ORDER BY id""", (r['id'],)) or []),
+            })
+        return {"status": "success",
+                "person": {"id": p[0]['id'], "name": p[0]['name'],
+                           "what_they_do": p[0].get('what_they_do') or '',
+                           "phone": p[0].get('phone') or ''},
+                "balances": _ledger_balance(pid),
+                "lines": lines,
+                "older_not_shown": max(0, older)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/overview")
+@require_password
+def ledger_overview():
+    """Who owes him, who he owes, across everything."""
+    try:
+        people = db.query("""SELECT id, name, what_they_do FROM ledger_people
+                             WHERE COALESCE(active,1) = 1""") or []
+        owed_to_him, he_owes = [], []
+        for p in people:
+            for cur, b in (_ledger_balance(p['id']) or {}).items():
+                if abs(b['net']) < 0.01:
+                    continue
+                row = {"id": p['id'], "name": p['name'],
+                       "what_they_do": p.get('what_they_do') or '',
+                       "amount": abs(b['net']), "currency": cur,
+                       "usd": b['usd']}
+                (owed_to_him if b['net'] > 0 else he_owes).append(row)
+        owed_to_him.sort(key=lambda x: -(x['usd'] or x['amount']))
+        he_owes.sort(key=lambda x: -(x['usd'] or x['amount']))
+        return {"status": "success",
+                "they_owe_him": owed_to_him,
+                "he_owes": he_owes,
+                "totals_usd": {
+                    "they_owe": round(sum(x['usd'] or 0 for x in owed_to_him), 2),
+                    "he_owes": round(sum(x['usd'] or 0 for x in he_owes), 2)}}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/loans")
+@require_password
+def ledger_loans():
+    """Only the lending, both ways, with what is left and when it clears."""
+    try:
+        from datetime import datetime as _dn
+        rows = db.query("""SELECT e.*, p.name FROM ledger_entries e
+                           JOIN ledger_people p ON p.id = e.person_id
+                           WHERE e.kind IN ('lent','borrowed')
+                           ORDER BY e.happened_on DESC""") or []
+        out = []
+        # repayments clear the oldest loan first, and only once
+        _pot = {}
+        for r in sorted(rows, key=lambda x: str(x.get('happened_on') or '')):
+            _k = (r['person_id'], (r['currency'] or 'USD'))
+            if _k not in _pot:
+                _pot[_k] = float((db.query(
+                    """SELECT COALESCE(SUM(amount),0) AS s FROM ledger_entries
+                       WHERE person_id = ? AND kind = 'repaid'
+                         AND COALESCE(currency,'USD') = ?""",
+                    (r['person_id'], r['currency'] or 'USD')) or [{"s": 0}])[0]['s'] or 0)
+            principal = float(r['amount'] or 0)
+            back = min(_pot[_k], principal)
+            _pot[_k] -= back
+            left = round(principal - back, 2)
+            per = float(r.get('repay_amount') or 0)
+            months = (int(left / per) + (1 if left % per else 0)) if per > 0 and left > 0 else None
+            out.append({
+                "id": r['id'], "who": r['name'],
+                "direction": ("he lent" if r['kind'] == 'lent' else "he borrowed"),
+                "principal": principal, "repaid": round(float(back), 2),
+                "left": max(0, left), "currency": r['currency'],
+                "usd_left": _in_usd(max(0, left), r['currency']),
+                "note": r.get('note') or '', "since": r.get('happened_on'),
+                "repay_amount": r.get('repay_amount'),
+                "repay_every": r.get('repay_every'),
+                "months_to_clear": months,
+                "interest_rate": r.get('interest_rate'),
+                "status": r.get('status')})
+        return {"status": "success", "loans": out}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/project/<int:vid>")
+@require_password
+def ledger_project(vid):
+    """What this job has cost, who is on it, and where estimates moved."""
+    try:
+        ids = _all_under(vid)
+        inlist = ",".join(str(i) for i in ids)
+        v = db.query("SELECT name FROM ventures WHERE id = ?", (vid,))
+        rows = db.query("""SELECT e.*, p.name FROM ledger_entries e
+                           LEFT JOIN ledger_people p ON p.id = e.person_id
+                           WHERE e.venture_id IN (""" + inlist + """)
+                           ORDER BY e.happened_on""") or []
+        folk, agreed, paid, bought = {}, 0.0, 0.0, 0.0
+        cur = 'USD'
+        for r in rows:
+            cur = r.get('currency') or cur
+            amt = float(r.get('amount') or 0)
+            who = r.get('name') or 'materials'
+            f = folk.setdefault(who, {"agreed": 0.0, "paid": 0.0, "bought": 0.0})
+            if str(r.get('status')) == 'forgiven':
+                continue
+            if r['kind'] == 'agreed':
+                f['agreed'] += amt; agreed += amt
+            elif r['kind'] == 'paid':
+                f['paid'] += amt; paid += amt
+            elif r['kind'] == 'bought':
+                f['bought'] += amt; bought += amt
+        moved = db.query("""SELECT c.was, c.now_is, c.why, e.note, p.name
+                            FROM ledger_changes c
+                            JOIN ledger_entries e ON e.id = c.entry_id
+                            LEFT JOIN ledger_people p ON p.id = e.person_id
+                            WHERE e.venture_id IN (""" + inlist + """)
+                            ORDER BY c.id DESC LIMIT 12""") or []
+        return {"status": "success",
+                "project": (v[0]['name'] if v else ''),
+                "currency": cur,
+                "people": [{"name": k, "agreed": round(x['agreed'], 2),
+                            "paid": round(x['paid'], 2), "bought": round(x['bought'], 2),
+                            "owed": round(x['agreed'] - x['paid'], 2)}
+                           for k, x in sorted(folk.items())],
+                "totals": {"agreed": round(agreed, 2), "paid": round(paid, 2),
+                           "bought": round(bought, 2),
+                           "spent": round(paid + bought, 2),
+                           "owed": round(agreed - paid, 2),
+                           "usd_spent": _in_usd(paid + bought, cur)},
+                "moved": moved}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
