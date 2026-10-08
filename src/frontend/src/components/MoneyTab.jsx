@@ -192,23 +192,42 @@ export default function MoneyTab() {
           </div>
         )))}
 
-        {adding !== 'entry' ? (
-          <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
-            <button style={{ ...S.btn('#10b981'), flex: 1 }}
-                    onClick={() => { setAdding('entry');
-                                     setForm({ kind: 'paid', currency: (bal[0] || ['USD'])[0] }); }}>
-              + Add a line
+        {/* two buttons, two jobs */}
+        {!adding && (
+          <div style={{ display: 'flex', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+            <button style={{ ...S.btn('#f59e0b'), flex: 1 }}
+                    onClick={() => { setAdding('item');
+                                     setForm({ kind: 'borrowed',
+                                               currency: (bal[0] || ['USD'])[0] }); }}>
+              + Something came in
             </button>
-            <button style={S.btn('#2a2a35')} onClick={() => getReport('person', openId)}>Report</button>
-            <button style={S.btn('#2a2a35')}
+            <button style={{ ...S.btn('#10b981'), flex: 1 }}
+                    onClick={() => { setAdding('payment');
+                                     setForm({ kind: 'repaid',
+                                               currency: (bal[0] || ['USD'])[0] }); }}>
+              + I sent money
+            </button>
+          </div>
+        )}
+        {!adding && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px' }}
+                    onClick={() => getReport('person', openId)}>Report</button>
+            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px' }}
                     onClick={() => getPdf('person', openId, acct.person.name)}>PDF</button>
           </div>
-        ) : (
-          <div style={{ ...S.card, marginTop: '12px', borderColor: '#3a3a5a' }}>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-              {[['paid', 'I paid them'], ['repaid', 'They paid me'], ['agreed', 'We agreed'],
-                ['lent', 'I lent them'], ['borrowed', 'I borrowed'],
-                ['bought', 'They bought'], ['gift', 'A gift']].map(([k, lbl]) => (
+        )}
+
+        {adding === 'item' && (
+          <div style={{ ...S.card, borderColor: '#4a3a1a' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>
+              What came in
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap',
+                          marginBottom: '10px' }}>
+              {[['borrowed', 'A loan'], ['bought', 'They bought something'],
+                ['agreed', 'We agreed work'], ['lent', 'I lent them'],
+                ['gift', 'A gift']].map(([k, lbl]) => (
                 <button key={k} style={S.tab(form.kind === k)}
                         onClick={() => setForm({ ...form, kind: k })}>{lbl}</button>
               ))}
@@ -216,23 +235,50 @@ export default function MoneyTab() {
             <input style={S.input} type="number" placeholder="How much?" autoFocus
                    onChange={e => setForm({ ...form, amount: Number(e.target.value) })} />
             <input style={S.input} placeholder="Currency" value={form.currency || ''}
-                   onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} />
+                   onChange={e => setForm({ ...form,
+                                            currency: e.target.value.toUpperCase() })} />
             <input style={S.input} placeholder="What was it for?"
                    onChange={e => setForm({ ...form, note: e.target.value })} />
             <input style={S.input} type="date"
                    onChange={e => setForm({ ...form, happened_on: e.target.value })} />
-            {['paid', 'repaid'].includes(form.kind) && (
-              <select style={S.input} value={form.how_sent || ''}
-                      onChange={e => setForm({ ...form, how_sent: e.target.value })}>
-                <option value="">How did it go?</option>
-                {(acct.ways || []).map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={S.btn('#f59e0b')} disabled={busy}
+                      onClick={() => save('/api/ledger/entry',
+                                          { ...form, person_id: openId })}>Save</button>
+              <button style={S.btn('#2a2a35')}
+                      onClick={() => { setAdding(''); setForm({}); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {adding === 'payment' && (
+          <div style={{ ...S.card, borderColor: '#1f3a2a' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>
+              What you sent
+            </div>
+            <input style={S.input} type="number" autoFocus
+                   placeholder={bal[0] ? 'How much? (owing '
+                                 + n0(Math.abs(bal[0][1].net)) + ')' : 'How much?'}
+                   onChange={e => setForm({ ...form, amount: Number(e.target.value) })} />
+            <input style={S.input} placeholder="Currency" value={form.currency || ''}
+                   onChange={e => setForm({ ...form,
+                                            currency: e.target.value.toUpperCase() })} />
+            <input style={S.input} type="date"
+                   onChange={e => setForm({ ...form, happened_on: e.target.value })} />
+            <select style={S.input} value={form.how_sent || ''}
+                    onChange={e => setForm({ ...form, how_sent: e.target.value })}>
+              <option value="">How did you send it?</option>
+              {(acct.ways || ['cash', 'bank transfer', 'mobile money', 'PayPal',
+                              'e-transfer', 'cheque', 'other']).map(w => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+            <input style={S.input} placeholder="Note"
+                   onChange={e => setForm({ ...form, note: e.target.value })} />
             <div style={{ display: 'flex', gap: '8px' }}>
               <button style={S.btn('#10b981')} disabled={busy}
-                      onClick={() => save('/api/ledger/entry', { ...form, person_id: openId })}>
-                Save
-              </button>
+                      onClick={() => save('/api/ledger/pay',
+                                          { ...form, person_id: openId })}>Record it</button>
               <button style={S.btn('#2a2a35')}
                       onClick={() => { setAdding(''); setForm({}); }}>Cancel</button>
             </div>
