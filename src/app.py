@@ -18465,12 +18465,15 @@ def ledger_quick_pay():
             cur = ((r[0]['currency'] if r else None) or
                    (_job_currency(vid) if vid else 'USD')).upper()[:4]
         bal = _ledger_balance(int(pid))
+        # if he owes them, money going out is him repaying - not them being paid
         owes_him = any(b['net'] > 0 for b in bal.values())
-        kind = 'paid' if owes_him else 'repaid'
+        he_owes_them = any(b['net'] < 0 for b in bal.values())
+        kind = 'repaid' if he_owes_them else ('paid' if owes_him else 'paid')
         db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind, who_owes,
                       amount, currency, note, happened_on, how_sent)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                   (int(pid), vid, kind, ('them' if owes_him else 'me'), amount, cur,
+                   (int(pid), vid, kind, ('me' if he_owes_them else 'them'),
+                    amount, cur,
                     (d.get('note') or '')[:200],
                     d.get('happened_on') or _dp.now().strftime('%Y-%m-%d'),
                     (d.get('how_sent') or '')[:30]))
