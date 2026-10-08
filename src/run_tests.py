@@ -404,9 +404,11 @@ def test_jobs_actually_run(app):
         scheduled.add(m.group(1))
     for m in re.finditer(r"id='(\w+)'", src):
         scheduled.add(m.group(1))
+    # a helper another job calls is not an orphan - only one nothing calls
     orphans = sorted(d for d in defined
-                     if d not in scheduled
-                     and not any(d in s or s in d for s in scheduled))
+                     if d not in wired
+                     and not any(d in w or w in d for w in wired)
+                     and len(re.findall(d + r'\(', src)) < 2)
     if orphans:
         return (False, "defined but never scheduled: " + ", ".join(orphans[:4]))
     return (True, str(len(defined)) + " jobs, all wired to the scheduler")
@@ -535,10 +537,14 @@ def check_actually_does_something():
 
     # --- a job that is never scheduled will never run ----------------------
     defined = set(re.findall(r'^def (\w+_(?:nudge|nudges|briefing|notifications|closeout|warnings|reminders))\(', src, re.M))
+    # a flask endpoint is called by its route, not by name - not an orphan
+    endpoints = set(re.findall(r'@(?:app\.route|app\.(?:get|post|put|delete))[^\n]*\n(?:@[^\n]*\n)*def (\w+)', src))
+    defined -= endpoints
     wired = set(re.findall(r"add_job\((?:lambda:\s*)?(\w+)", src))
     wired |= set(re.findall(r"id='(\w+)'", src))
     orphans = sorted(d for d in defined
-                     if d not in wired and not any(d in w or w in d for w in wired))
+                     if d not in wired and not any(d in w or w in d for w in wired)
+                     and len(re.findall(d + r'\(', src)) < 2)
     if orphans:
         bad("every scheduled job runs", "never scheduled: " + ", ".join(orphans[:4]))
     else:

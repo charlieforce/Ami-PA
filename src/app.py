@@ -251,20 +251,6 @@ def get_user_timezone():
     conn.close()
     return tz or 'Africa/Nairobi'
 
-def generate_and_store_briefing(briefing_type):
-    '''Generate briefing and store in database'''
-    briefing_text = generate_morning_briefing_text()
-    conn = sqlite3.connect(AMI_DB)
-    c = conn.cursor()
-    now = datetime.now()
-    today = now.strftime('%Y-%m-%d')
-    
-    c.execute('INSERT INTO briefings (type, content, generated_at, date) VALUES (?, ?, ?, ?)',
-              (briefing_type, briefing_text, now.isoformat(), today))
-    conn.commit()
-    conn.close()
-    print(f"✅ {briefing_type.upper()} briefing generated and stored at {now}")
-
 def _alert_once(key, message, detail=""):
     """Send Ami an alert at most once per key per day"""
     today = datetime.now().strftime('%Y-%m-%d')
@@ -1142,6 +1128,9 @@ try:
                               id='fixtures_refresh', replace_existing=True)
             scheduler.add_job(lambda: meeting_notifications(), 'interval', minutes=2,
                               id='meeting_push', replace_existing=True)
+            scheduler.add_job(lambda: process_recurring_reminders(), 'cron',
+                              hour=1, minute=10, id='recurring',
+                              replace_existing=True)
             scheduler.add_job(lambda: check_snoozed_reminders(), 'interval',
                               minutes=15, id='snoozed', replace_existing=True)
             scheduler.add_job(lambda: kickoff_nudge(), 'interval', minutes=5,
