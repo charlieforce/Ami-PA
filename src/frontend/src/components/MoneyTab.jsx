@@ -117,6 +117,17 @@ export default function MoneyTab() {
     setBusy(false);
   };
 
+  const markDone = async (eid, undo) => {
+    setBusy(true);
+    try {
+      await fetch(API + '/api/ledger/entry/' + eid + '/done', {
+        method: 'POST', headers: H, body: JSON.stringify(undo ? { undo: '1' } : {}) });
+      setEditing(null);
+      if (openId) await loadAcct(openId);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
   const removeLine = async (eid) => {
     if (!window.confirm('Take this line off for good?')) return;
     setBusy(true);
@@ -276,6 +287,12 @@ export default function MoneyTab() {
                       </button>
                       <button style={S.btn('#2a2a35')}
                               onClick={() => { setEditing(null); setEdit({}); }}>Cancel</button>
+                      {l.kind === 'agreed' && (
+                        <button style={S.btn(l.status === 'done' ? '#2a2a35' : '#1f3a2a')}
+                                onClick={() => markDone(l.id, l.status === 'done')}>
+                          {l.status === 'done' ? 'Not finished after all' : 'Mark finished'}
+                        </button>
+                      )}
                       <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
                               onClick={() => removeLine(l.id)}>Remove</button>
                     </div>
@@ -292,6 +309,7 @@ export default function MoneyTab() {
                         {l.how_sent ? ' \u00b7 ' + l.how_sent : ''}
                         {l.project ? ' \u00b7 ' + l.project : ''}
                         {l.status === 'forgiven' ? ' \u00b7 written off' : ''}
+                        {l.status === 'done' ? ' \u00b7 finished and settled' : ''}
                       </div>
                       {(l.moved || []).map((m, k) => (
                         <div key={k} style={{ fontSize: '11px', color: '#f59e0b' }}>
@@ -303,6 +321,7 @@ export default function MoneyTab() {
                       <div style={{ fontSize: '14px',
                                     color: side === 'went_back' ? '#10b981'
                                          : side === 'gifts' ? '#a78bfa' : '#e8e8f0',
+                                    opacity: l.status === 'done' ? 0.55 : 1,
                                     textDecoration: l.status === 'forgiven'
                                       ? 'line-through' : 'none' }}>
                         {side === 'went_back' ? '\u2212' : ''}{n0(l.amount)} {l.currency}

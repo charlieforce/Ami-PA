@@ -17577,8 +17577,9 @@ def _ledger_balance(person_id, currency=None):
                        FROM ledger_entries WHERE person_id = ?""", (person_id,)) or []
     by_cur = {}
     for r in rows:
-        # a gift is not a debt - it shows in the report, not in the balance
-        if str(r.get('status')) == 'forgiven' or str(r.get('kind')) == 'gift':
+        # a gift is not a debt, and finished work is settled
+        if (str(r.get('status')) in ('forgiven', 'done')
+                or str(r.get('kind')) == 'gift'):
             continue
         cur = (r.get('currency') or 'USD').upper()[:4]
         amt = float(r.get('amount') or 0)
@@ -18600,6 +18601,32 @@ def ledger_job_materials(vid):
                                       WHERE entry_id = ? ORDER BY id""", (r['id'],)) or []),
             })
         return {"status": "success", "materials": out}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/entry/<int:eid>/done")
+@require_password
+def ledger_mark_done(eid):
+    """The work is finished and settled. It leaves the active view but stays
+    in the history - "what did the painter cost us" must still answer in
+    three years."""
+    try:
+        d = request.get_json() or {}
+        r = db.query("SELECT person_id, note, status FROM ledger_entries WHERE id = ?", (eid,))
+        if not r:
+            return {"error": "no such line"}, 404
+        back_on = str(d.get('undo') or '') == '1'
+        db.execute("UPDATE ledger_entries SET status = ? WHERE id = ?",
+                   ('open' if back_on else 'done', eid))
+        if d.get('why'):
+            db.execute("UPDATE ledger_entries SET note = COALESCE(note,'') || ' [' || ? || ']' "
+                       "WHERE id = ?", (str(d['why'])[:120], eid))
+        now = db.query("SELECT status FROM ledger_entries WHERE id = ?", (eid,))
+        if not now or str(now[0]['status']) != ('open' if back_on else 'done'):
+            return {"error": "it did not save"}, 400
+        return {"status": "success", "balance": _ledger_balance(r[0]['person_id'])
+                if r[0]['person_id'] else {}}
     except Exception as e:
         return {"error": str(e)}, 400
 
