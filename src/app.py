@@ -5058,6 +5058,20 @@ FIRST MESSAGE OF THE SESSION:
         pass
 
     # What he is learning, and when
+    # where he has actually been - he asks, and she had nothing to say
+    try:
+        _been = db.query("""SELECT travel_date, location FROM timezone_schedule
+                            WHERE travel_date <= date('now')
+                              AND travel_date >= date('now','-18 months')
+                            ORDER BY travel_date DESC LIMIT 14""") or []
+        if _been:
+            context += ("\n\nWHERE HE HAS BEEN (most recent first; these are the "
+                        "only trips you know of - never invent one): "
+                        + "; ".join(str(r['location']) + " from "
+                                    + str(r['travel_date']) for r in _been))
+    except Exception:
+        pass
+
     try:
         _crs = db.query("SELECT title, days FROM course_schedule") or []
         if _crs:
@@ -18910,13 +18924,10 @@ def set_timezone():
 @app.get("/api/timezone/schedule")
 @require_password
 def get_timezone_schedule():
-    """Get all upcoming timezone changes - auto-deletes expired entries"""
+    """Every trip, past and coming. Nothing is deleted - where he has been is
+    the record, and she needs it when he asks."""
     try:
-        # Delete entries older than 7 days
-        db.execute("""
-            DELETE FROM timezone_schedule
-            WHERE DATE(travel_date) <= DATE('now', '-7 days')
-        """)
+        pass
         
         # Get remaining schedule
         schedule = db.query("""
