@@ -715,9 +715,11 @@ export default function MoneyTab() {
                   <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: '15px', fontWeight: 700,
                                   color: j.owed > 0 ? '#f59e0b' : '#10b981' }}>
-                      {n0(j.owed)}
+                      {n0(j.owed > 0 ? j.owed : j.spent)}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#777' }}>still owed</div>
+                    <div style={{ fontSize: '11px', color: '#777' }}>
+                      {j.owed > 0 ? 'still owed' : 'spent'}
+                    </div>
                   </div>
                 </div>
               </div>
