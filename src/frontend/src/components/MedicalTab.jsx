@@ -459,32 +459,24 @@ export default function MedicalTab() {
             </div>
           )}
 
-          {doses.length > 0 && !adding && (
+          {/* he takes them himself - this is just what he is on */}
+          {meds.length > 0 && !adding && (
             <div style={S.card}>
-              <div style={{ ...S.label, marginTop: 0 }}>Today</div>
-              {doses.map((d, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px',
-                                      padding: '8px 0', borderBottom: i === doses.length - 1 ? 'none' : '1px solid #222' }}>
-                  <button
-                    onClick={async () => {
-                      await fetch(API + '/api/medical/taken', {
-                        method: 'POST', headers: H,
-                        body: JSON.stringify({ medication_id: d.medication_id, slot: d.slot, undo: d.taken })
-                      });
-                      load();
-                    }}
-                    style={{ width: '24px', height: '24px', minWidth: '24px', borderRadius: '50%',
-                             border: '2px solid ' + (d.taken ? '#10b981' : '#555'),
-                             background: 'none', color: '#10b981', cursor: 'pointer',
-                             fontSize: '13px', lineHeight: 1, padding: 0 }}>
-                    {d.taken ? '✓' : ''}
-                  </button>
-                  <span style={{ flex: 1, fontSize: '14px',
-                                 color: d.taken ? '#777' : '#eee',
-                                 textDecoration: d.taken ? 'line-through' : 'none' }}>
-                    {d.name}{d.dose ? ' ' + d.dose : ''}
+              <div style={{ ...S.label, marginTop: 0 }}>What you are on</div>
+              {meds.map((m, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between',
+                                      padding: '9px 0',
+                                      borderBottom: i === meds.length - 1
+                                        ? 'none' : '1px solid #1f1f28' }}>
+                  <span style={{ fontSize: '14px' }}>
+                    {m.name}{m.dose ? ' ' + m.dose : ''}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#888' }}>{d.slot}</span>
+                  <span style={{ fontSize: '12px', color: '#8b8b9e' }}>
+                    {m.schedule_kind === 'interval' && m.every_days
+                      ? 'every ' + m.every_days + ' days'
+                      : (m.frequency || 'daily')}
+                    {m.timing ? ' \u00b7 ' + m.timing : ''}
+                  </span>
                 </div>
               ))}
             </div>

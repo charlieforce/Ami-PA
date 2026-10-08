@@ -299,12 +299,18 @@ export default function MedicalOverview({ meds, readings, sugars, water, exSumma
         </div>
       </div>
 
-      {notTaken.length > 0 && (
-        <div style={{ ...S.card, borderLeft: '4px solid #f59e0b' }}>
-          <div style={{ ...S.head, marginBottom: '6px' }}>Not taken yet today</div>
-          {notTaken.map((d, i) => (
+      {/* what he is on - he takes them himself, she reminds him */}
+      {(meds || []).length > 0 && (
+        <div style={S.card}>
+          <div style={{ ...S.head, marginBottom: '6px' }}>What you are on</div>
+          {(meds || []).map((m, i) => (
             <div key={i} style={{ fontSize: '13px', padding: '3px 0' }}>
-              {d.name}{d.dose ? ' ' + d.dose : ''} <span style={{ color: '#888' }}>· {d.slot}</span>
+              {m.name}{m.dose ? ' ' + m.dose : ''}
+              <span style={{ color: '#888' }}>
+                {' \u00b7 '}{m.schedule_kind === 'interval' && m.every_days
+                  ? 'every ' + m.every_days + ' days'
+                  : (m.frequency || 'daily')}
+              </span>
             </div>
           ))}
         </div>
