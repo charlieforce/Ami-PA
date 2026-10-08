@@ -17680,6 +17680,11 @@ def ledger_add_entry():
                     d.get('happened_on') or _dl.now().strftime('%Y-%m-%d'),
                     d.get('interest_rate'), d.get('repay_amount'),
                     (d.get('repay_every') or None)))
+        if d.get('how_sent'):
+            _last = db.query("SELECT id FROM ledger_entries ORDER BY id DESC LIMIT 1")
+            if _last:
+                db.execute("UPDATE ledger_entries SET how_sent = ? WHERE id = ?",
+                           (str(d['how_sent'])[:30], _last[0]['id']))
         r = db.query("SELECT id FROM ledger_entries ORDER BY id DESC LIMIT 1")
         if not r:
             return {"error": "it did not save"}, 400
@@ -17707,7 +17712,8 @@ def ledger_change_entry(eid):
                 db.execute("UPDATE ledger_entries SET amount = ? WHERE id = ?", (new, eid))
         for f, col in (('note', 'note'), ('happened_on', 'happened_on'),
                        ('venture_id', 'venture_id'), ('repay_amount', 'repay_amount'),
-                       ('repay_every', 'repay_every'), ('interest_rate', 'interest_rate')):
+                       ('repay_every', 'repay_every'), ('interest_rate', 'interest_rate'),
+                       ('how_sent', 'how_sent')):
             if f in d:
                 db.execute("UPDATE ledger_entries SET " + col + " = ? WHERE id = ?",
                            (d[f], eid))
@@ -18230,6 +18236,103 @@ def ledger_edit_person(pid):
         db.execute("UPDATE ledger_people SET " + ", ".join(sets) + " WHERE id = ?",
                    tuple(vals))
         return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+HOW_SENT = ['cash', 'bank transfer', 'mobile money', 'PayPal', 'e-transfer',
+            'cheque', 'other']
+
+
+@app.get("/api/ledger/how-sent")
+@require_password
+def ledger_how_sent():
+    return {"status": "success", "ways": HOW_SENT}
+
+
+@app.get("/api/ledger/account/<int:pid>")
+@require_password
+def ledger_account(pid):
+    """Two hands: what came in, what went back, and the difference.
+
+    Gifts show on the incoming side so he can see them, but they never
+    count toward what he owes.
+    """
+    try:
+        p = db.query("SELECT * FROM ledger_people WHERE id = ?", (pid,))
+        if not p:
+            return {"error": "no such person"}, 404
+        _lim = min(int(request.args.get('limit') or 40), 200)
+        rows = db.query("""SELECT e.*, v.name AS project FROM ledger_entries e
+                           LEFT JOIN ventures v ON v.id = e.venture_id
+                           WHERE e.person_id = ?
+                           ORDER BY e.happened_on DESC, e.id DESC LIMIT ?""",
+                        (pid, _lim)) or []
+        total = (db.query("SELECT COUNT(*) AS n FROM ledger_entries WHERE person_id = ?",
+                          (pid,)) or [{"n": 0}])[0]['n']
+
+        came_in, went_back, gifts = [], [], []
+        for r in rows:
+            line = {"id": r['id'], "kind": r['kind'], "amount": r['amount'],
+                    "currency": r['currency'], "usd": _in_usd(r['amount'], r['currency']),
+                    "note": r.get('note') or '', "on": r.get('happened_on'),
+                    "how_sent": r.get('how_sent') or '', "project": r.get('project'),
+                    "status": r.get('status'),
+                    "moved": (db.query("""SELECT was, now_is, why FROM ledger_changes
+                                          WHERE entry_id = ? ORDER BY id""",
+                                       (r['id'],)) or [])}
+            k = str(r['kind'])
+            if k == 'gift':
+                gifts.append(line)
+            elif k in ('paid', 'repaid'):
+                went_back.append(line)
+            else:
+                came_in.append(line)
+
+        bal = _ledger_balance(pid)
+        return {"status": "success",
+                "person": {"id": p[0]['id'], "name": p[0]['name'],
+                           "what_they_do": p[0].get('what_they_do') or '',
+                           "phone": p[0].get('phone') or ''},
+                "balances": bal,
+                "came_in": came_in,
+                "went_back": went_back,
+                "gifts": gifts,
+                "older_not_shown": max(0, total - len(rows)),
+                "ways": HOW_SENT}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/job/<int:vid>")
+@require_password
+def ledger_job(vid):
+    """The job's figures, plus who is on it so he can tap through."""
+    try:
+        d = ledger_project(vid)
+        if isinstance(d, tuple):
+            d = d[0]
+        if not isinstance(d, dict) or d.get('error'):
+            return {"error": "could not read that job"}, 400
+        ids = _all_under(vid)
+        inlist = ",".join(str(i) for i in ids)
+        folk = db.query("""SELECT DISTINCT p.id, p.name, p.what_they_do
+                           FROM ledger_entries e
+                           JOIN ledger_people p ON p.id = e.person_id
+                           WHERE e.venture_id IN (""" + inlist + """)
+                           ORDER BY p.name""") or []
+        out = []
+        for f in folk:
+            bal = _ledger_balance(f['id'])
+            first = list(bal.items())[0] if bal else None
+            out.append({"id": f['id'], "name": f['name'],
+                        "what_they_do": f.get('what_they_do') or '',
+                        "currency": (first[0] if first else ''),
+                        "net": (first[1]['net'] if first else 0)})
+        title, L = _report_project(vid)
+        return {"status": "success", "project": d.get('project'),
+                "totals": d.get('totals'), "materials": d.get('materials') or [],
+                "people": out, "report": "\n".join(L) if L else ''}
     except Exception as e:
         return {"error": str(e)}, 400
 
