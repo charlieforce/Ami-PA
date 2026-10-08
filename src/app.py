@@ -18434,6 +18434,7 @@ def ledger_jobs():
         for r in rows:
             a, sp = float(r['agreed'] or 0), float(r['spent'] or 0)
             out.append({"id": r['id'], "name": r['name'],
+                        "parent_id": r.get('parent_id'),
                         "agreed": round(a, 2), "spent": round(sp, 2),
                         "owed": round(a - sp, 2),
                         "currency": _job_currency(r['id']),

@@ -56,6 +56,7 @@ export default function MoneyTab() {
   const [mats, setMats] = useState([]);
   const [gotWhat, setGotWhat] = useState(null);
   const [got, setGot] = useState({});
+  const [cameFrom, setCameFrom] = useState(null);
 
   const load = async () => {
     setErr('');
@@ -155,10 +156,13 @@ export default function MoneyTab() {
     const bal = Object.entries(acct.balances || {});
     return (
       <div style={S.wrap}>
-        <button onClick={() => { setOpenId(null); setAcct(null); }}
+        <button onClick={() => {
+                  setOpenId(null); setAcct(null);
+                  if (cameFrom) { setOpenProject(cameFrom); setCameFrom(null); }
+                }}
                 style={{ background: 'none', border: 'none', color: '#8b8bff',
                          cursor: 'pointer', fontSize: '13px', padding: '0 0 10px' }}>
-          &#8592; Everyone
+          &#8592; {cameFrom ? 'Back to the job' : 'Everyone'}
         </button>
         <div style={{ fontSize: '19px', fontWeight: 700 }}>{acct.person.name}</div>
         {acct.person.what_they_do && <div style={S.sub}>{acct.person.what_they_do}</div>}
@@ -368,6 +372,7 @@ export default function MoneyTab() {
                   </button>
                   <button style={{ ...S.btn('#2a2a35'), fontSize: '12px', padding: '7px 13px' }}
                           onClick={(ev) => { ev.stopPropagation();
+                                             setCameFrom(openProject);
                                              setOpenProject(null); setOpenId(p.id); }}>
                     Open account
                   </button>
@@ -593,7 +598,7 @@ export default function MoneyTab() {
              onClick={() => setErr('')}>{err}</div>
       )}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {[['people', 'People'], ['loans', 'Lending'], ['projects', 'Jobs']].map(([k, lbl]) => (
+        {[['people', 'People'], ['loans', 'Loans'], ['projects', 'Jobs']].map(([k, lbl]) => (
           <button key={k} style={S.tab(view === k)} onClick={() => setView(k)}>{lbl}</button>
         ))}
         <button style={{ ...S.tab(false), marginLeft: 'auto' }}
@@ -688,12 +693,48 @@ export default function MoneyTab() {
         </>
       )}
 
-      {view === 'projects' && projects.map(p => (
-        <div key={p.id} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setOpenProject(p.id)}>
-          <div style={S.name}>{p.name}</div>
-          <div style={S.sub}>tap for what it has cost</div>
-        </div>
-      ))}
+      {view === 'projects' && (() => {
+        const live = projects.filter(j => !j.quiet);
+        const quiet = projects.filter(j => j.quiet);
+        const byId = {};
+        projects.forEach(j => { byId[j.id] = j; });
+        return (
+          <>
+            {live.map(j => (
+              <div key={j.id} style={{ ...S.card, cursor: 'pointer' }}
+                   onClick={() => setOpenProject(j.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={S.name}>{j.name}</div>
+                    <div style={S.sub}>
+                      {j.parent_id && byId[j.parent_id]
+                        ? 'part of ' + byId[j.parent_id].name + ' \u00b7 ' : ''}
+                      agreed {n0(j.agreed)} &middot; paid {n0(j.spent)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700,
+                                  color: j.owed > 0 ? '#f59e0b' : '#10b981' }}>
+                      {n0(j.owed)}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#777' }}>still owed</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {quiet.length > 0 && (
+              <div style={{ fontSize: '12px', color: '#666', marginTop: '12px' }}>
+                Nothing on these yet:{' '}
+                {quiet.map(j => (
+                  <span key={j.id} onClick={() => setOpenProject(j.id)}
+                        style={{ cursor: 'pointer', marginRight: '8px',
+                                 color: '#8b8bff' }}>{j.name}</span>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {report && (
         <div style={{ ...S.card, marginTop: '14px' }}>
