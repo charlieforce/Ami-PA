@@ -17631,11 +17631,23 @@ def ledger_project(vid):
                            WHERE e.venture_id IN (""" + inlist + """)
                            ORDER BY e.happened_on""") or []
         folk, agreed, paid, bought = {}, 0.0, 0.0, 0.0
+        stuff = []
         cur = 'USD'
         for r in rows:
             cur = r.get('currency') or cur
             amt = float(r.get('amount') or 0)
-            who = r.get('name') or 'materials'
+            if not r.get('person_id'):
+                # a thing to buy, not somebody to pay
+                stuff.append({"what": r.get('note') or 'item',
+                              "amount": amt, "currency": r.get('currency'),
+                              "got_it": (r['kind'] == 'paid'),
+                              "on": r.get('happened_on')})
+                if r['kind'] == 'agreed':
+                    agreed += amt
+                elif r['kind'] in ('paid', 'bought'):
+                    bought += amt
+                continue
+            who = r.get('name') or 'someone'
             f = folk.setdefault(who, {"agreed": 0.0, "paid": 0.0, "bought": 0.0})
             if str(r.get('status')) == 'forgiven':
                 continue
@@ -17654,6 +17666,7 @@ def ledger_project(vid):
         return {"status": "success",
                 "project": (v[0]['name'] if v else ''),
                 "currency": cur,
+                "materials": stuff,
                 "people": [{"name": k, "agreed": round(x['agreed'], 2),
                             "paid": round(x['paid'], 2), "bought": round(x['bought'], 2),
                             "owed": round(x['agreed'] - x['paid'], 2)}
@@ -17766,6 +17779,17 @@ def _report_project(vid):
         line += "   paid " + "{:,.0f}".format(p['paid']).rjust(9)
         line += "   owed " + "{:,.0f}".format(p['owed']).rjust(9)
         L.append(line)
+    if d.get('materials'):
+        L.append("")
+        L.append("Things to buy")
+        _ms = 0.0
+        for m in d['materials']:
+            _ms += float(m['amount'] or 0)
+            L.append("  " + str(m['what'])[:30].ljust(31)
+                     + "{:,.0f}".format(float(m['amount'] or 0)).rjust(11)
+                     + ("   got it" if m.get('got_it') else "   still to get"))
+        L.append("  " + "all of it".ljust(31) + "{:,.0f}".format(_ms).rjust(11))
+
     if d.get('moved'):
         L.append("")
         L.append("Where the estimates moved")
