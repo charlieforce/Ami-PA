@@ -48,6 +48,9 @@ export default function MoneyTab() {
   const [editing, setEditing] = useState(null);
   const [edit, setEdit] = useState({});
   const [report, setReport] = useState('');
+  const [job, setJob] = useState(null);
+  const [jobAdd, setJobAdd] = useState('');
+  const [jobForm, setJobForm] = useState({});
 
   const load = async () => {
     setErr('');
@@ -81,9 +84,11 @@ export default function MoneyTab() {
     if (!openProject) { setProjReport(''); return; }
     (async () => {
       try {
-        const r = await fetch(API + '/api/ledger/report?what=project&id=' + openProject,
+        const r = await fetch(API + '/api/ledger/job/' + openProject,
                               { headers: AUTH });
-        setProjReport((await r.json()).report || '');
+        const j = await r.json();
+        setJob(j);
+        setProjReport(j.report || '');
       } catch (e) { setErr(String(e)); }
     })();
   }, [openProject]);
@@ -324,6 +329,96 @@ export default function MoneyTab() {
                          cursor: 'pointer', fontSize: '13px', padding: '0 0 10px' }}>
           &#8592; All jobs
         </button>
+        {job && job.people && job.people.length > 0 && (
+          <>
+            <div style={S.label}>Who is on it</div>
+            {job.people.map(p => (
+              <div key={p.id} style={{ ...S.card, cursor: 'pointer' }}
+                   onClick={() => { setOpenProject(null); setOpenId(p.id); }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={S.name}>{p.name}</div>
+                    {p.what_they_do && <div style={S.sub}>{p.what_they_do}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700,
+                                  color: p.net > 0 ? '#10b981' : '#f59e0b' }}>
+                      {n0(Math.abs(p.net))} {p.currency}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#777' }}>
+                      {p.net > 0 ? 'owed' : 'you owe'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {jobAdd === 'work' ? (
+          <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
+            <input style={S.input} placeholder="Who is doing it?" autoFocus
+                   onChange={e => setJobForm({ ...jobForm, name: e.target.value })} />
+            <input style={S.input} placeholder="What they do - developer, builder"
+                   onChange={e => setJobForm({ ...jobForm, what_they_do: e.target.value })} />
+            <input style={S.input} placeholder="What is the work? - website revamp"
+                   onChange={e => setJobForm({ ...jobForm, what: e.target.value })} />
+            <input style={S.input} type="number" placeholder="Agreed how much?"
+                   onChange={e => setJobForm({ ...jobForm, amount: Number(e.target.value) })} />
+            <input style={S.input} placeholder="Currency"
+                   onChange={e => setJobForm({ ...jobForm,
+                                               currency: e.target.value.toUpperCase() })} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={S.btn('#4f46e5')} disabled={busy}
+                      onClick={async () => {
+                        await save('/api/ledger/job/' + openProject + '/work', jobForm);
+                        setJobAdd(''); setJobForm({});
+                        const r = await fetch(API + '/api/ledger/job/' + openProject,
+                                              { headers: AUTH });
+                        const j = await r.json(); setJob(j); setProjReport(j.report || '');
+                      }}>Save</button>
+              <button style={S.btn('#2a2a35')}
+                      onClick={() => { setJobAdd(''); setJobForm({}); }}>Cancel</button>
+            </div>
+          </div>
+        ) : jobAdd === 'thing' ? (
+          <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
+            <input style={S.input} placeholder="What is it? - fridge, cement" autoFocus
+                   onChange={e => setJobForm({ ...jobForm, what: e.target.value })} />
+            <input style={S.input} type="number" placeholder="Roughly how much?"
+                   onChange={e => setJobForm({ ...jobForm, amount: Number(e.target.value) })} />
+            <label style={{ fontSize: '13px', color: '#8b8b9e', display: 'block',
+                            marginBottom: '8px' }}>
+              <input type="checkbox" style={{ marginRight: '6px' }}
+                     onChange={e => setJobForm({ ...jobForm, got_it: e.target.checked })} />
+              already got it
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={S.btn('#4f46e5')} disabled={busy}
+                      onClick={async () => {
+                        await save('/api/ledger/job/' + openProject + '/thing', jobForm);
+                        setJobAdd(''); setJobForm({});
+                        const r = await fetch(API + '/api/ledger/job/' + openProject,
+                                              { headers: AUTH });
+                        const j = await r.json(); setJob(j); setProjReport(j.report || '');
+                      }}>Save</button>
+              <button style={S.btn('#2a2a35')}
+                      onClick={() => { setJobAdd(''); setJobForm({}); }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
+            <button style={{ ...S.btn('#4f46e5'), flex: 1 }}
+                    onClick={() => { setJobAdd('work'); setJobForm({}); }}>
+              + Work
+            </button>
+            <button style={{ ...S.btn('#2a2a35'), flex: 1 }}
+                    onClick={() => { setJobAdd('thing'); setJobForm({}); }}>
+              + Something to buy
+            </button>
+          </div>
+        )}
+
         {projReport ? (
           <div style={S.card}>
             <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#ddd',
