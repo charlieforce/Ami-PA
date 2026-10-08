@@ -6,314 +6,422 @@ const AUTH = { 'X-Ami-Password': PW };
 const H = { 'Content-Type': 'application/json', ...AUTH };
 
 const n0 = (v) => Math.round(Number(v) || 0).toLocaleString();
+const WORDS = {
+  agreed: 'agreed', paid: 'you paid', bought: 'they bought', lent: 'you lent',
+  borrowed: 'you borrowed', repaid: 'repaid', forgiven: 'written off', gift: 'a gift',
+};
 
 const S = {
   wrap: { padding: '14px 12px 40px', color: '#e8e8f0' },
-  card: {
-    background: '#17171f', border: '1px solid #26262f', borderRadius: '10px',
-    padding: '13px', marginBottom: '9px',
-  },
+  card: { background: '#17171f', border: '1px solid #26262f', borderRadius: '10px',
+          padding: '13px', marginBottom: '9px' },
   name: { fontSize: '15px', fontWeight: 700 },
   sub: { fontSize: '12px', color: '#8b8b9e', marginTop: '3px' },
-  label: {
-    fontSize: '11px', color: '#777', textTransform: 'uppercase',
-    letterSpacing: '0.6px', fontWeight: 700, margin: '18px 0 8px',
-  },
-  input: {
-    width: '100%', padding: '9px 11px', background: '#0f0f16',
-    border: '1px solid #2c2c3a', borderRadius: '7px', color: '#e8e8f0',
-    fontSize: '13px', boxSizing: 'border-box', marginBottom: '8px',
-  },
-  btn: (bg) => ({
-    padding: '9px 14px', background: bg, color: '#fff', border: 'none',
-    borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600,
-  }),
-  quiet: { fontSize: '12px', color: '#777', cursor: 'pointer', padding: '8px 0' },
+  label: { fontSize: '11px', color: '#777', textTransform: 'uppercase',
+           letterSpacing: '0.6px', fontWeight: 700, margin: '16px 0 8px' },
+  input: { width: '100%', padding: '10px 12px', background: '#0f0f16',
+           border: '1px solid #2c2c3a', borderRadius: '8px', color: '#e8e8f0',
+           fontSize: '14px', boxSizing: 'border-box', marginBottom: '8px' },
+  btn: (bg) => ({ padding: '10px 15px', background: bg, color: '#fff', border: 'none',
+                  borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }),
+  tab: (on) => ({ padding: '7px 13px', borderRadius: '16px', fontSize: '12px',
+                  cursor: 'pointer', border: '1px solid ' + (on ? '#4f46e5' : '#2c2c3a'),
+                  background: on ? '#1d1d3a' : 'transparent',
+                  color: on ? '#a5a5ff' : '#888', flexShrink: 0, fontWeight: 600 }),
+  line: { display: 'flex', justifyContent: 'space-between', gap: '10px',
+          padding: '10px 0', borderBottom: '1px solid #1f1f28', cursor: 'pointer' },
 };
 
 export default function MoneyTab() {
-  const [at, setAt] = useState(null);          // which project we are inside
-  const [data, setData] = useState(null);
-  const [showQuiet, setShowQuiet] = useState(false);
+  const [view, setView] = useState('people');
+  const [people, setPeople] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [openId, setOpenId] = useState(null);
+  const [acct, setAcct] = useState(null);
+  const [openProject, setOpenProject] = useState(null);
+  const [projReport, setProjReport] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [adding, setAdding] = useState('');
   const [form, setForm] = useState({});
+  const [editing, setEditing] = useState(null);
+  const [edit, setEdit] = useState({});
   const [report, setReport] = useState('');
-  const [sleeping, setSleeping] = useState([]);
 
-  const load = async (pid) => {
-    setErr(''); setReport('');
+  const load = async () => {
+    setErr('');
     try {
-      const url = API + '/api/money/level' + (pid ? '?parent=' + pid : '');
-      const r = await fetch(url, { headers: AUTH });
-      const j = await r.json();
-      if (j.error) { setErr(j.error); return; }
-      setData(j);
-      if (pid) {
-        try {
-          const q = await fetch(API + '/api/money/' + pid + '/quiet', { headers: AUTH });
-          const qj = await q.json();
-          setSleeping(qj.quiet || []);
-        } catch (e) { setSleeping([]); }
+      if (view === 'people') {
+        const r = await fetch(API + '/api/ledger/people', { headers: AUTH });
+        setPeople((await r.json()).people || []);
+      } else if (view === 'loans') {
+        const r = await fetch(API + '/api/ledger/loans', { headers: AUTH });
+        setLoans((await r.json()).loans || []);
       } else {
-        setSleeping([]);
+        const r = await fetch(API + '/api/project-board', { headers: AUTH });
+        setProjects((await r.json()).projects || []);
       }
     } catch (e) { setErr(String(e)); }
   };
 
-  useEffect(() => { load(at); }, [at]);
-
-  const post = async (path, body) => {
-    setBusy(true);
+  const loadAcct = async (id) => {
+    setAcct(null); setReport(''); setAdding(''); setEditing(null);
     try {
-      await fetch(API + path, { method: 'POST', headers: H, body: JSON.stringify(body) });
-      setForm({}); setAdding('');
-      await load(at);
-    } catch (e) { setErr(String(e)); }
-    setBusy(false);
-  };
-
-  const changeQuote = async (qid, amount, why) => {
-    setBusy(true);
-    try {
-      await fetch(API + '/api/money/quote/' + qid, {
-        method: 'PUT', headers: H, body: JSON.stringify({ amount, why }) });
-      await load(at);
-    } catch (e) { setErr(String(e)); }
-    setBusy(false);
-  };
-
-  const makeReport = async () => {
-    setBusy(true);
-    try {
-      const r = await fetch(API + '/api/money/' + at + '/report', { headers: AUTH });
+      const r = await fetch(API + '/api/ledger/person/' + id, { headers: AUTH });
       const j = await r.json();
-      setReport(j.report || '');
+      if (j.error) { setErr(j.error); return; }
+      setAcct(j);
+    } catch (e) { setErr(String(e)); }
+  };
+
+  useEffect(() => { load(); }, [view]);
+  useEffect(() => { if (openId) loadAcct(openId); }, [openId]);
+  useEffect(() => {
+    if (!openProject) { setProjReport(''); return; }
+    (async () => {
+      try {
+        const r = await fetch(API + '/api/ledger/report?what=project&id=' + openProject,
+                              { headers: AUTH });
+        setProjReport((await r.json()).report || '');
+      } catch (e) { setErr(String(e)); }
+    })();
+  }, [openProject]);
+
+  const save = async (path, body, method = 'POST') => {
+    setBusy(true);
+    try {
+      const r = await fetch(API + path, { method, headers: H, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (j.error) { setErr(j.error); setBusy(false); return; }
+      setForm({}); setAdding(''); setEditing(null);
+      if (openId) await loadAcct(openId);
+      await load();
     } catch (e) { setErr(String(e)); }
     setBusy(false);
   };
 
-  const makePdf = async () => {
+  const removeLine = async (eid) => {
+    if (!window.confirm('Take this line off for good?')) return;
     setBusy(true);
     try {
-      const r = await fetch(API + '/api/money/' + at + '/report.pdf', { headers: AUTH });
+      await fetch(API + '/api/ledger/entry/' + eid, { method: 'DELETE', headers: AUTH });
+      setEditing(null);
+      await loadAcct(openId);
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
+  const getReport = async (what, id) => {
+    setBusy(true);
+    try {
+      const r = await fetch(API + '/api/ledger/report?what=' + what + (id ? '&id=' + id : ''),
+                            { headers: AUTH });
+      setReport((await r.json()).report || '');
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
+  const getPdf = async (what, id, name) => {
+    setBusy(true);
+    try {
+      const r = await fetch(API + '/api/ledger/report.pdf?what=' + what + (id ? '&id=' + id : ''),
+                            { headers: AUTH });
       const b = await r.blob();
       const u = URL.createObjectURL(b);
       const a = document.createElement('a');
-      a.href = u;
-      a.download = ((data?.here?.name) || 'job') + ' money.pdf';
-      a.click();
+      a.href = u; a.download = (name || 'money') + '.pdf'; a.click();
       URL.revokeObjectURL(u);
     } catch (e) { setErr(String(e)); }
     setBusy(false);
   };
 
-  if (err) return <div style={S.wrap}><div style={{ color: '#f0a5a5' }}>{err}</div></div>;
-  if (!data) return <div style={S.wrap}><div style={{ color: '#777' }}>Loading...</div></div>;
+  if (openId && acct) {
+    const bal = Object.entries(acct.balances || {});
+    return (
+      <div style={S.wrap}>
+        <button onClick={() => { setOpenId(null); setAcct(null); }}
+                style={{ background: 'none', border: 'none', color: '#8b8bff',
+                         cursor: 'pointer', fontSize: '13px', padding: '0 0 10px' }}>
+          &#8592; Everyone
+        </button>
+        <div style={{ fontSize: '19px', fontWeight: 700 }}>{acct.person.name}</div>
+        {acct.person.what_they_do && <div style={S.sub}>{acct.person.what_they_do}</div>}
 
-  const t = data.totals || {};
-  const busyOnes = (data.under || []).filter(r => r.quoted || r.spent);
-  const idle = (data.under || []).filter(r => !r.quoted && !r.spent);
+        {bal.map(([cur, b]) => (Math.abs(b.net) < 0.01 ? null : (
+          <div key={cur} style={{ ...S.card, marginTop: '12px' }}>
+            <div style={{ fontSize: '11px', color: '#8b8b9e', textTransform: 'uppercase',
+                          letterSpacing: '0.6px', fontWeight: 700 }}>
+              {b.net > 0 ? 'They owe you' : 'You owe them'}
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 700,
+                          color: b.net > 0 ? '#10b981' : '#f59e0b' }}>
+              {n0(Math.abs(b.net))} <span style={{ fontSize: '15px' }}>{cur}</span>
+            </div>
+            {b.usd && cur !== 'USD' && <div style={S.sub}>about {n0(b.usd)} USD</div>}
+          </div>
+        )))}
+
+        {adding !== 'entry' ? (
+          <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
+            <button style={{ ...S.btn('#10b981'), flex: 1 }}
+                    onClick={() => { setAdding('entry');
+                                     setForm({ kind: 'paid', currency: (bal[0] || ['USD'])[0] }); }}>
+              + Add a line
+            </button>
+            <button style={S.btn('#2a2a35')} onClick={() => getReport('person', openId)}>Report</button>
+            <button style={S.btn('#2a2a35')}
+                    onClick={() => getPdf('person', openId, acct.person.name)}>PDF</button>
+          </div>
+        ) : (
+          <div style={{ ...S.card, marginTop: '12px', borderColor: '#3a3a5a' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {[['paid', 'I paid them'], ['repaid', 'They paid me'], ['agreed', 'We agreed'],
+                ['lent', 'I lent them'], ['borrowed', 'I borrowed'],
+                ['bought', 'They bought'], ['gift', 'A gift']].map(([k, lbl]) => (
+                <button key={k} style={S.tab(form.kind === k)}
+                        onClick={() => setForm({ ...form, kind: k })}>{lbl}</button>
+              ))}
+            </div>
+            <input style={S.input} type="number" placeholder="How much?" autoFocus
+                   onChange={e => setForm({ ...form, amount: Number(e.target.value) })} />
+            <input style={S.input} placeholder="Currency" value={form.currency || ''}
+                   onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} />
+            <input style={S.input} placeholder="What was it for?"
+                   onChange={e => setForm({ ...form, note: e.target.value })} />
+            <input style={S.input} type="date"
+                   onChange={e => setForm({ ...form, happened_on: e.target.value })} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={S.btn('#10b981')} disabled={busy}
+                      onClick={() => save('/api/ledger/entry', { ...form, person_id: openId })}>
+                Save
+              </button>
+              <button style={S.btn('#2a2a35')}
+                      onClick={() => { setAdding(''); setForm({}); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        <div style={S.label}>Everything, newest first</div>
+        {(acct.lines || []).length === 0 && (
+          <div style={{ fontSize: '13px', color: '#777' }}>Nothing yet.</div>
+        )}
+        {(acct.lines || []).map(l => (
+          <div key={l.id}>
+            {editing === l.id ? (
+              <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
+                <input style={S.input} type="number" defaultValue={l.amount}
+                       onChange={e => setEdit({ ...edit, amount: Number(e.target.value) })} />
+                <input style={S.input} defaultValue={l.note} placeholder="What was it for?"
+                       onChange={e => setEdit({ ...edit, note: e.target.value })} />
+                <input style={S.input} type="date" defaultValue={l.on}
+                       onChange={e => setEdit({ ...edit, happened_on: e.target.value })} />
+                {l.kind === 'agreed' && (
+                  <input style={S.input} placeholder="Why did the figure change?"
+                         onChange={e => setEdit({ ...edit, why: e.target.value })} />
+                )}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button style={S.btn('#4f46e5')} disabled={busy}
+                          onClick={() => save('/api/ledger/entry/' + l.id, edit, 'PUT')}>Save</button>
+                  <button style={S.btn('#2a2a35')}
+                          onClick={() => { setEditing(null); setEdit({}); }}>Cancel</button>
+                  <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
+                          onClick={() => removeLine(l.id)}>Remove</button>
+                </div>
+              </div>
+            ) : (
+              <div style={S.line} onClick={() => { setEditing(l.id); setEdit({}); }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '13px' }}>
+                    {WORDS[l.kind] || l.kind}
+                    {l.note ? <span style={{ color: '#8b8b9e' }}> &middot; {l.note}</span> : null}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#777' }}>
+                    {String(l.on || '').slice(0, 10)}
+                    {l.project ? ' \u00b7 ' + l.project : ''}
+                    {l.status === 'forgiven' ? ' \u00b7 written off' : ''}
+                  </div>
+                  {(l.moved || []).map((m, i) => (
+                    <div key={i} style={{ fontSize: '11px', color: '#f59e0b' }}>
+                      was {n0(m.was)}, now {n0(m.now_is)}{m.why ? ' \u2014 ' + m.why : ''}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '14px',
+                                color: l.kind === 'gift' ? '#a78bfa'
+                                     : (['paid', 'repaid'].includes(l.kind) ? '#10b981' : '#e8e8f0'),
+                                textDecoration: l.status === 'forgiven' ? 'line-through' : 'none' }}>
+                    {n0(l.amount)} {l.currency}
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#666' }}>tap to change</div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {acct.older_not_shown > 0 && (
+          <div style={{ fontSize: '12px', color: '#777', marginTop: '10px' }}>
+            {acct.older_not_shown} older lines not shown
+          </div>
+        )}
+
+        {report && (
+          <div style={{ ...S.card, marginTop: '14px' }}>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#ccc',
+                          fontFamily: 'ui-monospace, monospace', margin: 0 }}>{report}</pre>
+            <button style={{ ...S.btn('#2a2a35'), marginTop: '10px', fontSize: '12px' }}
+                    onClick={() => navigator.clipboard?.writeText(report)}>Copy</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (openProject) {
+    return (
+      <div style={S.wrap}>
+        <button onClick={() => setOpenProject(null)}
+                style={{ background: 'none', border: 'none', color: '#8b8bff',
+                         cursor: 'pointer', fontSize: '13px', padding: '0 0 10px' }}>
+          &#8592; All jobs
+        </button>
+        {projReport ? (
+          <div style={S.card}>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#ddd',
+                          fontFamily: 'ui-monospace, monospace', margin: 0 }}>{projReport}</pre>
+          </div>
+        ) : <div style={{ color: '#777', fontSize: '13px' }}>Loading...</div>}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button style={S.btn('#2a2a35')}
+                  onClick={() => navigator.clipboard?.writeText(projReport)}>Copy</button>
+          <button style={S.btn('#4f46e5')}
+                  onClick={() => getPdf('project', openProject, 'job')}>PDF</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.wrap}>
-      {/* where we are */}
-      {(data.trail || []).length > 0 && (
-        <div style={{ fontSize: '12px', color: '#8b8b9e', marginBottom: '10px' }}>
-          <span onClick={() => setAt(null)}
-                style={{ cursor: 'pointer', color: '#8b8bff' }}>All</span>
-          {(data.trail || []).map((c, i) => (
-            <span key={c.id}>
-              {' / '}
-              <span onClick={() => setAt(c.id)}
-                    style={{ cursor: 'pointer',
-                             color: i === data.trail.length - 1 ? '#e8e8f0' : '#8b8bff' }}>
-                {c.name}
-              </span>
-            </span>
-          ))}
-        </div>
+      {err && (
+        <div style={{ ...S.card, borderColor: '#5f2a2a', color: '#f0a5a5', fontSize: '13px' }}
+             onClick={() => setErr('')}>{err}</div>
       )}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {[['people', 'People'], ['loans', 'Lending'], ['projects', 'Jobs']].map(([k, lbl]) => (
+          <button key={k} style={S.tab(view === k)} onClick={() => setView(k)}>{lbl}</button>
+        ))}
+        <button style={{ ...S.tab(false), marginLeft: 'auto' }}
+                onClick={() => getReport('all')}>Everything</button>
+      </div>
 
-      {/* the number */}
-      {(t.quoted || t.spent) ? (
-        <div style={{ ...S.card, marginBottom: '14px' }}>
-          <div style={{ fontSize: '11px', color: '#8b8b9e', textTransform: 'uppercase',
-                        letterSpacing: '0.6px', fontWeight: 700 }}>
-            Still owed{data.here ? ' on ' + data.here.name : ' altogether'}
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 700,
-                        color: t.owed > 0 ? '#f59e0b' : '#10b981' }}>
-            {n0(t.owed)}
-          </div>
-          <div style={S.sub}>
-            quoted {n0(t.quoted)} &middot; paid {n0(t.spent)}
-          </div>
-        </div>
-      ) : null}
-
-      {/* anything gone quiet */}
-      {sleeping.length > 0 && (
-        <div style={{ ...S.card, borderColor: '#4a3a1a', background: '#1f1a10' }}>
-          <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 700,
-                        marginBottom: '6px' }}>
-            Gone quiet
-          </div>
-          {sleeping.map(q => (
-            <div key={q.quote_id} style={{ fontSize: '12px', color: '#d8c49a' }}>
-              {q.who} &mdash; {q.what}, agreed {q.days} days ago, nothing paid
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* what is under here */}
-      {busyOnes.map(r => (
-        <div key={r.id} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setAt(r.id)}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <div style={S.name}>{r.name}{r.goes_deeper ? ' \u203a' : ''}</div>
-              <div style={S.sub}>quoted {n0(r.quoted)} &middot; paid {n0(r.spent)}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700,
-                            color: r.owed > 0 ? '#f59e0b' : '#10b981' }}>{n0(r.owed)}</div>
-              <div style={{ fontSize: '11px', color: '#777' }}>owed</div>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {idle.length > 0 && (
+      {view === 'people' && (
         <>
-          <div style={S.quiet} onClick={() => setShowQuiet(!showQuiet)}>
-            {showQuiet ? 'Hide' : 'Show'} the {idle.length} with nothing on them
-          </div>
-          {showQuiet && idle.map(r => (
-            <div key={r.id} style={{ ...S.card, opacity: 0.6, cursor: 'pointer' }}
-                 onClick={() => setAt(r.id)}>
-              <div style={S.name}>{r.name}{r.goes_deeper ? ' \u203a' : ''}</div>
+          {adding === 'person' ? (
+            <div style={S.card}>
+              <input style={S.input} placeholder="Their name" autoFocus
+                     onChange={e => setForm({ ...form, name: e.target.value })} />
+              <input style={S.input} placeholder="What they do"
+                     onChange={e => setForm({ ...form, what_they_do: e.target.value })} />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button style={S.btn('#4f46e5')} disabled={busy}
+                        onClick={() => save('/api/ledger/person', form)}>Add</button>
+                <button style={S.btn('#2a2a35')}
+                        onClick={() => { setAdding(''); setForm({}); }}>Cancel</button>
+              </div>
             </div>
-          ))}
+          ) : (
+            <button style={{ ...S.btn('#2a2a35'), marginBottom: '12px', width: '100%' }}
+                    onClick={() => { setAdding('person'); setForm({}); }}>+ Someone new</button>
+          )}
+          {people.filter(p => !p.quiet).map(p => {
+            const b = Object.entries(p.balances || {})[0];
+            const net = b ? b[1].net : 0;
+            return (
+              <div key={p.id} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setOpenId(p.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={S.name}>{p.name}</div>
+                    {p.what_they_do && <div style={S.sub}>{p.what_they_do}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 700,
+                                  color: net > 0 ? '#10b981' : '#f59e0b' }}>
+                      {n0(Math.abs(net))} {b ? b[0] : ''}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#777' }}>
+                      {net > 0 ? 'they owe you' : 'you owe'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {people.filter(p => p.quiet).length > 0 && (
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
+              {people.filter(p => p.quiet).map(p => (
+                <span key={p.id} onClick={() => setOpenId(p.id)}
+                      style={{ cursor: 'pointer', marginRight: '10px' }}>{p.name} &middot;</span>
+              ))}
+            </div>
+          )}
         </>
       )}
 
-      {/* people working at this level */}
-      {(data.people || []).length > 0 && <div style={S.label}>Working on this directly</div>}
-      {(data.people || []).map(p => (
-        <div key={p.id} style={S.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <div style={S.name}>{p.name}</div>
-              {p.trade && <div style={S.sub}>{p.trade}</div>}
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700,
-                            color: p.owed > 0 ? '#f59e0b' : '#10b981' }}>{n0(p.owed)}</div>
-              <div style={{ fontSize: '11px', color: '#777' }}>owed</div>
-            </div>
-          </div>
-
-          {(p.quotes || []).map(q => (
-            <div key={q.id} style={{ display: 'flex', justifyContent: 'space-between',
-                                     padding: '8px 0', borderBottom: '1px solid #1f1f28',
-                                     fontSize: '13px' }}>
-              <span style={{ color: '#bbb' }}>{q.what}</span>
-              <span>
-                {n0(q.amount)}
-                <button onClick={() => {
-                          const v = prompt('What is it now?', q.amount);
-                          if (!v) return;
-                          changeQuote(q.id, Number(v), prompt('Why did it change?') || '');
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#8b8bff',
-                                 cursor: 'pointer', marginLeft: '8px', fontSize: '12px' }}>
-                  change
-                </button>
-              </span>
+      {view === 'loans' && (
+        <>
+          {loans.length === 0 && (
+            <div style={{ fontSize: '13px', color: '#777' }}>Nothing lent either way.</div>
+          )}
+          {loans.map(l => (
+            <div key={l.id} style={S.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={S.name}>{l.who}</div>
+                  <div style={S.sub}>
+                    {l.direction} {n0(l.principal)} {l.currency}{l.note ? ' \u00b7 ' + l.note : ''}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 700,
+                                color: l.direction === 'he lent' ? '#10b981' : '#f59e0b' }}>
+                    {n0(l.left)}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#777' }}>left</div>
+                </div>
+              </div>
+              {l.months_to_clear ? (
+                <div style={{ fontSize: '12px', color: '#8b8b9e', marginTop: '6px' }}>
+                  {n0(l.repay_amount)} a {l.repay_every || 'month'} &middot; clears in{' '}
+                  {l.months_to_clear} months
+                </div>
+              ) : null}
             </div>
           ))}
+          <button style={{ ...S.btn('#2a2a35'), marginTop: '10px' }}
+                  onClick={() => getReport('loans')}>Report on the lending</button>
+        </>
+      )}
 
-          {(p.drift || []).map((d, i) => (
-            <div key={i} style={{ fontSize: '12px', color: '#f59e0b', marginTop: '6px' }}>
-              {d.what}: started at {n0(d.first)}, now {n0(d.now)}
-              {d.first ? ' (' + (d.now > d.first ? '+' : '')
-                       + Math.round(((d.now - d.first) / d.first) * 100) + '%)' : ''}
-              {d.why ? ' \u2014 ' + d.why : ''}
-            </div>
-          ))}
-
-          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px', padding: '7px 11px' }}
-                    onClick={() => { setAdding('quote'); setForm({ person_id: p.id }); }}>
-              + Quote
-            </button>
-            <button style={{ ...S.btn('#10b981'), fontSize: '12px', padding: '7px 11px' }}
-                    onClick={() => { setAdding('payment'); setForm({ person_id: p.id }); }}>
-              + Payment
-            </button>
-          </div>
+      {view === 'projects' && projects.map(p => (
+        <div key={p.id} style={{ ...S.card, cursor: 'pointer' }} onClick={() => setOpenProject(p.id)}>
+          <div style={S.name}>{p.name}</div>
+          <div style={S.sub}>tap for what it has cost</div>
         </div>
       ))}
 
-      {/* forms */}
-      {at && adding === 'person' && (
-        <div style={S.card}>
-          <input style={S.input} placeholder="Name"
-                 onChange={e => setForm({ ...form, name: e.target.value })} />
-          <input style={S.input} placeholder="Trade - builder, carpenter, plumber"
-                 onChange={e => setForm({ ...form, trade: e.target.value })} />
-          <button style={S.btn('#4f46e5')} disabled={busy}
-                  onClick={() => post('/api/money/' + at + '/person', form)}>Add</button>
-        </div>
-      )}
-      {at && adding === 'quote' && (
-        <div style={S.card}>
-          <input style={S.input} placeholder="What is the work?"
-                 onChange={e => setForm({ ...form, what: e.target.value })} />
-          <input style={S.input} placeholder="How much?" type="number"
-                 onChange={e => setForm({ ...form, amount: Number(e.target.value) })} />
-          <textarea style={{ ...S.input, minHeight: '60px' }}
-                    placeholder="What exactly was agreed? Who supplies what?"
-                    onChange={e => setForm({ ...form, notes: e.target.value })} />
-          <button style={S.btn('#4f46e5')} disabled={busy}
-                  onClick={() => post('/api/money/' + at + '/quote', form)}>Save</button>
-        </div>
-      )}
-      {at && adding === 'payment' && (
-        <div style={S.card}>
-          <input style={S.input} placeholder="How much?" type="number"
-                 onChange={e => setForm({ ...form, amount: Number(e.target.value) })} />
-          <input style={S.input} placeholder="What for?"
-                 onChange={e => setForm({ ...form, what: e.target.value })} />
-          <button style={S.btn('#10b981')} disabled={busy}
-                  onClick={() => post('/api/money/' + at + '/payment', form)}>Record</button>
-        </div>
-      )}
-
-      {at && (
-        <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-          {!adding ? (
-            <button style={S.btn('#2a2a35')}
-                    onClick={() => { setAdding('person'); setForm({}); }}>+ Someone</button>
-          ) : (
-            <button style={S.btn('#2a2a35')}
-                    onClick={() => { setAdding(''); setForm({}); }}>Cancel</button>
-          )}
-          <button style={S.btn('#4f46e5')} onClick={makeReport} disabled={busy}>
-            Create report
-          </button>
-          <button style={S.btn('#2a2a35')} onClick={makePdf} disabled={busy}>PDF</button>
-        </div>
-      )}
-
       {report && (
-        <div style={{ ...S.card, marginTop: '12px' }}>
+        <div style={{ ...S.card, marginTop: '14px' }}>
           <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#ccc',
-                        fontFamily: 'inherit', margin: 0 }}>{report}</pre>
-          <button style={{ ...S.btn('#2a2a35'), marginTop: '10px', fontSize: '12px' }}
-                  onClick={() => navigator.clipboard?.writeText(report)}>Copy it</button>
+                        fontFamily: 'ui-monospace, monospace', margin: 0 }}>{report}</pre>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px' }}
+                    onClick={() => navigator.clipboard?.writeText(report)}>Copy</button>
+            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px' }}
+                    onClick={() => setReport('')}>Close</button>
+          </div>
         </div>
       )}
     </div>
