@@ -17771,14 +17771,20 @@ def _report_project(vid):
     L.append("Still owed        " + _money_s(t.get('owed'), cur))
     L.append("")
     L.append("Who is on it")
+    L.append("  " + "".ljust(22) + "agreed".rjust(11) + "paid".rjust(11)
+             + "owed".rjust(11))
     for p in sorted(d.get('people') or [], key=lambda x: -x['owed']):
         if not (p['agreed'] or p['paid'] or p['bought']):
             continue
-        line = "  " + str(p['name'])[:22].ljust(23)
-        line += "agreed " + "{:,.0f}".format(p['agreed']).rjust(9)
-        line += "   paid " + "{:,.0f}".format(p['paid']).rjust(9)
-        line += "   owed " + "{:,.0f}".format(p['owed']).rjust(9)
-        L.append(line)
+        L.append("  " + str(p["name"])[:21].ljust(22)
+                 + "{:,.0f}".format(p["agreed"]).rjust(11)
+                 + "{:,.0f}".format(p["paid"]).rjust(11)
+                 + "{:,.0f}".format(p["owed"]).rjust(11))
+    _tt = d.get("totals") or {}
+    L.append("  " + "everyone".ljust(22)
+             + "{:,.0f}".format(_tt.get("agreed") or 0).rjust(11)
+             + "{:,.0f}".format(_tt.get("paid") or 0).rjust(11)
+             + "{:,.0f}".format(_tt.get("owed") or 0).rjust(11))
     if d.get('materials'):
         L.append("")
         L.append("Things to buy")
