@@ -8355,7 +8355,20 @@ def get_notes_list():
     
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
-    c.execute("SELECT id, title, content, capture_type, created_at, summary, sentiment, priority, linked_projects FROM notes ORDER BY created_at DESC LIMIT 50")
+    # only what the list shows - not the whole of every note. he will have
+    # a thousand of these in a year.
+    _lim = min(int(request.args.get('limit') or 40), 100)
+    _before = request.args.get('before')
+    _sql = ("SELECT id, title, substr(COALESCE(content,''),1,160), capture_type, "
+            "created_at, summary, sentiment, priority, linked_projects FROM notes "
+            "WHERE COALESCE(deleted_at,'') = '' ")
+    _args = []
+    if _before:
+        _sql += "AND created_at < ? "
+        _args.append(_before)
+    _sql += "ORDER BY created_at DESC LIMIT ?"
+    _args.append(_lim)
+    c.execute(_sql, tuple(_args))
     
     rows = c.fetchall()
     conn.close()
