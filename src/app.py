@@ -11623,6 +11623,17 @@ def _next_after(d, cycle):
         return add_months(d, 3)
     if cycle == 'yearly':
         return add_months(d, 12)
+    # a VPN every two years, a domain every four - "every 24 months", "2 years"
+    import re as _rc
+    _c = str(cycle or '').lower()
+    _m = _rc.search(r'(\d{1,3})\s*month', _c)
+    if _m:
+        return add_months(d, max(1, int(_m.group(1))))
+    _m = _rc.search(r'(\d{1,2})\s*year', _c)
+    if _m:
+        return add_months(d, max(1, int(_m.group(1))) * 12)
+    if _c in ('biennial', 'every 2 years', '2-yearly'):
+        return add_months(d, 24)
     return add_months(d, 1)
 
 
@@ -11670,7 +11681,15 @@ def list_subscriptions():
                     pass
             if r.get('status') == 'active':
                 cur = r.get('currency') or 'USD'
-                m = (r.get('amount') or 0) * per_month.get(r.get('cycle') or 'monthly', 1)
+                _cy = str(r.get('cycle') or 'monthly').lower()
+                if _cy not in per_month:
+                    import re as _rc2
+                    _mm = _rc2.search(r'(\d{1,3})\s*month', _cy)
+                    _yy = _rc2.search(r'(\d{1,2})\s*year', _cy)
+                    _months = (int(_mm.group(1)) if _mm
+                               else (int(_yy.group(1)) * 12 if _yy else 1))
+                    per_month[_cy] = 1.0 / max(1, _months)
+                m = (r.get('amount') or 0) * per_month.get(_cy, 1)
                 t = totals.setdefault(cur, {"monthly": 0, "yearly": 0})
                 t['monthly'] += m
                 t['yearly'] += m * 12

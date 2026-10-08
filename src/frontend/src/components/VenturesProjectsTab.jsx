@@ -3,7 +3,9 @@ const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
 const API = import.meta.env.VITE_API_URL || API + '';
 const H = { 'X-Ami-Password': AMI_PASSWORD, 'Content-Type': 'application/json' };
-const STAGES = ['idea', 'design', 'build', 'mvp', 'launched', 'scaling'];
+// not everything is software. a bootcamp, a house, a farm all fit here too.
+const STAGES = ['idea', 'planning', 'under way', 'paused', 'done',
+                'design', 'build', 'mvp', 'launched', 'scaling'];
 const PAGE = 10;
 
 const S = {
