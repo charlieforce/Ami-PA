@@ -14771,6 +14771,25 @@ def _money_line(amount, currency):
     return base + ((" (~" + "{:,.0f}".format(u) + " USD)") if u else "")
 
 
+def _find_contact(name):
+    """One person, one record. "Nadine" is the same woman as
+    "Nadine Nikuze Mushimiyimana"; Mr Allie on a job is Mr Allie in contacts."""
+    nm = (name or '').strip()
+    if len(nm) < 2:
+        return None, nm
+    try:
+        r = db.query("""SELECT id, name FROM contacts
+                        WHERE LOWER(name) = LOWER(?) OR LOWER(name) LIKE LOWER(?)
+                           OR LOWER(COALESCE(aliases,'')) LIKE LOWER(?)
+                        ORDER BY LENGTH(name) LIMIT 1""",
+                     (nm, nm + ' %', '%' + nm + '%'))
+        if r:
+            return r[0]['id'], r[0]['name']
+    except Exception:
+        pass
+    return None, nm
+
+
 def _money_person(name):
     """Find whoever he means, across every job. Returns (person, project)."""
     nm = (name or '').strip().lower()
@@ -16601,10 +16620,12 @@ def money_add_person(pid):
         if db.query("SELECT id FROM job_people WHERE venture_id = ? AND LOWER(name) = LOWER(?)",
                     (pid, name)):
             return {"error": "you already have someone by that name on this job"}, 400
-        db.execute("""INSERT INTO job_people (venture_id, name, trade, phone, notes)
-                      VALUES (?, ?, ?, ?, ?)""",
-                   (pid, name, (d.get('trade') or '')[:40], (d.get('phone') or '')[:30],
-                    (d.get('notes') or '')[:200]))
+        _cid, _full = _find_contact(name)
+        db.execute("""INSERT INTO job_people (venture_id, name, trade, phone, notes,
+                                              contact_id)
+                      VALUES (?, ?, ?, ?, ?, ?)""",
+                   (pid, _full or name, (d.get('trade') or '')[:40],
+                    (d.get('phone') or '')[:30], (d.get('notes') or '')[:200], _cid))
         return {"status": "success"}
     except Exception as e:
         return {"error": str(e)}, 400
