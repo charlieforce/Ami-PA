@@ -17681,22 +17681,44 @@ def _ledger_balance(person_id, currency=None):
 @app.get("/api/ledger/people")
 @require_password
 def ledger_people():
-    """Everyone he has money with, and where each stands."""
+    """Everyone he has money with. The live ones first, and only as many as
+    a screen can usefully hold - the rest come when he asks for them."""
     try:
-        rows = db.query("""SELECT id, name, what_they_do FROM ledger_people
-                           WHERE COALESCE(active,1) = 1 ORDER BY name""") or []
-        out = []
+        lim = min(int(request.args.get('limit') or 40), 200)
+        want_quiet = str(request.args.get('quiet') or '') == '1'
+        hunt = (request.args.get('q') or '').strip()
+
+        sql = ("SELECT id, name, what_they_do FROM ledger_people "
+               "WHERE COALESCE(active,1) = 1 ")
+        args = []
+        if hunt:
+            sql += "AND LOWER(name) LIKE LOWER(?) "
+            args.append('%' + hunt + '%')
+        sql += "ORDER BY name"
+        rows = db.query(sql, tuple(args)) or []
+
+        live, quiet = [], []
         for r in rows:
             bal = _ledger_balance(r['id'])
-            if not bal:
-                out.append({"id": r['id'], "name": r['name'],
-                            "what_they_do": r.get('what_they_do') or '',
-                            "balances": {}, "quiet": True})
-                continue
-            out.append({"id": r['id'], "name": r['name'],
-                        "what_they_do": r.get('what_they_do') or '',
-                        "balances": bal, "quiet": False})
-        return {"status": "success", "people": out}
+            has = any(abs(b['net']) > 0.01 for b in bal.values()) if bal else False
+            entry = {"id": r['id'], "name": r['name'],
+                     "what_they_do": r.get('what_they_do') or '',
+                     "balances": (bal if has else {}), "quiet": not has}
+            (live if has else quiet).append(entry)
+
+        live.sort(key=lambda x: -max(
+            (abs(b.get('usd') or b.get('net') or 0) for b in x['balances'].values()),
+            default=0))
+
+        if want_quiet:
+            shown = quiet[:lim]
+            return {"status": "success", "people": shown,
+                    "more": max(0, len(quiet) - len(shown)), "showing": "quiet"}
+
+        shown = live[:lim]
+        return {"status": "success", "people": shown,
+                "more": max(0, len(live) - len(shown)),
+                "quiet_count": len(quiet)}
     except Exception as e:
         return {"error": str(e)}, 400
 

@@ -68,13 +68,18 @@ export default function MoneyTab() {
   const [matForm, setMatForm] = useState({});
   const [editNote, setEditNote] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [showQuiet, setShowQuiet] = useState(false);
+  const [quietCount, setQuietCount] = useState(0);
 
   const load = async () => {
     setErr('');
     try {
       if (view === 'people') {
-        const r = await fetch(API + '/api/ledger/people', { headers: AUTH });
-        setPeople((await r.json()).people || []);
+        const r = await fetch(API + '/api/ledger/people'
+                              + (showQuiet ? '?quiet=1' : ''), { headers: AUTH });
+        const j = await r.json();
+        setPeople(j.people || []);
+        setQuietCount(j.quiet_count || 0);
       } else if (view === 'loans') {
         const r = await fetch(API + '/api/ledger/lending', { headers: AUTH });
         setLoans(await r.json());
@@ -95,7 +100,7 @@ export default function MoneyTab() {
     } catch (e) { setErr(String(e)); }
   };
 
-  useEffect(() => { load(); }, [view]);
+  useEffect(() => { load(); }, [view, showQuiet]);
 
   useEffect(() => {
     (async () => {
