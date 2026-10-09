@@ -5094,7 +5094,8 @@ FIRST MESSAGE OF THE SESSION:
 
     # the money, so she can reason about it rather than only answer set questions
     try:
-        if _r.search(r'\b(owe|owed|pay|paid|cost|spend|spent|money|loan|budget|afford|borrow)', (query or '').lower()):
+        import re as _r
+        if _r.search(r'\b(owe|owed|pay|paid|cost|spend|spent|money|loan|budget|afford|borrow|house|phase|buy|bought|material|equipment|breakdown|carpenter|builder|painter|how is|how are|what is left)', (query or '').lower()):
             _ov = ledger_overview()
             if isinstance(_ov, tuple):
                 _ov = _ov[0]
@@ -5120,6 +5121,29 @@ FIRST MESSAGE OF THE SESSION:
                             + '; '.join(_bits))
                 if _jl:
                     context += '\nThe jobs: ' + '; '.join(_jl[:8])
+                _st = db.query("SELECT v.name AS job, e.note, e.amount, e.currency "
+                               "FROM ledger_entries e JOIN ventures v ON v.id = e.venture_id "
+                               "WHERE e.person_id IS NULL AND e.against_id IS NULL "
+                               "AND e.kind = 'agreed' ORDER BY e.amount DESC LIMIT 10") or []
+                if _st:
+                    context += '\nStill to buy: ' + '; '.join(
+                        str(r['note']) + ' ' + '{:,.0f}'.format(float(r['amount'] or 0))
+                        + ' ' + str(r['currency'] or '') + ' (' + str(r['job']) + ')'
+                        for r in _st)
+                _wk = db.query("SELECT p.name, v.name AS job, e.note, e.amount, e.currency "
+                               "FROM ledger_entries e "
+                               "JOIN ledger_people p ON p.id = e.person_id "
+                               "LEFT JOIN ventures v ON v.id = e.venture_id "
+                               "WHERE e.kind = 'agreed' "
+                               "AND COALESCE(e.status,'open') = 'open' "
+                               "ORDER BY e.amount DESC LIMIT 12") or []
+                if _wk:
+                    context += '\nWho is doing what: ' + '; '.join(
+                        str(r['name']) + ' - ' + str(r['note'] or 'work') + ' '
+                        + '{:,.0f}'.format(float(r['amount'] or 0)) + ' '
+                        + str(r['currency'] or '')
+                        + ((' on ' + str(r['job'])) if r.get('job') else '')
+                        for r in _wk)
     except Exception as _em2:
         print('money context: ' + str(_em2)[:60])
 
