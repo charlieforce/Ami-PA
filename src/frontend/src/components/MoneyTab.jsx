@@ -152,6 +152,34 @@ export default function MoneyTab() {
     setBusy(false);
   };
 
+  const dropPerson = async () => {
+    if (!window.confirm('Remove this person? Anything that actually moved is kept.')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(API + '/api/ledger/person/' + openId,
+                            { method: 'DELETE', headers: AUTH });
+      const j = await r.json();
+      if (j.error) { setErr(j.error); } else { setErr(j.says || ''); }
+      setOpenId(null); setAcct(null);
+      await load();
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
+  const dropJob = async () => {
+    if (!window.confirm('Remove this job? Anything on it is kept.')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(API + '/api/ledger/job/' + openProject,
+                            { method: 'DELETE', headers: AUTH });
+      const j = await r.json();
+      if (j.error) { setErr(j.error); } else { setErr(j.says || ''); }
+      setOpenProject(null); setJob(null);
+      await load();
+    } catch (e) { setErr(String(e)); }
+    setBusy(false);
+  };
+
   const markDone = async (eid, undo) => {
     setBusy(true);
     try {
@@ -250,6 +278,9 @@ export default function MoneyTab() {
                     onClick={() => getReport('person', openId)}>Report</button>
             <button style={{ ...S.btn('#2a2a35'), fontSize: '12px' }}
                     onClick={() => getPdf('person', openId, acct.person.name)}>PDF</button>
+            <button style={{ ...S.btn('#2a2a35'), fontSize: '12px', marginLeft: 'auto',
+                             color: '#b88' }}
+                    onClick={dropPerson}>Remove</button>
           </div>
         )}
 
@@ -860,6 +891,8 @@ export default function MoneyTab() {
                   onClick={() => navigator.clipboard?.writeText(projReport)}>Copy</button>
           <button style={S.btn('#4f46e5')}
                   onClick={() => getPdf('project', openProject, 'job')}>PDF</button>
+          <button style={{ ...S.btn('#2a2a35'), marginLeft: 'auto', color: '#b88' }}
+                  onClick={dropJob}>Remove this job</button>
         </div>
       </div>
     );
