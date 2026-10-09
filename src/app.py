@@ -18329,12 +18329,30 @@ def ledger_job(vid):
                            ORDER BY p.name""") or []
         out = []
         for f in folk:
-            bal = _ledger_balance(f['id'])
-            first = list(bal.items())[0] if bal else None
+            # what is owed ON THIS JOB, not everything he owes them everywhere
+            here = db.query("""SELECT kind, amount, currency, status FROM ledger_entries
+                               WHERE person_id = ? AND venture_id IN (""" + inlist + """)""",
+                            (f['id'],)) or []
+            agreed = paid = 0.0
+            cur = ''
+            for e in here:
+                if str(e.get('status')) in ('forgiven', 'done'):
+                    continue
+                cur = cur or (e.get('currency') or '')
+                amt = float(e.get('amount') or 0)
+                if e['kind'] == 'agreed':
+                    agreed += amt
+                elif e['kind'] in ('paid', 'repaid'):
+                    paid += amt
+            everywhere = _ledger_balance(f['id'])
+            first = list(everywhere.items())[0] if everywhere else None
             out.append({"id": f['id'], "name": f['name'],
                         "what_they_do": f.get('what_they_do') or '',
-                        "currency": (first[0] if first else ''),
-                        "net": (first[1]['net'] if first else 0)})
+                        "currency": cur or (first[0] if first else ''),
+                        "net": round(agreed - paid, 2),
+                        "agreed_here": round(agreed, 2),
+                        "paid_here": round(paid, 2),
+                        "net_everywhere": (first[1]['net'] if first else 0)})
         title, L = _report_project(vid)
         return {"status": "success", "project": d.get('project'),
                 "totals": d.get('totals'), "materials": d.get('materials') or [],
@@ -18438,13 +18456,26 @@ def ledger_jobs():
                            ORDER BY lines DESC, v.name""") or []
         out = []
         for r in rows:
+            # what sits directly on it, and what everything beneath it adds up to
             a, sp = float(r['agreed'] or 0), float(r['spent'] or 0)
+            ids = _all_under(r['id'])
+            inlist = ",".join(str(i) for i in ids)
+            ta = (db.query("SELECT COALESCE(SUM(amount),0) AS s FROM ledger_entries "
+                           "WHERE venture_id IN (" + inlist + ") AND kind = 'agreed' "
+                           "AND COALESCE(status,'open') NOT IN ('forgiven','done')")
+                  or [{"s": 0}])[0]['s'] or 0
+            ts = (db.query("SELECT COALESCE(SUM(amount),0) AS s FROM ledger_entries "
+                           "WHERE venture_id IN (" + inlist + ") "
+                           "AND kind IN ('paid','bought')") or [{"s": 0}])[0]['s'] or 0
+            ta, ts = float(ta), float(ts)
             out.append({"id": r['id'], "name": r['name'],
                         "parent_id": r.get('parent_id'),
-                        "agreed": round(a, 2), "spent": round(sp, 2),
-                        "owed": round(a - sp, 2),
+                        "agreed": round(ta, 2), "spent": round(ts, 2),
+                        "owed": round(ta - ts, 2),
+                        "own_agreed": round(a, 2), "own_spent": round(sp, 2),
+                        "rolled_up": bool(len(ids) > 1 and (ta > a or ts > sp)),
                         "currency": _job_currency(r['id']),
-                        "quiet": not r['lines']})
+                        "quiet": not (r['lines'] or ta or ts)})
         return {"status": "success", "jobs": out}
     except Exception as e:
         return {"error": str(e)}, 400
