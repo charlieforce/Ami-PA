@@ -1045,14 +1045,6 @@ export default function MoneyTab() {
               </div>
             );
           })}
-          {people.filter(p => p.quiet).length > 0 && (
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-              {people.filter(p => p.quiet).map(p => (
-                <span key={p.id} onClick={() => setOpenId(p.id)}
-                      style={{ cursor: 'pointer', marginRight: '10px' }}>{p.name} &middot;</span>
-              ))}
-            </div>
-          )}
         </>
       )}
 
