@@ -996,21 +996,39 @@ export default function MoneyTab() {
       })()}
 
       {view === 'projects' && (() => {
-        const live = projects.filter(j => !j.quiet);
-        const quiet = projects.filter(j => j.quiet);
         const byId = {};
         projects.forEach(j => { byId[j.id] = j; });
+        const depthOf = (j) => {
+          let d = 0, at = j;
+          while (at && at.parent_id && byId[at.parent_id] && d < 6) {
+            d += 1; at = byId[at.parent_id];
+          }
+          return d;
+        };
+        // children sit under their parent, in order
+        const ordered = [];
+        const place = (parent) => {
+          projects
+            .filter(j => (j.parent_id || null) === parent)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .forEach(j => { ordered.push(j); place(j.id); });
+        };
+        place(null);
+        projects.forEach(j => { if (!ordered.includes(j)) ordered.push(j); });
+        const live = ordered.filter(j => !j.quiet);
+        const quiet = ordered.filter(j => j.quiet);
         return (
           <>
             {live.map(j => (
-              <div key={j.id} style={{ ...S.card, cursor: 'pointer' }}
+              <div key={j.id} style={{ ...S.card, cursor: 'pointer',
+                                       marginLeft: (depthOf(j) * 14) + 'px',
+                                       borderLeft: depthOf(j)
+                                         ? '2px solid #2c2c3a' : S.card.border }}
                    onClick={() => setOpenProject(j.id)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={S.name}>{j.name}</div>
                     <div style={S.sub}>
-                      {j.parent_id && byId[j.parent_id]
-                        ? 'part of ' + byId[j.parent_id].name + ' \u00b7 ' : ''}
                       agreed {n0(j.agreed)} &middot; paid {n0(j.spent)}
                     </div>
                   </div>
