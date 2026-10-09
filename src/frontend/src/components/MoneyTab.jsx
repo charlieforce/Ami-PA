@@ -63,6 +63,7 @@ export default function MoneyTab() {
   const [found, setFound] = useState(null);
   const [newLoan, setNewLoan] = useState(false);
   const [loanForm, setLoanForm] = useState({});
+  const [openGroups, setOpenGroups] = useState({});
 
   const load = async () => {
     setErr('');
@@ -998,68 +999,84 @@ export default function MoneyTab() {
       {view === 'projects' && (() => {
         const byId = {};
         projects.forEach(j => { byId[j.id] = j; });
-        const depthOf = (j) => {
-          let d = 0, at = j;
-          while (at && at.parent_id && byId[at.parent_id] && d < 6) {
-            d += 1; at = byId[at.parent_id];
-          }
-          return d;
+        const kidsOf = (id) => projects
+          .filter(j => (j.parent_id || null) === id)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const liveUnder = (id) => {
+          const me = byId[id];
+          if (me && (me.agreed || me.spent)) return true;
+          return kidsOf(id).some(k => liveUnder(k.id));
         };
-        // children sit under their parent, in order
-        const ordered = [];
-        const place = (parent) => {
-          projects
-            .filter(j => (j.parent_id || null) === parent)
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .forEach(j => { ordered.push(j); place(j.id); });
-        };
-        place(null);
-        projects.forEach(j => { if (!ordered.includes(j)) ordered.push(j); });
-        // a parent stays in the list when its children have money on them
-        const hasLiveKid = (id) => projects.some(k =>
-          k.parent_id === id && (!k.quiet || hasLiveKid(k.id)));
-        const live = ordered.filter(j => !j.quiet || hasLiveKid(j.id));
-        const quiet = ordered.filter(j => j.quiet && !hasLiveKid(j.id));
-        return (
-          <>
-            {live.map(j => (
-              <div key={j.id} style={{ ...S.card, cursor: 'pointer',
-                                       marginLeft: (depthOf(j) * 14) + 'px',
-                                       borderLeft: depthOf(j)
-                                         ? '2px solid #2c2c3a' : S.card.border }}
-                   onClick={() => setOpenProject(j.id)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        const Row = (j, depth) => {
+          const kids = kidsOf(j.id);
+          const isTop = depth === 0;
+          const open = isTop ? !!openGroups[j.id] : true;
+          return (
+            <div key={j.id}>
+              <div style={{ ...S.card, marginLeft: (depth * 13) + 'px', cursor: 'pointer',
+                            background: isTop ? '#1b1b24' : '#17171f',
+                            borderLeft: depth ? '2px solid #2c2c3a' : '1px solid #26262f' }}
+                   onClick={() => {
+                     if (isTop && kids.length) {
+                       setOpenGroups({ ...openGroups, [j.id]: !openGroups[j.id] });
+                     } else { setOpenProject(j.id); }
+                   }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                              alignItems: 'center', gap: '10px' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={S.name}>{j.name}</div>
+                    <div style={{ ...S.name, fontSize: isTop ? '16px' : '15px' }}>
+                      {isTop && kids.length ? (open ? '\u25be ' : '\u25b8 ') : ''}{j.name}
+                    </div>
                     <div style={S.sub}>
                       {j.agreed || j.spent
                         ? 'agreed ' + n0(j.agreed) + ' \u00b7 paid ' + n0(j.spent)
-                        : 'the work is in the parts below'}
+                        : (kids.length ? kids.length + ' parts' : 'nothing on it yet')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <div style={{ fontSize: '15px', fontWeight: 700,
-                                  color: j.owed > 0 ? '#f59e0b' : '#10b981' }}>
-                      {j.agreed || j.spent ? n0(j.owed > 0 ? j.owed : j.spent) : ''}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#777' }}>
-                      {j.agreed || j.spent ? (j.owed > 0 ? 'still owed' : 'spent') : ''}
-                    </div>
+                    {(j.agreed || j.spent) ? (
+                      <div>
+                        <div style={{ fontSize: isTop ? '17px' : '15px', fontWeight: 700,
+                                      color: j.owed > 0 ? '#f59e0b' : '#10b981' }}>
+                          {n0(j.owed > 0 ? j.owed : j.spent)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#777' }}>
+                          {j.currency} {j.owed > 0 ? 'owed' : 'spent'}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
+                {isTop && kids.length > 0 && (
+                  <div style={{ fontSize: '11px', color: '#666', marginTop: '6px' }}>
+                    <span style={{ color: '#8b8bff' }}
+                          onClick={(ev) => { ev.stopPropagation(); setOpenProject(j.id); }}>
+                      open it
+                    </span>
+                  </div>
+                )}
               </div>
-            ))}
-            {quiet.length > 0 && (
-              <div style={{ fontSize: '12px', color: '#666', marginTop: '12px' }}>
+              {open && kids.map(k => Row(k, depth + 1))}
+            </div>
+          );
+        };
+        const tops = kidsOf(null);
+        const busy = tops.filter(t => liveUnder(t.id));
+        const idle = tops.filter(t => !liveUnder(t.id));
+        return (
+          <div>
+            {busy.map(t => Row(t, 0))}
+            {idle.length > 0 && (
+              <div style={{ fontSize: '12px', color: '#666', marginTop: '14px' }}>
                 Nothing on these yet:{' '}
-                {quiet.map(j => (
-                  <span key={j.id} onClick={() => setOpenProject(j.id)}
+                {idle.map(t => (
+                  <span key={t.id} onClick={() => setOpenProject(t.id)}
                         style={{ cursor: 'pointer', marginRight: '8px',
-                                 color: '#8b8bff' }}>{j.name}</span>
+                                 color: '#8b8bff' }}>{t.name}</span>
                 ))}
               </div>
             )}
-          </>
+          </div>
         );
       })()}
 
