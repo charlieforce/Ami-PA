@@ -1120,6 +1120,29 @@ export default function MoneyTab() {
                   </div>
                 )}
               </div>
+              {open && j.to_buy_n > 0 && (
+                <div style={{ ...S.card, marginLeft: ((depth + 1) * 13) + 'px',
+                              cursor: 'pointer', background: '#1a1626',
+                              borderLeft: '2px solid #6d4aa8' }}
+                     onClick={() => setOpenProject(j.id)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ ...S.name, color: '#c4a7f0' }}>Things to buy</div>
+                      <div style={S.sub}>
+                        {j.to_buy_n} {j.to_buy_n === 1 ? 'item' : 'items'} on the list
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#c4a7f0' }}>
+                        {n0(j.to_buy)}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#777' }}>
+                        {j.currency} to find
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {open && kids.map(k => Row(k, depth + 1))}
             </div>
           );

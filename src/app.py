@@ -18499,8 +18499,15 @@ def ledger_jobs():
                            "WHERE venture_id IN (" + inlist + ") "
                            "AND kind IN ('paid','bought')") or [{"s": 0}])[0]['s'] or 0
             ta, ts = float(ta), float(ts)
+            # anything with no person on it is stuff to buy, not work
+            st = db.query("SELECT COALESCE(SUM(amount),0) AS a, COUNT(*) AS n "
+                          "FROM ledger_entries WHERE venture_id = ? "
+                          "AND person_id IS NULL AND against_id IS NULL "
+                          "AND kind = 'agreed'", (r['id'],)) or [{"a": 0, "n": 0}]
             out.append({"id": r['id'], "name": r['name'],
                         "parent_id": r.get('parent_id'),
+                        "to_buy": round(float(st[0]['a'] or 0), 2),
+                        "to_buy_n": int(st[0]['n'] or 0),
                         "agreed": round(ta, 2), "spent": round(ts, 2),
                         "owed": round(ta - ts, 2),
                         "own_agreed": round(a, 2), "own_spent": round(sp, 2),
