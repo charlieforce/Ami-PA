@@ -803,7 +803,8 @@ export default function MoneyTab() {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
+          <div style={{ display: 'flex', gap: '8px', margin: '12px 0',
+                        flexWrap: 'wrap' }}>
             <button style={{ ...S.btn('#4f46e5'), flex: 1 }}
                     onClick={() => { setJobAdd('work'); setJobForm({}); }}>
               + Work
@@ -812,6 +813,39 @@ export default function MoneyTab() {
                     onClick={() => { setJobAdd('thing'); setJobForm({}); }}>
               + Something to buy
             </button>
+            <button style={{ ...S.btn('#2a2a35'), width: '100%' }}
+                    onClick={() => { setJobAdd('part'); setJobForm({}); }}>
+              + A part of this job (a phase, a room)
+            </button>
+          </div>
+        )}
+
+        {jobAdd === 'part' && (
+          <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
+            <input style={S.input} placeholder="What is it called? - Phase III, Roof" autoFocus
+                   onChange={e => setJobForm({ ...jobForm, name: e.target.value })} />
+            <textarea style={{ ...S.input, minHeight: '70px' }}
+                      placeholder="What does it cover?"
+                      onChange={e => setJobForm({ ...jobForm, note: e.target.value })} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={S.btn('#4f46e5')} disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const r = await fetch(API + '/api/ledger/job/' + openProject
+                                                + '/part', { method: 'POST', headers: H,
+                                                  body: JSON.stringify(jobForm) });
+                          const j = await r.json();
+                          if (j.error) { setErr(j.error); }
+                          setJobAdd(''); setJobForm({});
+                          await load();
+                          if (j.id) setOpenProject(j.id);
+                        } catch (e) { setErr(String(e)); }
+                        setBusy(false);
+                      }}>Create it</button>
+              <button style={S.btn('#2a2a35')}
+                      onClick={() => { setJobAdd(''); setJobForm({}); }}>Cancel</button>
+            </div>
           </div>
         )}
 

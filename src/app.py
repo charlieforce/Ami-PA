@@ -19174,6 +19174,34 @@ def ledger_loans_by_person():
         return {"error": str(e)}, 400
 
 
+@app.post("/api/ledger/job/<int:vid>/part")
+@require_password
+def ledger_job_add_part(vid):
+    """A phase, a room, a stage - a job inside this job."""
+    try:
+        d = request.get_json() or {}
+        name = (d.get('name') or '').strip()[:60]
+        if len(name) < 2:
+            return {"error": "what is it called?"}, 400
+        if db.query("""SELECT id FROM ventures WHERE LOWER(name) = LOWER(?)
+                       AND parent_id = ?""", (name, vid)):
+            return {"error": "that one is already under here"}, 400
+        parent = db.query("SELECT name, type FROM ventures WHERE id = ?", (vid,))
+        if not parent:
+            return {"error": "no such job"}, 404
+        db.execute("""INSERT INTO ventures (name, description, type, stage, parent_id, active)
+                      VALUES (?, ?, ?, 'planning', ?, 1)""",
+                   (name, (d.get('note') or '')[:600],
+                    (parent[0].get('type') or 'project'), vid))
+        r = db.query("""SELECT id FROM ventures WHERE name = ? AND parent_id = ?
+                        ORDER BY id DESC LIMIT 1""", (name, vid))
+        if not r:
+            return {"error": "it did not save"}, 400
+        return {"status": "success", "id": r[0]['id'], "under": parent[0]['name']}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
