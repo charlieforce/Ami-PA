@@ -13414,6 +13414,19 @@ def _fixtures_for_context(query=''):
         return ""
 
 
+def _money_for_briefing():
+    """One or two lines about the money, for the morning. Quiet when there
+    is nothing worth saying - he does not need a daily finance report."""
+    try:
+        notes = _money_worth_saying() or []
+        if not notes:
+            return ""
+        return ("\n\nTHE MONEY (mention it plainly, one line each, only if it fits "
+                "naturally): " + "; ".join(n['says'] for n in notes[:2]))
+    except Exception:
+        return ""
+
+
 def _news_for_first_message():
     """One line of news on his first message after 7am - not the whole briefing."""
     try:
@@ -13433,7 +13446,7 @@ def _news_for_first_message():
                          WHERE DATE(date_created) = ? ORDER BY id DESC LIMIT 1""", (today,))
         if not br:
             return ""
-        return ("\n\nTHIS MORNING'S NEWS (his first message today - work ONE line of what "
+        return _money_for_briefing() + ("\n\nTHIS MORNING'S NEWS (his first message today - work ONE line of what "
                 "matters most into your reply, naturally, then carry on. Do not list it all, "
                 "he has the Briefing tab for that):\n"
                 + str(br[0]['briefing_text'])[:2500])
@@ -18800,6 +18813,30 @@ def _money_worth_saying():
                             "says": (str(j['name']) + " has gone past what was agreed - "
                                      + "{:,.0f}".format(sp) + " out against "
                                      + "{:,.0f}".format(a) + ".")})
+    except Exception:
+        pass
+
+    # something bought at well over the estimate
+    try:
+        over = db.query("""SELECT b.note, b.amount AS paid, b.quantity AS got,
+                                  b.unit_price AS price_paid, a.unit_price AS price_said,
+                                  b.currency, v.name AS job
+                           FROM ledger_entries b
+                           JOIN ledger_entries a ON a.id = b.against_id
+                           LEFT JOIN ventures v ON v.id = b.venture_id
+                           WHERE b.against_id IS NOT NULL
+                             AND b.happened_on >= date('now','-60 days')""") or []
+        for o in over:
+            said = float(o.get('price_said') or 0)
+            paid = float(o.get('price_paid') or 0)
+            if said > 0 and paid > said * 1.15:
+                out.append({"kind": "dearer",
+                            "says": (str(o.get('note') or 'that') + " came in at "
+                                     + "{:,.2f}".format(paid) + " each, not "
+                                     + "{:,.2f}".format(said) + " - "
+                                     + "{:+.0f}".format((paid - said) / said * 100) + "%"
+                                     + ((" on " + str(o['job'])) if o.get('job') else "")
+                                     + ".")})
     except Exception:
         pass
 
