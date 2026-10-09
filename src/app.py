@@ -18422,7 +18422,16 @@ def ledger_job(vid):
                         "paid_here": round(paid, 2),
                         "net_everywhere": (first[1]['net'] if first else 0)})
         title, L = _report_project(vid)
+        _v = db.query("SELECT name, description, parent_id FROM ventures WHERE id = ?",
+                      (vid,))
+        _pa = None
+        if _v and _v[0].get('parent_id'):
+            _pr = db.query("SELECT name FROM ventures WHERE id = ?", (_v[0]['parent_id'],))
+            _pa = _pr[0]['name'] if _pr else None
         return {"status": "success", "project": d.get('project'),
+                "name": (_v[0]['name'] if _v else ''),
+                "note": (_v[0].get('description') if _v else '') or '',
+                "part_of": _pa,
                 "totals": d.get('totals'), "materials": d.get('materials') or [],
                 "people": out, "report": "\n".join(L) if L else ''}
     except Exception as e:
@@ -18683,6 +18692,22 @@ def ledger_material_change(eid):
         return {"error": str(e)}, 400
 
 
+@app.put("/api/ledger/job/<int:vid>/note")
+@require_password
+def ledger_job_note(vid):
+    """What this phase actually covers, in his own words."""
+    try:
+        d = request.get_json() or {}
+        note = str(d.get('note') or '')[:1200]
+        db.execute("UPDATE ventures SET description = ? WHERE id = ?", (note, vid))
+        back = db.query("SELECT description FROM ventures WHERE id = ?", (vid,))
+        if not back or (back[0]['description'] or '') != note:
+            return {"error": "the note did not save"}, 400
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/ledger/job/<int:vid>/materials")
 @require_password
 def ledger_job_materials(vid):
@@ -18866,7 +18891,29 @@ def _money_worth_saying():
                                      + " is about due.")})
     except Exception:
         pass
-    return out[:6]
+    # he has heard it. leave it a fortnight before saying it again.
+    fresh = []
+    for o in out:
+        key = (o.get('kind') or '') + '|' + (o.get('says') or '')[:60]
+        try:
+            seen = db.query("SELECT said_on FROM money_said WHERE what = ?", (key,))
+            if seen:
+                when = str(seen[0]['said_on'])[:10]
+                try:
+                    days = (today - _dw.strptime(when, '%Y-%m-%d')).days
+                except Exception:
+                    days = 99
+                if days < 14:
+                    continue
+                db.execute("UPDATE money_said SET said_on = date('now') WHERE what = ?",
+                           (key,))
+            else:
+                db.execute("INSERT OR IGNORE INTO money_said (what, said_on) "
+                           "VALUES (?, date('now'))", (key,))
+        except Exception:
+            pass
+        fresh.append(o)
+    return fresh[:6]
 
 
 @app.get("/api/ledger/watch")

@@ -66,6 +66,8 @@ export default function MoneyTab() {
   const [openGroups, setOpenGroups] = useState({});
   const [editMat, setEditMat] = useState(null);
   const [matForm, setMatForm] = useState({});
+  const [editNote, setEditNote] = useState(false);
+  const [noteText, setNoteText] = useState('');
 
   const load = async () => {
     setErr('');
@@ -461,6 +463,64 @@ export default function MoneyTab() {
                          cursor: 'pointer', fontSize: '13px', padding: '0 0 10px' }}>
           &#8592; All jobs
         </button>
+        {job && (
+          <>
+            <div style={{ fontSize: '20px', fontWeight: 700 }}>{job.name}</div>
+            {job.part_of && (
+              <div style={{ fontSize: '12px', color: '#8b8b9e', marginTop: '2px' }}>
+                part of {job.part_of}
+              </div>
+            )}
+            {job.totals && (job.totals.agreed || job.totals.spent) ? (
+              <div style={{ fontSize: '13px', color: '#8b8b9e', marginTop: '6px' }}>
+                {n0(job.totals.agreed)} agreed &middot; {n0(job.totals.spent)} paid
+                &middot;{' '}
+                <span style={{ color: job.totals.owed > 0 ? '#f59e0b' : '#10b981' }}>
+                  {n0(job.totals.owed)} still owed
+                </span>
+              </div>
+            ) : null}
+
+            {editNote ? (
+              <div style={{ ...S.card, marginTop: '10px', borderColor: '#3a3a5a' }}>
+                <textarea style={{ ...S.input, minHeight: '90px' }} autoFocus
+                          defaultValue={job.note || ''}
+                          placeholder="What does this cover? Anything you would want to
+                                       remember in six months."
+                          onChange={e => setNoteText(e.target.value)} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={S.btn('#4f46e5')} disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await fetch(API + '/api/ledger/job/' + openProject + '/note', {
+                                method: 'PUT', headers: H,
+                                body: JSON.stringify({ note: noteText }) });
+                              setEditNote(false);
+                              const r = await fetch(API + '/api/ledger/job/' + openProject,
+                                                    { headers: AUTH });
+                              const j = await r.json();
+                              setJob(j); setProjReport(j.report || '');
+                            } catch (e) { setErr(String(e)); }
+                            setBusy(false);
+                          }}>Save</button>
+                  <button style={S.btn('#2a2a35')}
+                          onClick={() => setEditNote(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ ...S.card, marginTop: '10px', cursor: 'pointer' }}
+                   onClick={() => { setEditNote(true); setNoteText(job.note || ''); }}>
+                <div style={{ fontSize: '13px',
+                              color: job.note ? '#ccc' : '#666',
+                              whiteSpace: 'pre-wrap' }}>
+                  {job.note || 'Add a note about this one'}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {job && job.people && job.people.length > 0 && (
           <>
             <div style={S.label}>Who is on it</div>
