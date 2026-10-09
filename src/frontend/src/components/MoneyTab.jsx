@@ -1015,8 +1015,11 @@ export default function MoneyTab() {
         };
         place(null);
         projects.forEach(j => { if (!ordered.includes(j)) ordered.push(j); });
-        const live = ordered.filter(j => !j.quiet);
-        const quiet = ordered.filter(j => j.quiet);
+        // a parent stays in the list when its children have money on them
+        const hasLiveKid = (id) => projects.some(k =>
+          k.parent_id === id && (!k.quiet || hasLiveKid(k.id)));
+        const live = ordered.filter(j => !j.quiet || hasLiveKid(j.id));
+        const quiet = ordered.filter(j => j.quiet && !hasLiveKid(j.id));
         return (
           <>
             {live.map(j => (
@@ -1029,16 +1032,18 @@ export default function MoneyTab() {
                   <div style={{ minWidth: 0 }}>
                     <div style={S.name}>{j.name}</div>
                     <div style={S.sub}>
-                      agreed {n0(j.agreed)} &middot; paid {n0(j.spent)}
+                      {j.agreed || j.spent
+                        ? 'agreed ' + n0(j.agreed) + ' \u00b7 paid ' + n0(j.spent)
+                        : 'the work is in the parts below'}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: '15px', fontWeight: 700,
                                   color: j.owed > 0 ? '#f59e0b' : '#10b981' }}>
-                      {n0(j.owed > 0 ? j.owed : j.spent)}
+                      {j.agreed || j.spent ? n0(j.owed > 0 ? j.owed : j.spent) : ''}
                     </div>
                     <div style={{ fontSize: '11px', color: '#777' }}>
-                      {j.owed > 0 ? 'still owed' : 'spent'}
+                      {j.agreed || j.spent ? (j.owed > 0 ? 'still owed' : 'spent') : ''}
                     </div>
                   </div>
                 </div>
