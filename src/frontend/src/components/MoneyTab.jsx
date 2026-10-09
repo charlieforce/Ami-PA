@@ -64,6 +64,8 @@ export default function MoneyTab() {
   const [newLoan, setNewLoan] = useState(false);
   const [loanForm, setLoanForm] = useState({});
   const [openGroups, setOpenGroups] = useState({});
+  const [editMat, setEditMat] = useState(null);
+  const [matForm, setMatForm] = useState({});
 
   const load = async () => {
     setErr('');
@@ -570,7 +572,62 @@ export default function MoneyTab() {
                   </div>
                 </div>
 
-                {gotWhat === m.id ? (
+                {editMat === m.id ? (
+                  <div style={{ marginTop: '10px', paddingTop: '10px',
+                                borderTop: '1px solid #26262f' }}>
+                    <input style={S.input} defaultValue={m.what} placeholder="What is it?"
+                           onChange={e => setMatForm({ ...matForm, what: e.target.value })} />
+                    <input style={S.input} type="number" defaultValue={m.quantity || ''}
+                           placeholder="How many?"
+                           onChange={e => setMatForm({ ...matForm,
+                                                       quantity: Number(e.target.value) })} />
+                    <input style={S.input} type="number"
+                           defaultValue={m.unit_price || m.amount}
+                           placeholder="Price each"
+                           onChange={e => setMatForm({ ...matForm,
+                                                   unit_price: Number(e.target.value) })} />
+                    <input style={S.input} placeholder="Why did it change?"
+                           onChange={e => setMatForm({ ...matForm, why: e.target.value })} />
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button style={S.btn('#4f46e5')} disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  await fetch(API + '/api/ledger/material/' + m.id, {
+                                    method: 'PUT', headers: H,
+                                    body: JSON.stringify({
+                                      ...matForm,
+                                      quantity: matForm.quantity || m.quantity || 1,
+                                      unit_price: matForm.unit_price
+                                                  || m.unit_price || m.amount }) });
+                                  setEditMat(null); setMatForm({});
+                                  const rm = await fetch(API + '/api/ledger/job/'
+                                             + openProject + '/materials', { headers: AUTH });
+                                  setMats((await rm.json()).materials || []);
+                                } catch (e) { setErr(String(e)); }
+                                setBusy(false);
+                              }}>Save</button>
+                      <button style={S.btn('#2a2a35')}
+                              onClick={() => { setEditMat(null); setMatForm({}); }}>
+                        Cancel
+                      </button>
+                      <button style={{ ...S.btn('#3a1f1f'), marginLeft: 'auto' }}
+                              onClick={async () => {
+                                if (!window.confirm('Take this off for good?')) return;
+                                setBusy(true);
+                                try {
+                                  await fetch(API + '/api/ledger/entry/' + m.id,
+                                              { method: 'DELETE', headers: AUTH });
+                                  setEditMat(null);
+                                  const rm = await fetch(API + '/api/ledger/job/'
+                                             + openProject + '/materials', { headers: AUTH });
+                                  setMats((await rm.json()).materials || []);
+                                } catch (e) { setErr(String(e)); }
+                                setBusy(false);
+                              }}>Remove</button>
+                    </div>
+                  </div>
+                ) : gotWhat === m.id ? (
                   <div style={{ marginTop: '10px', paddingTop: '10px',
                                 borderTop: '1px solid #26262f' }}>
                     <input style={S.input} type="number"
@@ -606,15 +663,22 @@ export default function MoneyTab() {
                     </div>
                   </div>
                 ) : (
-                  !m.done && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '9px' }}>
+                    {!m.done && (
+                      <button style={{ ...S.btn('#10b981'), fontSize: '12px',
+                                       padding: '7px 13px' }}
+                              onClick={() => { setGotWhat(m.id);
+                                setGot({ quantity: m.still_to_get || m.quantity || 1,
+                                         unit_price: m.unit_price || m.amount }); }}>
+                        {m.quantity ? 'I got some' : 'I bought it'}
+                      </button>
+                    )}
                     <button style={{ ...S.btn('#2a2a35'), fontSize: '12px',
-                                     padding: '7px 13px', marginTop: '9px' }}
-                            onClick={() => { setGotWhat(m.id);
-                                             setGot({ quantity: m.still_to_get || m.quantity,
-                                                      unit_price: m.unit_price }); }}>
-                      I got some
+                                     padding: '7px 13px' }}
+                            onClick={() => { setEditMat(m.id); setMatForm({}); }}>
+                      Change
                     </button>
-                  )
+                  </div>
                 )}
               </div>
             ))}

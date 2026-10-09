@@ -5092,6 +5092,37 @@ FIRST MESSAGE OF THE SESSION:
     except Exception:
         pass
 
+    # the money, so she can reason about it rather than only answer set questions
+    try:
+        if _r.search(r'\b(owe|owed|pay|paid|cost|spend|spent|money|loan|budget|afford|borrow)', (query or '').lower()):
+            _ov = ledger_overview()
+            if isinstance(_ov, tuple):
+                _ov = _ov[0]
+            _bits = []
+            for _x in (_ov.get('they_owe_him') or [])[:5]:
+                _bits.append(_x['name'] + ' owes him '
+                             + _money_s(_x['amount'], _x['currency']))
+            for _x in (_ov.get('he_owes') or [])[:5]:
+                _bits.append('he owes ' + _x['name'] + ' '
+                             + _money_s(_x['amount'], _x['currency']))
+            _jb = db.query("""SELECT v.name,
+                              (SELECT COALESCE(SUM(amount),0) FROM ledger_entries e
+                               WHERE e.venture_id = v.id AND e.kind='agreed') AS a,
+                              (SELECT COALESCE(SUM(amount),0) FROM ledger_entries e2
+                               WHERE e2.venture_id = v.id
+                                 AND e2.kind IN ('paid','bought')) AS s
+                           FROM ventures v WHERE COALESCE(v.active,1)=1""") or []
+            _jl = [str(r['name']) + ': ' + '{:,.0f}'.format(float(r['a'] or 0))
+                   + ' agreed, ' + '{:,.0f}'.format(float(r['s'] or 0)) + ' paid'
+                   for r in _jb if (r['a'] or r['s'])]
+            if _bits or _jl:
+                context += ('\n\nWHERE THE MONEY STANDS (never invent a figure; if it is not here, say you do not have it): '
+                            + '; '.join(_bits))
+                if _jl:
+                    context += '\nThe jobs: ' + '; '.join(_jl[:8])
+    except Exception as _em2:
+        print('money context: ' + str(_em2)[:60])
+
     try:
         _crs = db.query("SELECT title, days FROM course_schedule") or []
         if _crs:
