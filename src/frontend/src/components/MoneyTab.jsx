@@ -61,6 +61,8 @@ export default function MoneyTab() {
   const [coming, setComing] = useState(null);
   const [hunt, setHunt] = useState('');
   const [found, setFound] = useState(null);
+  const [newLoan, setNewLoan] = useState(false);
+  const [loanForm, setLoanForm] = useState({});
 
   const load = async () => {
     setErr('');
@@ -901,6 +903,78 @@ export default function MoneyTab() {
         );
         return (
           <>
+            {newLoan ? (
+              <div style={{ ...S.card, borderColor: '#3a3a5a' }}>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                  <button style={S.tab(loanForm.kind !== 'borrowed')}
+                          onClick={() => setLoanForm({ ...loanForm, kind: 'lent' })}>
+                    I lent them
+                  </button>
+                  <button style={S.tab(loanForm.kind === 'borrowed')}
+                          onClick={() => setLoanForm({ ...loanForm, kind: 'borrowed' })}>
+                    They lent me
+                  </button>
+                </div>
+                <input style={S.input} placeholder="Who?" autoFocus
+                       onChange={e => setLoanForm({ ...loanForm, name: e.target.value })} />
+                <input style={S.input} type="number" placeholder="How much?"
+                       onChange={e => setLoanForm({ ...loanForm,
+                                                    amount: Number(e.target.value) })} />
+                <input style={S.input} placeholder="Currency - SLE, CAD, USD"
+                       onChange={e => setLoanForm({ ...loanForm,
+                                               currency: e.target.value.toUpperCase() })} />
+                <input style={S.input} placeholder="What is it for?"
+                       onChange={e => setLoanForm({ ...loanForm, note: e.target.value })} />
+                <input style={S.input} type="date"
+                       onChange={e => setLoanForm({ ...loanForm,
+                                                    happened_on: e.target.value })} />
+                <input style={S.input} type="number"
+                       placeholder="Paying back how much a month? (leave empty if no plan)"
+                       onChange={e => setLoanForm({ ...loanForm,
+                                                    repay_amount: Number(e.target.value),
+                                                    repay_every: 'month' })} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={S.btn('#4f46e5')} disabled={busy}
+                          onClick={async () => {
+                            if (!loanForm.name || !loanForm.amount) return;
+                            setBusy(true);
+                            try {
+                              let pid = null;
+                              const pr = await fetch(API + '/api/ledger/people',
+                                                     { headers: AUTH });
+                              const all = (await pr.json()).people || [];
+                              const hit = all.find(x => (x.name || '').toLowerCase()
+                                              .includes(loanForm.name.trim().toLowerCase()));
+                              if (hit) { pid = hit.id; }
+                              else {
+                                const mk = await fetch(API + '/api/ledger/person', {
+                                  method: 'POST', headers: H,
+                                  body: JSON.stringify({ name: loanForm.name.trim() }) });
+                                pid = (await mk.json()).id;
+                              }
+                              if (pid) {
+                                await fetch(API + '/api/ledger/entry', {
+                                  method: 'POST', headers: H,
+                                  body: JSON.stringify({ ...loanForm, person_id: pid,
+                                                 kind: loanForm.kind || 'lent' }) });
+                              }
+                              setNewLoan(false); setLoanForm({});
+                              await load();
+                            } catch (e) { setErr(String(e)); }
+                            setBusy(false);
+                          }}>Save</button>
+                  <button style={S.btn('#2a2a35')}
+                          onClick={() => { setNewLoan(false); setLoanForm({}); }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button style={{ ...S.btn('#4f46e5'), width: '100%', marginBottom: '12px' }}
+                      onClick={() => { setNewLoan(true); setLoanForm({ kind: 'lent' }); }}>
+                + New loan
+              </button>
+            )}
             {run.length === 0 && done.length === 0 && (
               <div style={{ fontSize: '13px', color: '#777' }}>
                 Nothing lent either way. Add a loan from someone's account.
