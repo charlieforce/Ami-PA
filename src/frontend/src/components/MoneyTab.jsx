@@ -69,8 +69,8 @@ export default function MoneyTab() {
         const r = await fetch(API + '/api/ledger/people', { headers: AUTH });
         setPeople((await r.json()).people || []);
       } else if (view === 'loans') {
-        const r = await fetch(API + '/api/ledger/loans', { headers: AUTH });
-        setLoans((await r.json()).loans || []);
+        const r = await fetch(API + '/api/ledger/lending', { headers: AUTH });
+        setLoans(await r.json());
       } else {
         const r = await fetch(API + '/api/ledger/jobs', { headers: AUTH });
         setProjects((await r.json()).jobs || []);
@@ -857,40 +857,69 @@ export default function MoneyTab() {
         </>
       )}
 
-      {view === 'loans' && (
-        <>
-          {loans.length === 0 && (
-            <div style={{ fontSize: '13px', color: '#777' }}>Nothing lent either way.</div>
-          )}
-          {loans.map(l => (
-            <div key={l.id} style={S.card}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={S.name}>{l.who}</div>
-                  <div style={S.sub}>
-                    {l.direction} {n0(l.principal)} {l.currency}{l.note ? ' \u00b7 ' + l.note : ''}
-                  </div>
+      {view === 'loans' && (() => {
+        const run = (loans && loans.running) || [];
+        const done = (loans && loans.cleared) || [];
+        const Row = (l, gone) => (
+          <div key={l.person_id + l.currency}
+               style={{ ...S.card, cursor: 'pointer', opacity: gone ? 0.55 : 1 }}
+               onClick={() => setOpenId(l.person_id)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={S.name}>{l.who}</div>
+                <div style={S.sub}>
+                  {l.direction} &middot; {l.loans} {l.loans === 1 ? 'loan' : 'loans'},{' '}
+                  {n0(l.borrowed)} {l.currency}
+                  {l.repaid ? ' \u00b7 ' + n0(l.repaid) + ' back' : ''}
                 </div>
-                <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 700,
-                                color: l.direction === 'he lent' ? '#10b981' : '#f59e0b' }}>
-                    {n0(l.left)}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#777' }}>left</div>
-                </div>
+                {l.since && (
+                  <div style={{ fontSize: '11px', color: '#666' }}>since {l.since}</div>
+                )}
               </div>
-              {l.months_to_clear ? (
-                <div style={{ fontSize: '12px', color: '#8b8b9e', marginTop: '6px' }}>
-                  {n0(l.repay_amount)} a {l.repay_every || 'month'} &middot; clears in{' '}
-                  {l.months_to_clear} months
+              <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '17px', fontWeight: 700,
+                              color: gone ? '#777'
+                                   : (l.direction === 'you lent them' ? '#10b981' : '#f59e0b') }}>
+                  {gone ? 'cleared' : n0(l.left)}
                 </div>
-              ) : null}
+                {!gone && (
+                  <div style={{ fontSize: '11px', color: '#777' }}>
+                    {l.currency} left
+                    {l.usd_left && l.currency !== 'USD'
+                      ? ' \u00b7 ~' + n0(l.usd_left) + ' USD' : ''}
+                  </div>
+                )}
+              </div>
             </div>
-          ))}
-          <button style={{ ...S.btn('#2a2a35'), marginTop: '10px' }}
-                  onClick={() => getReport('loans')}>Report on the lending</button>
-        </>
-      )}
+            {l.months_to_clear ? (
+              <div style={{ fontSize: '12px', color: '#8b8b9e', marginTop: '6px' }}>
+                {n0(l.repay_amount)} a {l.repay_every || 'month'} &middot; clears in{' '}
+                {l.months_to_clear} months
+              </div>
+            ) : null}
+          </div>
+        );
+        return (
+          <>
+            {run.length === 0 && done.length === 0 && (
+              <div style={{ fontSize: '13px', color: '#777' }}>
+                Nothing lent either way. Add a loan from someone's account.
+              </div>
+            )}
+            {run.map(l => Row(l, false))}
+            {done.length > 0 && (
+              <>
+                <div style={S.label}>Cleared</div>
+                {done.map(l => Row(l, true))}
+              </>
+            )}
+            {(run.length > 0 || done.length > 0) && (
+              <button style={{ ...S.btn('#2a2a35'), marginTop: '10px' }}
+                      onClick={() => getReport('loans')}>Report on the lending</button>
+            )}
+          </>
+        );
+      })()}
 
       {view === 'projects' && (() => {
         const live = projects.filter(j => !j.quiet);

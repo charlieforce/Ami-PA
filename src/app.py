@@ -18928,6 +18928,75 @@ def ledger_drop_receipt(rid):
         return {"error": str(e)}, 400
 
 
+@app.get("/api/ledger/lending")
+@require_password
+def ledger_loans_by_person():
+    """One line per person, not per loan. He takes five loans from Ingie and
+    pays against the total - splitting them apart is a fiction.
+
+    Cleared accounts drop to the bottom but never disappear.
+    """
+    try:
+        from datetime import datetime as _dv
+        people = db.query("""SELECT DISTINCT p.id, p.name, p.what_they_do
+                             FROM ledger_entries e
+                             JOIN ledger_people p ON p.id = e.person_id
+                             WHERE e.kind IN ('lent','borrowed','bought')""") or []
+        running, cleared = [], []
+        for p in people:
+            rows = db.query("""SELECT kind, amount, currency, happened_on, repay_amount,
+                                      repay_every, status, note
+                               FROM ledger_entries WHERE person_id = ?""", (p['id'],)) or []
+            by_cur = {}
+            for r in rows:
+                if str(r.get('status')) in ('forgiven', 'done'):
+                    continue
+                cur = (r.get('currency') or 'USD').upper()[:4]
+                amt = float(r.get('amount') or 0)
+                b = by_cur.setdefault(cur, {"in": 0.0, "back": 0.0, "n": 0,
+                                            "per": None, "every": None, "since": None})
+                k = str(r['kind'])
+                if k in ('lent', 'borrowed', 'bought'):
+                    b['in'] += amt
+                    b['n'] += 1
+                    if r.get('repay_amount'):
+                        b['per'] = float(r['repay_amount'])
+                        b['every'] = r.get('repay_every')
+                    w = str(r.get('happened_on') or '')[:10]
+                    if w and (not b['since'] or w < b['since']):
+                        b['since'] = w
+                elif k in ('repaid', 'paid'):
+                    b['back'] += amt
+            for cur, b in by_cur.items():
+                if not b['n']:
+                    continue
+                left = round(b['in'] - b['back'], 2)
+                which = db.query("""SELECT kind FROM ledger_entries
+                                    WHERE person_id = ? AND kind IN ('lent','borrowed')
+                                    ORDER BY id LIMIT 1""", (p['id'],))
+                lent_out = bool(which and which[0]['kind'] == 'lent')
+                months = None
+                if b['per'] and b['per'] > 0 and left > 0:
+                    months = int(left / b['per']) + (1 if left % b['per'] else 0)
+                row = {"person_id": p['id'], "who": p['name'],
+                       "what_they_do": p.get('what_they_do') or '',
+                       "direction": ("you lent them" if lent_out else "they lent you"),
+                       "loans": b['n'],
+                       "borrowed": round(b['in'], 2),
+                       "repaid": round(b['back'], 2),
+                       "left": max(0.0, left),
+                       "currency": cur,
+                       "usd_left": _in_usd(max(0.0, left), cur),
+                       "since": b['since'],
+                       "repay_amount": b['per'], "repay_every": b['every'],
+                       "months_to_clear": months}
+                (cleared if left <= 0.01 else running).append(row)
+        running.sort(key=lambda x: -(x['usd_left'] or 0))
+        return {"status": "success", "running": running, "cleared": cleared}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
 @app.get("/api/today")
 @require_password
 def today_strip():
