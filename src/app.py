@@ -15158,6 +15158,24 @@ def _ledger_from_chat(query):
                              r"(?:the\s+)?([a-z][a-z .'-]{1,30}?)"
                              r"(?:\s+(?:since|in|for|on|during|over|last|this)\b.*)?"
                              r"\s*\??$", low)
+        # a thing, not a person - "what did cement cost me last time"
+        _tm = _rl.search(r"(?:what (?:did|does|do)|how much (?:did|does|is|was|have))"
+                         r"[^a-z]{0,6}(?:i |it |we )?"
+                         r"(?:cost|pay|paid|spend|spent)?[^a-z]{0,4}"
+                         r"(?:for |on )([a-z][a-z ]{2,24}?)"
+                         r"(?:\s+(?:cost|last time|before|usually|normally))?\s*\??$", low)
+        if not _tm:
+            _tm = _rl.search(r"(?:price of|cost of|what does|how much is)\s+"
+                             r"(?:a |the )?([a-z][a-z ]{2,24}?)"
+                             r"(?:\s+(?:cost|usually|normally|go for))?\s*\??$", low)
+        if _tm:
+            _thing = _rl.sub(r"\b(the|a|an|me|us|usually|normally|last time)\b", "",
+                             _tm.group(1)).strip()
+            if _thing and not _ledger_person_by_name(_thing):
+                _ta = _thing_answer(_thing)
+                if _ta:
+                    return _ta
+
         if _bm:
             _who = _rl.sub(r"\b(since|from|for|in|on|phase|the)\b.*$", "",
                            _bm.group(1)).strip()
@@ -18327,6 +18345,15 @@ def _report_all():
         L.append("You owe them")
         for x in d['he_owes']:
             L.append("  " + str(x['name'])[:22].ljust(23) + _money_s(x['amount'], x['currency']))
+    try:
+        _fx = db.query("SELECT currency, COALESCE(fetched_on, as_of) AS as_of "
+                       "FROM fx_rates WHERE COALESCE(fetched_on, as_of) IS NOT NULL "
+                       "ORDER BY as_of DESC LIMIT 1") or []
+        if _fx:
+            L.append("")
+            L.append("USD figures use rates set " + str(_fx[0]['as_of'])[:10] + ".")
+    except Exception:
+        pass
     return "Everything", L
 
 
@@ -18786,7 +18813,21 @@ def ledger_job_material(vid):
                     d.get('happened_on') or _dm.now().strftime('%Y-%m-%d'),
                     qty, (d.get('unit') or '')[:20], price))
         r = db.query("SELECT id FROM ledger_entries ORDER BY id DESC LIMIT 1")
-        return {"status": "success", "id": (r[0]['id'] if r else None)}
+        # has he bought this before, and is this dearer?
+        _said = None
+        try:
+            _was = [x for x in _thing_history(what, 8)
+                    if str(x['kind']) in ('paid', 'bought') and x.get('unit_price')]
+            if _was and price > float(_was[0]['unit_price']) * 1.1:
+                _old = float(_was[0]['unit_price'])
+                _said = ("Last time dis one na " + "{:,.2f}".format(_old)
+                         + " each, " + str(_was[0].get('happened_on') or '')[:10]
+                         + ". Dis one dey " + "{:+.0f}".format(
+                             (price - _old) / _old * 100) + "% pass am.")
+        except Exception:
+            pass
+        return {"status": "success", "id": (r[0]['id'] if r else None),
+                "worth_knowing": _said}
     except Exception as e:
         return {"error": str(e)}, 400
 
@@ -19459,6 +19500,218 @@ def ledger_restore_job(vid):
     try:
         db.execute("UPDATE ventures SET active = 1 WHERE id = ?", (vid,))
         return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+def _thing_history(what, limit=12):
+    """Every time he bought something by this name, newest first."""
+    like = "%" + (what or "").strip() + "%"
+    return db.query("""SELECT e.kind, e.amount, e.currency, e.note, e.happened_on,
+                              e.quantity, e.unit, e.unit_price, v.name AS job
+                       FROM ledger_entries e
+                       LEFT JOIN ventures v ON v.id = e.venture_id
+                       WHERE e.person_id IS NULL
+                         AND LOWER(COALESCE(e.note,'')) LIKE LOWER(?)
+                         AND COALESCE(e.status,'open') != 'forgiven'
+                       ORDER BY e.happened_on DESC, e.id DESC
+                       LIMIT ?""", (like, limit)) or []
+
+
+def _thing_answer(what):
+    """What it cost, when, and whether the price has been moving."""
+    rows = _thing_history(what)
+    if not rows:
+        return None
+    paid = [r for r in rows if str(r['kind']) in ('paid', 'bought')]
+    use = paid or rows
+    first = use[0]
+    cur = first.get('currency') or ''
+    L = []
+    _w = str(first.get('note') or what).strip()
+    _when = str(first.get('happened_on') or '')[:10]
+    _unit = ""
+    if first.get('quantity') and first.get('unit_price'):
+        _unit = (" (" + "{:,.0f}".format(float(first['quantity'])) + " "
+                 + str(first.get('unit') or '') + " at "
+                 + "{:,.2f}".format(float(first['unit_price'])) + " each)")
+    L.append("Las time: " + _w + " " + _money_s(first['amount'], cur) + _unit
+             + ((" pan " + str(first['job'])) if first.get('job') else "")
+             + ((", " + _when) if _when else "") + ".")
+    if len(use) > 1:
+        amounts = [float(r['amount'] or 0) for r in use]
+        lo, hi = min(amounts), max(amounts)
+        if abs(hi - lo) > 0.01:
+            L.append("Across " + str(len(use)) + " times e don run from "
+                     + "{:,.0f}".format(lo) + " to " + "{:,.0f}".format(hi)
+                     + " " + cur + ".")
+        for r in use[1:4]:
+            L.append("  " + str(r.get('happened_on') or '')[:10] + "  "
+                     + "{:,.0f}".format(float(r['amount'] or 0)) + " " + cur
+                     + "  " + str(r.get('note') or '')[:34]
+                     + ((" [" + str(r['job']) + "]") if r.get('job') else ""))
+    return "\n".join(L)
+
+
+@app.get("/api/ledger/thing")
+@require_password
+def ledger_thing():
+    """What has this cost before, everywhere he has bought it."""
+    try:
+        what = (request.args.get('q') or '').strip()
+        if len(what) < 2:
+            return {"error": "what thing?"}, 400
+        rows = _thing_history(what, 30)
+        paid = [r for r in rows if str(r['kind']) in ('paid', 'bought')]
+        amounts = [float(r['amount'] or 0) for r in (paid or rows)]
+        return {"status": "success", "what": what,
+                "times": len(paid or rows),
+                "lowest": (round(min(amounts), 2) if amounts else None),
+                "highest": (round(max(amounts), 2) if amounts else None),
+                "last": (dict(rows[0]) if rows else None),
+                "every_time": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/ledger/job/<int:vid>/clone")
+@require_password
+def ledger_clone_job(vid):
+    """Phase 4, the same shape as Phase 3. The agreements come across as
+    estimates; nothing is marked paid, because nothing has been."""
+    try:
+        from datetime import datetime as _dc
+        d = request.get_json() or {}
+        name = (d.get('name') or '').strip()[:60]
+        if len(name) < 2:
+            return {"error": "what is the new one called?"}, 400
+        old = db.query("SELECT name, description, type, parent_id FROM ventures WHERE id = ?",
+                       (vid,))
+        if not old:
+            return {"error": "no such job"}, 404
+        parent = d.get('parent_id') or old[0].get('parent_id')
+        if db.query("SELECT id FROM ventures WHERE LOWER(name) = LOWER(?)", (name,)):
+            return {"error": "you already have one called that"}, 400
+        db.execute("""INSERT INTO ventures (name, description, type, stage, parent_id, active)
+                      VALUES (?, ?, ?, 'planning', ?, 1)""",
+                   (name, "Started from " + str(old[0]['name']) + ".",
+                    (old[0].get('type') or 'project'), parent))
+        got = db.query("SELECT id FROM ventures WHERE LOWER(name) = LOWER(?) "
+                       "ORDER BY id DESC LIMIT 1", (name,))
+        if not got:
+            return {"error": "it did not save"}, 400
+        new_id = got[0]['id']
+
+        rows = db.query("""SELECT person_id, amount, currency, note, quantity, unit,
+                                  unit_price FROM ledger_entries
+                           WHERE venture_id = ? AND kind = 'agreed'
+                             AND against_id IS NULL
+                             AND COALESCE(status,'open') = 'open'""", (vid,)) or []
+        today = _dc.now().strftime('%Y-%m-%d')
+        n = 0
+        for r in rows:
+            db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind, who_owes,
+                          amount, currency, note, happened_on, quantity, unit, unit_price)
+                          VALUES (?, ?, 'agreed', 'them', ?, ?, ?, ?, ?, ?, ?)""",
+                       (r.get('person_id'), new_id, r['amount'], r['currency'],
+                        r.get('note'), today, r.get('quantity'), r.get('unit'),
+                        r.get('unit_price')))
+            n += 1
+        return {"status": "success", "id": new_id, "name": name,
+                "copied": n, "from": old[0]['name']}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/ledger/needed")
+@require_password
+def ledger_needed():
+    """What he has to find. Everything outstanding, by currency, plus what
+    goes out every month regardless."""
+    try:
+        people = db.query("""SELECT id, name FROM ledger_people
+                             WHERE COALESCE(active,1) = 1""") or []
+        owing, total_usd = {}, 0.0
+        who = []
+        for p in people:
+            for cur, b in (_ledger_balance(p['id']) or {}).items():
+                net = b['net']
+                his = (net < 0) or (net > 0 and _is_for_work(p['id']))
+                if not his or abs(net) < 0.01:
+                    continue
+                owing[cur] = round(owing.get(cur, 0) + abs(net), 2)
+                total_usd += (b['usd'] or 0)
+                who.append({"name": p['name'], "amount": abs(net), "currency": cur,
+                            "usd": b['usd']})
+        # things still to buy, with nobody attached
+        # what was agreed on things, less what has actually gone out on them
+        stuff = db.query("""SELECT currency,
+                                   COALESCE(SUM(CASE WHEN kind = 'agreed'
+                                                THEN amount ELSE -amount END),0) AS a
+                            FROM ledger_entries
+                            WHERE person_id IS NULL
+                              AND kind IN ('agreed','paid','bought')
+                              AND COALESCE(status,'open') NOT IN ('forgiven','done')
+                            GROUP BY currency""") or []
+        to_buy = {}
+        for r in stuff:
+            cur = (r['currency'] or 'USD')
+            amt = float(r['a'] or 0)
+            if amt > 0:
+                to_buy[cur] = round(amt, 2)
+                total_usd += (_in_usd(amt, cur) or 0)
+        stip = float((db.query("""SELECT COALESCE(SUM(monthly),0) AS s FROM stipend_people
+                                  WHERE COALESCE(active,1) = 1""")
+                      or [{"s": 0}])[0]['s'] or 0)
+        subs = float((db.query("""SELECT COALESCE(SUM(amount),0) AS s FROM subscriptions
+                                  WHERE status = 'active' AND cycle = 'monthly'""")
+                      or [{"s": 0}])[0]['s'] or 0)
+        who.sort(key=lambda x: -(x['usd'] or 0))
+        return {"status": "success",
+                "owing_now": owing, "still_to_buy": to_buy,
+                "who": who[:12],
+                "every_month": {"stipends": round(stip, 2),
+                                "subscriptions_usd": round(subs, 2)},
+                "all_in_usd": round(total_usd, 2)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/fx")
+@require_password
+def fx_list():
+    try:
+        rows = db.query("""SELECT currency, rate_to_usd AS rate,
+                                  COALESCE(as_of, fetched_on, '') AS as_of,
+                                  COALESCE(source,'') AS source
+                           FROM fx_rates ORDER BY currency""") or []
+        return {"status": "success", "rates": rows}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/fx/<cur>")
+@require_password
+def fx_set(cur):
+    """The rate has moved. He sets it, and it carries the day he set it."""
+    try:
+        from datetime import datetime as _df
+        d = request.get_json() or {}
+        rate = float(d.get('rate') or 0)
+        if rate <= 0:
+            return {"error": "what rate?"}, 400
+        when = d.get('as_of') or _df.now().strftime('%Y-%m-%d')
+        c = cur.upper()[:4]
+        if db.query("SELECT currency FROM fx_rates WHERE currency = ?", (c,)):
+            db.execute("UPDATE fx_rates SET rate_to_usd = ?, as_of = ?, source = 'him' "
+                       "WHERE currency = ?", (rate, when, c))
+        else:
+            db.execute("INSERT INTO fx_rates (currency, rate_to_usd, as_of, source) "
+                       "VALUES (?,?,?,'him')", (c, rate, when))
+        back = db.query("SELECT rate_to_usd AS rate FROM fx_rates WHERE currency = ?", (c,))
+        if not back or abs(float(back[0]['rate']) - rate) > 1e-9:
+            return {"error": "it did not save"}, 400
+        return {"status": "success", "currency": c, "rate": rate, "as_of": when}
     except Exception as e:
         return {"error": str(e)}, 400
 
