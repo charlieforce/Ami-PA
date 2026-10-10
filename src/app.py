@@ -15034,18 +15034,36 @@ def _ledger_person_by_name(name):
     for r in rows:
         if first in str(r['name']).lower().split():
             return r
+    # "paint guy" is the painter; "door man" is the door guy
+    stop = {'guy', 'man', 'woman', 'person', 'the', 'mr', 'mrs', 'my'}
+    words = [w for w in nm.replace('-', ' ').split() if w not in stop and len(w) > 2]
+    for w in words:
+        stem = w[:5]
+        for r in rows:
+            if stem and stem in str(r['name']).lower():
+                return r
     return None
 
 
 def _ledger_say(pid, name):
-    """Where it stands with this person, in one line."""
+    """Where it stands. A builder with an unpaid agreement is owed money by
+    him - not the other way round, however the arithmetic signs it."""
     bal = _ledger_balance(pid)
+    # did he agree work with them, or lend them money?
+    kinds = db.query("""SELECT DISTINCT kind FROM ledger_entries
+                        WHERE person_id = ?""", (pid,)) or []
+    ks = {str(k['kind']) for k in kinds}
+    for_work = ('agreed' in ks) and not (ks & {'lent'})
     parts = []
     for cur, b in bal.items():
         if abs(b['net']) < 0.01:
             continue
         if b['net'] > 0:
-            parts.append(name + " still owe yu " + _money_s(b['net'], cur))
+            if for_work:
+                parts.append("yu still owe " + name + " " + _money_s(b['net'], cur)
+                             + " for di work")
+            else:
+                parts.append(name + " still owe yu " + _money_s(b['net'], cur))
         else:
             parts.append("yu still owe " + name + " " + _money_s(-b['net'], cur))
     return "; ".join(parts) if parts else ("Yu and " + name + " dey level.")
@@ -15062,7 +15080,9 @@ def _ledger_from_chat(query):
     if not _rl.search(r"\b(owe|owes|owed|paid|pay|sent|send|lent|lend|loan|borrow|"
                       r"borrowed|repay|repaid|gave|give|gift|bought|buy|balance|"
                       r"write off|forget what)\b", low):
-        return None
+        # "how about the door guy" carries the money question forward
+        if not _rl.search(r"^(?:and\s+)?(?:how|what)\s+about\s+", low):
+            return None
 
     MONEY = (r"(?:usd|\$|sle|le|cad|ksh|gh[sc])?\s*([\d][\d,]*(?:\.\d+)?)\s*"
              r"(usd|dollars?|sle|leones?|cad|ksh|ghs)?")
@@ -15207,6 +15227,16 @@ def _ledger_from_chat(query):
                         line += " At " + "{:,.0f}".format(per) + " a month na " + str(n) + " months."
                         break
             return line
+
+    # "how about the door guy" - same question, different person
+    m = _rl.search(r"^(?:and\s+)?(?:how|what)\s+about\s+(?:the\s+)?"
+                   r"([a-z][a-z .'-]{2,28}?)\s*\??$", low)
+    if m:
+        person = _ledger_person_by_name(m.group(1))
+        if person:
+            return _ledger_say(person['id'], person['name'])
+        return ("A no get " + m.group(1).strip().title()
+                + " pan mi book, bo. Add am and a go track am.")
 
     # --- who owes me, altogether ------------------------------------------
     if _rl.search(r"\bwho\s+(?:owes?|dey owe)\s+mi?e?\b", low):
