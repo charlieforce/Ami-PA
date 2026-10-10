@@ -15152,6 +15152,7 @@ def _ledger_from_chat(query):
                          r"with|on)?\s*([a-z][a-z .'-]{1,30}?)\s*\??$", low)
         if not _bm:
             _bm = _rl.search(r"(?:how much have i paid|how much did i pay|"
+                             r"what did i pay|what have i spent on|"
                              r"what have i paid|everything (?:i )?paid|"
                              r"break down|breakdown (?:of|for)?)\s+"
                              r"(?:the\s+)?([a-z][a-z .'-]{1,30}?)"
