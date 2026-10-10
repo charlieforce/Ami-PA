@@ -15315,12 +15315,17 @@ def _ledger_from_chat(query):
                         break
             return line
 
-    # "how about the door guy" - same question, different person
+    # "how about the door guy" - same question, different person. and he may
+    # carry on in the same breath: "how about the paint guy? what do I owe him"
     m = _rl.search(r"^(?:and\s+)?(?:how|what)\s+about\s+(?:the\s+)?"
-                   r"([a-z][a-z .'-]{2,28}?)\s*\??$", low)
+                   r"([a-z][a-z .'-]{2,30}?)\s*(?:[?.,!]|$)", low)
     if m:
+        _rest = low[m.end():]
         person = _ledger_person_by_name(m.group(1))
         if person:
+            if _rl.search(r"\b(everything|every line|break\s?down|itemi[sz]e|"
+                          r"history|how much have i paid|what did i pay)\b", _rest):
+                return _ledger_breakdown(person['id'], person['name'])
             return _ledger_say(person['id'], person['name'])
         return ("A no get " + m.group(1).strip().title()
                 + " pan mi book, bo. Add am and a go track am.")
