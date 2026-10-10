@@ -15156,7 +15156,8 @@ def _ledger_from_chat(query):
                              r"what have i paid|everything (?:i )?paid|"
                              r"break down|breakdown (?:of|for)?)\s+"
                              r"(?:the\s+)?([a-z][a-z .'-]{1,30}?)"
-                             r"(?:\s+since\b.*)?\s*\??$", low)
+                             r"(?:\s+(?:since|in|for|on|during|over|last|this)\b.*)?"
+                             r"\s*\??$", low)
         if _bm:
             _who = _rl.sub(r"\b(since|from|for|in|on|phase|the)\b.*$", "",
                            _bm.group(1)).strip()
