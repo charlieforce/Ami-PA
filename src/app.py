@@ -19577,90 +19577,137 @@ def ledger_thing():
 @app.post("/api/ledger/job/<int:vid>/clone")
 @require_password
 def ledger_clone_job(vid):
-    """Phase 4, the same shape as Phase 3. The agreements come across as
-    estimates; nothing is marked paid, because nothing has been."""
+    """Start a job from an old one - Phase 4 shaped like Phase 3, with the
+    rooms under it. The agreements come across as estimates; nothing is
+    marked paid, because nothing has been. Job names have to be unique in
+    this book, so a copied room is told apart by its new parent, and
+    anything that could not come across is said out loud rather than
+    quietly dropped."""
     try:
         from datetime import datetime as _dc
         d = request.get_json() or {}
         name = (d.get('name') or '').strip()[:60]
         if len(name) < 2:
             return {"error": "what is the new one called?"}, 400
-        old = db.query("SELECT name, description, type, parent_id FROM ventures WHERE id = ?",
-                       (vid,))
+        old = db.query("SELECT name, description, type, parent_id FROM ventures "
+                       "WHERE id = ?", (vid,))
         if not old:
             return {"error": "no such job"}, 404
         parent = d.get('parent_id') or old[0].get('parent_id')
         if db.query("SELECT id FROM ventures WHERE LOWER(name) = LOWER(?)", (name,)):
             return {"error": "you already have one called that"}, 400
-        db.execute("""INSERT INTO ventures (name, description, type, stage, parent_id, active)
-                      VALUES (?, ?, ?, 'planning', ?, 1)""",
-                   (name, "Started from " + str(old[0]['name']) + ".",
-                    (old[0].get('type') or 'project'), parent))
-        got = db.query("SELECT id FROM ventures WHERE LOWER(name) = LOWER(?) "
-                       "ORDER BY id DESC LIMIT 1", (name,))
-        if not got:
-            return {"error": "it did not save"}, 400
-        new_id = got[0]['id']
 
         today = _dc.now().strftime('%Y-%m-%d')
         counted = {"lines": 0, "parts": 0}
+        missed = []
+
+        def _taken(nm):
+            return bool(db.query("SELECT id FROM ventures WHERE LOWER(name) = LOWER(?)",
+                                 (nm,)))
+
+        def _new_job(nm, desc, typ, under):
+            """The new id, or None - and it says why in the server window."""
+            try:
+                cur = db.execute("INSERT INTO ventures (name, description, type, "
+                                 "stage, parent_id, active) "
+                                 "VALUES (?, ?, ?, 'planning', ?, 1)",
+                                 (nm, desc, typ, under))
+            except Exception as e:
+                print('CLONE: could not save', repr(nm), '-', repr(e), flush=True)
+                missed.append(str(nm) + ' - ' + str(e))
+                return None
+            got = getattr(cur, 'lastrowid', None)
+            if got:
+                return got
+            row = db.query("SELECT id FROM ventures WHERE name = ? "
+                           "ORDER BY id DESC LIMIT 1", (nm,))
+            if row:
+                return row[0]['id']
+            print('CLONE: saved', repr(nm), 'but could not find it again',
+                  flush=True)
+            missed.append(str(nm))
+            return None
+
+        def _free_name(want, under_name):
+            """A second Kitchen cannot carry the same name. 'Kitchen (Phase 4)'
+            tells them apart and reads better in a long list anyway."""
+            base = ((want or 'part').strip() or 'part')[:60]
+            if not _taken(base):
+                return base
+            for extra in [''] + [' ' + str(i) for i in range(2, 40)]:
+                t = (base + ' (' + str(under_name) + extra + ')')[:60]
+                if not _taken(t):
+                    return t
+            return None
 
         def _lines_across(from_id, to_id):
             """The agreements only - nothing paid, nothing written off."""
-            rows = db.query("""SELECT person_id, amount, currency, note, quantity,
-                                      unit, unit_price FROM ledger_entries
-                               WHERE venture_id = ? AND kind = 'agreed'
-                                 AND against_id IS NULL
-                                 AND COALESCE(status,'open') = 'open'""",
-                            (from_id,)) or []
+            rows = db.query("SELECT person_id, amount, currency, note, quantity, "
+                            "unit, unit_price FROM ledger_entries "
+                            "WHERE venture_id = ? AND kind = 'agreed' "
+                            "AND against_id IS NULL "
+                            "AND COALESCE(status,'open') = 'open'", (from_id,)) or []
             for r in rows:
-                db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind,
-                              who_owes, amount, currency, note, happened_on,
-                              quantity, unit, unit_price)
-                              VALUES (?, ?, 'agreed', 'them', ?, ?, ?, ?, ?, ?, ?)""",
-                           (r.get('person_id'), to_id, r['amount'], r['currency'],
-                            r.get('note'), today, r.get('quantity'), r.get('unit'),
-                            r.get('unit_price')))
-                counted["lines"] += 1
+                try:
+                    db.execute("INSERT INTO ledger_entries (person_id, venture_id, "
+                               "kind, who_owes, amount, currency, note, happened_on, "
+                               "quantity, unit, unit_price) "
+                               "VALUES (?, ?, 'agreed', 'them', ?, ?, ?, ?, ?, ?, ?)",
+                               (r.get('person_id'), to_id, r['amount'], r['currency'],
+                                r.get('note'), today, r.get('quantity'),
+                                r.get('unit'), r.get('unit_price')))
+                    counted["lines"] += 1
+                except Exception as e:
+                    print('CLONE: a line did not copy -', repr(e), flush=True)
+                    missed.append(str(r.get('note') or 'a line') + ' - ' + str(e))
 
-        def _parts_across(from_id, to_id, depth=0):
+        def _parts_across(from_id, to_id, to_name, depth=0):
             """And the rooms under it, and anything under those."""
             if depth > 5:
                 return
-            kids = db.query("""SELECT id, name, description, type FROM ventures
-                               WHERE parent_id = ? AND COALESCE(active,1) = 1
-                               ORDER BY name""", (from_id,)) or []
+            kids = db.query("SELECT id, name, description, type FROM ventures "
+                            "WHERE parent_id = ? AND COALESCE(active,1) = 1 "
+                            "ORDER BY name", (from_id,)) or []
             for k in kids:
-                db.execute("""INSERT INTO ventures (name, description, type, stage,
-                              parent_id, active)
-                              VALUES (?, ?, ?, 'planning', ?, 1)""",
-                           (k['name'], k.get('description') or '',
-                            (k.get('type') or 'project'), to_id))
-                got = db.query("""SELECT id FROM ventures WHERE name = ? AND parent_id = ?
-                                  ORDER BY id DESC LIMIT 1""", (k['name'], to_id))
-                if not got:
+                nm = _free_name(k['name'], to_name)
+                if not nm:
+                    missed.append(str(k['name']))
+                    continue
+                kid = _new_job(nm, (k.get('description') or ''),
+                               (k.get('type') or 'project'), to_id)
+                if not kid:
                     continue
                 counted["parts"] += 1
-                _lines_across(k['id'], got[0]['id'])
-                _parts_across(k['id'], got[0]['id'], depth + 1)
+                _lines_across(k['id'], kid)
+                _parts_across(k['id'], kid, nm, depth + 1)
+
+        new_id = _new_job(name, "Started from " + str(old[0]['name']) + ".",
+                          (old[0].get('type') or 'project'), parent)
+        if not new_id:
+            return {"error": ("could not save it: " + missed[0]) if missed
+                    else "it did not save"}, 400
 
         _lines_across(vid, new_id)
         if str(d.get('parts_too', '1')) not in ('0', 'false', 'no'):
-            _parts_across(vid, new_id)
+            _parts_across(vid, new_id, name)
 
+        says = ("Copied " + str(counted["lines"]) + " line"
+                + ("s" if counted["lines"] != 1 else ""))
+        if counted["parts"]:
+            says += (" and " + str(counted["parts"]) + " part"
+                     + ("s" if counted["parts"] != 1 else ""))
+        says += " from " + str(old[0]['name']) + ". Nothing paid yet."
+        if missed:
+            says += (" " + str(len(missed)) + " did not come across - "
+                     + "; ".join(missed[:3]))
         return {"status": "success", "id": new_id, "name": name,
                 "copied": counted["lines"], "parts": counted["parts"],
-                "from": old[0]['name'],
-                "says": ("Copied " + str(counted["lines"]) + " line"
-                         + ("s" if counted["lines"] != 1 else "")
-                         + (" and " + str(counted["parts"]) + " part"
-                            + ("s" if counted["parts"] != 1 else "")
-                            if counted["parts"] else "")
-                         + " from " + str(old[0]['name']) + ". Nothing paid yet.")}
+                "missed": missed, "from": old[0]['name'], "says": says}
     except Exception as e:
+        import traceback as _tbclone
+        print('CLONE FAILED:', repr(e), flush=True)
+        _tbclone.print_exc()
         return {"error": str(e)}, 400
-
-
 @app.get("/api/ledger/needed")
 @require_password
 def ledger_needed():
