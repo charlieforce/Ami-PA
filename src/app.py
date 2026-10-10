@@ -15045,6 +15045,64 @@ def _ledger_person_by_name(name):
     return None
 
 
+def _ledger_breakdown(person, name):
+    """Every line with this person, in order, with what is left at the end."""
+    rows = db.query("""SELECT e.kind, e.amount, e.currency, e.note, e.happened_on,
+                              e.how_sent, e.status, v.name AS job
+                       FROM ledger_entries e
+                       LEFT JOIN ventures v ON v.id = e.venture_id
+                       WHERE e.person_id = ?
+                       ORDER BY e.happened_on, e.id""", (person,)) or []
+    if not rows:
+        return "Nothing pan mi book for " + name + " yet, bo."
+
+    agreed = paid = 0.0
+    cur = ''
+    out_in, out_back = [], []
+    for r in rows:
+        if str(r.get('status')) in ('forgiven', 'done'):
+            continue
+        cur = cur or (r.get('currency') or '')
+        amt = float(r.get('amount') or 0)
+        when = str(r.get('happened_on') or '')[:10]
+        what = str(r.get('note') or '')[:44]
+        job = (" [" + str(r['job']) + "]") if r.get('job') else ""
+        k = str(r['kind'])
+        if k in ('agreed', 'lent', 'borrowed', 'bought'):
+            agreed += amt
+            out_in.append("  " + when + "  " + "{:,.0f}".format(amt) + "  " + what + job)
+        elif k in ('paid', 'repaid'):
+            paid += amt
+            how = (" (" + str(r['how_sent']) + ")") if r.get('how_sent') else ""
+            out_back.append("  " + when + "  " + "{:,.0f}".format(amt) + "  "
+                            + what + how + job)
+
+    L = [name]
+    if out_in:
+        L.append("")
+        L.append("Wetin una gree:")
+        L.extend(out_in[:14])
+        if len(out_in) > 14:
+            L.append("  ... and " + str(len(out_in) - 14) + " more")
+        L.append("  " + "all of it".ljust(12) + "{:,.0f}".format(agreed) + " " + cur)
+    if out_back:
+        L.append("")
+        L.append("Wetin yu don pay:")
+        L.extend(out_back[:14])
+        if len(out_back) > 14:
+            L.append("  ... and " + str(len(out_back) - 14) + " more")
+        L.append("  " + "all of it".ljust(12) + "{:,.0f}".format(paid) + " " + cur)
+    L.append("")
+    left = round(agreed - paid, 2)
+    if abs(left) < 0.01:
+        L.append("Una dey level - nothing lef.")
+    elif left > 0:
+        L.append("Still owing: " + _money_s(left, cur))
+    else:
+        L.append("Yu don overpay by " + _money_s(-left, cur) + ".")
+    return "\n".join(L)
+
+
 def _ledger_say(pid, name):
     """Where it stands. A builder with an unpaid agreement is owed money by
     him - not the other way round, however the arithmetic signs it."""
@@ -15077,6 +15135,33 @@ def _ledger_from_chat(query):
     low = q.lower()
     if len(low) < 6 or len(low) > 220:
         return None
+
+    # he is ASKING, not telling. a question never moves money - "how much have
+    # I paid Mr Allie since Phase 1" is not a payment of one leone.
+    _asking = bool(_rl.match(r"^(and\s+)?(how|what|what's|whats|when|who|where|why|"
+                             r"show|list|tell|give me|break|can yu|can you|"
+                             r"do i|did i|am i|is there|any)\b", low)
+                   or low.rstrip().endswith('?'))
+
+    # the itemised answer, when he wants to see it line by line
+    if _asking:
+        _bm = _rl.search(r"(?:everything|all|breakdown|break down|itemi[sz]e|history|"
+                         r"every line|line by line|how much have i paid|"
+                         r"how much did i pay|what have i paid|since phase)"
+                         r"[^a-z]{0,12}(?:i\s+)?(?:paid|pay|owe|owed|gave|sent|to|for|"
+                         r"with|on)?\s*([a-z][a-z .'-]{1,30}?)\s*\??$", low)
+        if not _bm:
+            _bm = _rl.search(r"(?:how much have i paid|how much did i pay|"
+                             r"what have i paid|everything (?:i )?paid|"
+                             r"break down|breakdown (?:of|for)?)\s+"
+                             r"(?:the\s+)?([a-z][a-z .'-]{1,30}?)"
+                             r"(?:\s+since\b.*)?\s*\??$", low)
+        if _bm:
+            _who = _rl.sub(r"\b(since|from|for|in|on|phase|the)\b.*$", "",
+                           _bm.group(1)).strip()
+            _p = _ledger_person_by_name(_who or _bm.group(1))
+            if _p:
+                return _ledger_breakdown(_p['id'], _p['name'])
     if not _rl.search(r"\b(owe|owes|owed|paid|pay|sent|send|lent|lend|loan|borrow|"
                       r"borrowed|repay|repaid|gave|give|gift|bought|buy|balance|"
                       r"write off|forget what)\b", low):
@@ -15118,7 +15203,7 @@ def _ledger_from_chat(query):
                              (person['id'], amount)))
 
     # --- he sent money to someone ----------------------------------------
-    m = _rl.search(r"\b(?:i\s+)?(?:just\s+)?(?:sent|paid|gave)\s+"
+    m = None if _asking else _rl.search(r"\b(?:i\s+)?(?:just\s+)?(?:sent|paid|gave)\s+"
                    r"([a-z][a-z .'-]{1,28}?)\s+" + MONEY, low)
     if m and 'gift' not in low:
         person = _ledger_person_by_name(m.group(1))
@@ -15136,7 +15221,7 @@ def _ledger_from_chat(query):
                 + ". " + _ledger_say(person['id'], person['name']))
 
     # --- someone paid him -------------------------------------------------
-    m = _rl.search(r"\b([a-z][a-z .'-]{1,28}?)\s+(?:paid|sent|gave)\s+mi?e?\s+" + MONEY, low)
+    m = None if _asking else _rl.search(r"\b([a-z][a-z .'-]{1,28}?)\s+(?:paid|sent|gave)\s+mi?e?\s+" + MONEY, low)
     if m:
         person = _ledger_person_by_name(m.group(1))
         if person:
@@ -15148,7 +15233,7 @@ def _ledger_from_chat(query):
                     + ". " + _ledger_say(person['id'], person['name']))
 
     # --- he lent, or took, money -----------------------------------------
-    m = _rl.search(r"\bi\s+(?:just\s+)?(lent|loaned|borrowed)\s+"
+    m = None if _asking else _rl.search(r"\bi\s+(?:just\s+)?(lent|loaned|borrowed)\s+"
                    r"(?:from\s+)?([a-z][a-z .'-]{1,28}?)\s+" + MONEY, low)
     if not m:
         m2 = _rl.search(r"\b([a-z][a-z .'-]{1,28}?)\s+(?:lent|loaned)\s+mi?e?\s+" + MONEY, low)
@@ -15177,7 +15262,7 @@ def _ledger_from_chat(query):
                 + ". " + _ledger_say(person['id'], person['name']))
 
     # --- someone bought something for him ---------------------------------
-    m = _rl.search(r"\b([a-z][a-z .'-]{1,28}?)\s+(?:bought|buy|got)\s+(?:mi?e?\s+)?"
+    m = None if _asking else _rl.search(r"\b([a-z][a-z .'-]{1,28}?)\s+(?:bought|buy|got)\s+(?:mi?e?\s+)?"
                    r"(.{2,34}?)\s+(?:for\s+)?" + MONEY, low)
     if m:
         person = _ledger_person_by_name(m.group(1))
