@@ -15129,6 +15129,24 @@ def _ledger_say(pid, name):
 
 def _ledger_from_chat(query):
     """Money between him and someone. Returns a reply, or None."""
+    # what he drives - this never touches money, so it is safe first
+    try:
+        _vh = _vehicle_from_chat(query)
+        if _vh:
+            return _vh
+    except Exception as _vhe:
+        import traceback as _tbv
+        print('VEHICLES HOOK FAILED:', repr(_vhe), flush=True)
+        _tbv.print_exc()
+    # the buy list first - it never moves money, so it is safe here
+    try:
+        _bl = _buy_from_chat(query)
+        if _bl:
+            return _bl
+    except Exception as _ble:
+        import traceback as _tbh
+        print('BUY LIST HOOK FAILED:', repr(_ble), flush=True)
+        _tbh.print_exc()
     import re as _rl
     from datetime import datetime as _dl
     q = (query or '').strip()
@@ -22583,6 +22601,811 @@ def _timing_end(resp):
         _timing.events = None
     return resp
 
+
+
+
+# --------------------------------------------------------------------------
+# The buy list, straight from chat.
+# "I need to buy gas and lights for the compound" -> two lines on the house
+# list with no price.  "20 bags of cement at 850 for the compound" -> priced.
+# Nothing here ever touches money already paid.
+# --------------------------------------------------------------------------
+
+_BUY_UNITS = (r"bags?|bundles?|pieces?|pcs|sheets?|tins?|buckets?|gallons?|"
+              r"litres?|liters?|cartons?|boxes?|rolls?|packs?|packets?|"
+              r"trucks?|loads?|trips?|units?|kgs?|kilos?|tons?|tonnes?|"
+              r"yards?|metres?|meters?|feet|lengths?|dozens?")
+
+_BUY_CUR = {"sle": "SLE", "le": "SLE", "leone": "SLE", "leones": "SLE",
+            "usd": "USD", "dollar": "USD", "dollars": "USD", "$": "USD",
+            "cad": "CAD", "gbp": "GBP", "pound": "GBP", "pounds": "GBP",
+            "eur": "EUR", "euro": "EUR", "euros": "EUR", "ksh": "KES",
+            "kes": "KES", "shilling": "KES", "shillings": "KES"}
+
+_BUY_JOB_WORDS = {"compound": "freetown", "house": "freetown",
+                  "yard": "freetown", "home": "freetown",
+                  "freetown house": "freetown"}
+
+
+def _buy_entry_cols():
+    """What ledger_entries actually has, so the insert fits this database."""
+    out = {}
+    try:
+        rows = db.query("PRAGMA table_info(ledger_entries)") or []
+    except Exception:
+        return out
+    for r in rows:
+        try:
+            nm, nn, dflt = r["name"], r["notnull"], r["dflt_value"]
+        except Exception:
+            nm, nn, dflt = r[1], r[3], r[4]
+        out[nm] = (bool(nn), dflt)
+    return out
+
+
+_BUY_TAIL = (r"\bfor (?:the |my |our |de )?([a-z][a-z0-9 '\-]{1,40})\s*$")
+
+_BUY_VERBS = (r"^(?:and|also|add|put|buy|get|pick up|purchase|some|a|an|the|"
+              r"me|of)\s+")
+
+
+def _buy_job(text):
+    """The job he means. His own words first, then whatever he last touched."""
+    import re as _r
+    low = (text or "").lower().strip().rstrip(".!")
+    phrase = None
+    m = None
+    for m in _r.finditer(_BUY_TAIL, low):
+        pass
+    if m:
+        phrase = m.group(1).strip()
+    if phrase:
+        want = _BUY_JOB_WORDS.get(phrase, phrase)
+        try:
+            rows = db.query("SELECT id, name FROM ventures "
+                            "WHERE COALESCE(active,1) = 1") or []
+        except Exception:
+            rows = []
+        hit, best = None, 0
+        for r in rows:
+            nm = (r["name"] or "").lower()
+            if not nm:
+                continue
+            score = 0
+            if nm == want or nm == phrase:
+                score = 100
+            elif want in nm or nm in want:
+                score = len(nm)
+            else:
+                for w in want.split():
+                    if len(w) > 3 and w in nm:
+                        score = max(score, len(w))
+            if score > best:
+                hit, best = r, score
+        if hit:
+            return hit["id"], hit["name"], phrase
+    try:
+        r = db.query("SELECT v.id, v.name FROM ledger_entries e "
+                     "JOIN ventures v ON v.id = e.venture_id "
+                     "WHERE e.venture_id IS NOT NULL "
+                     "ORDER BY e.id DESC LIMIT 1")
+    except Exception:
+        r = None
+    if r:
+        return r[0]["id"], r[0]["name"], phrase
+    return None, None, phrase
+
+
+def _buy_currency(vid):
+    """Match what the rest of this job is written in."""
+    try:
+        r = db.query("SELECT currency, COUNT(*) c FROM ledger_entries "
+                     "WHERE venture_id = ? AND currency IS NOT NULL "
+                     "GROUP BY currency ORDER BY c DESC LIMIT 1", (vid,))
+        if r and r[0]["currency"]:
+            return r[0]["currency"]
+    except Exception:
+        pass
+    return "SLE"
+
+
+def _buy_items(chunk):
+    """Split what he listed into things, with a count and a price if he said one."""
+    import re as _r
+    chunk = (chunk or "").strip()
+    cut = None
+    for cut in _r.finditer(_BUY_TAIL, chunk, flags=_r.I):
+        pass
+    if cut:
+        chunk = chunk[:cut.start()]
+    chunk = chunk.strip(" ,.")
+
+    out = []
+    for part in _r.split(r",|\band\b|\bplus\b|&|/", chunk):
+        p = part.strip(" .,;")
+        while True:
+            np = _r.sub(_BUY_VERBS, "", p, flags=_r.I).strip(" .,;")
+            if np == p:
+                break
+            p = np
+        if not p or len(p) < 2:
+            continue
+        if p.lower() in ("some", "a", "an", "the", "it", "them", "things",
+                         "stuff", "more", "also"):
+            continue
+
+        price, cur, each = None, None, False
+        m = _r.search(r"(?:for|at|@|costing|cost|around|about)\s*"
+                      r"([\d][\d,]*(?:\.\d+)?)\s*"
+                      r"(sle|le|leones?|usd|dollars?|cad|gbp|pounds?|eur|"
+                      r"euros?|ksh|kes|shillings?|\$)?\s*"
+                      r"(each|a piece|apiece|per one|per piece)?", p,
+                      flags=_r.I)
+        if m:
+            try:
+                price = float(m.group(1).replace(",", ""))
+            except Exception:
+                price = None
+            if m.group(2):
+                cur = _BUY_CUR.get(m.group(2).lower())
+            each = bool(m.group(3))
+            if price is not None:
+                p = (p[:m.start()] + " " + p[m.end():]).strip(" .,;")
+                p = _r.sub(_BUY_VERBS, "", p, flags=_r.I).strip(" .,;")
+
+        qty, unit = None, None
+        m = _r.match(r"([\d][\d,]*(?:\.\d+)?)\s*(" + _BUY_UNITS +
+                     r")?\s*(?:of\s+)?(.*)$", p, flags=_r.I)
+        if m and m.group(1):
+            try:
+                qty = float(m.group(1).replace(",", ""))
+            except Exception:
+                qty = None
+            unit = (m.group(2) or "").lower() or None
+            rest = (m.group(3) or "").strip(" .,;")
+            if rest:
+                p = rest
+
+        p = _r.sub(r"^(?:some|a|an|the|of)\s+", "", p, flags=_r.I).strip(" .,;")
+        if not p:
+            continue
+        out.append({"name": p[:120], "qty": qty, "unit": unit,
+                    "price": price, "cur": cur, "each": each})
+    return out
+
+
+def _buy_from_chat(text):
+    """Put things on a job's buy list. Returns a reply, or None if he meant
+    something else entirely. Never writes when he is asking a question."""
+    import re as _r
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+
+    if (_r.match(r"^(and\s+)?(how|what|what's|whats|when|who|where|why|which|"
+                 r"show|list|tell|give me|break|do i|did i|am i|is there|any|"
+                 r"can you|can yu)\b", low)
+            or low.rstrip().endswith("?")):
+        return None
+
+    trig = _r.search(
+        r"^(?:and\s+|also\s+|ami,?\s*)?"
+        r"(?:(?:i|we)\s+)?"
+        r"(?:(?:need|have|got|want)\s+to\s+(?:buy|get|pick up|purchase)"
+        r"|(?:need|want)(?!\s+to\s)"
+        r"|buy|get me|pick up|purchase"
+        r"|(?:add|put)\s+(?:this\s+|these\s+|that\s+)?(?:to|on)\s+"
+        r"(?:the\s+|my\s+)?(?:buy\s+|shopping\s+)?list)\s+", low)
+    if not trig:
+        if not _r.search(r"\b(?:on|to) the (?:buy |shopping )?list\b", low):
+            return None
+        trig = _r.match(r"^", low)
+
+    chunk = (text or "")[trig.end():]
+    chunk = _r.sub(r"\b(?:to|on) the (?:buy |shopping )?list\b", "", chunk,
+                   flags=_r.I)
+    items = _buy_items(chunk)
+    if not items:
+        return None
+
+    vid, vname, said = _buy_job(text)
+    if not vid:
+        return ("I don't know which job that belongs to. Tell me - "
+                "\"gas and lights for the Freetown house\".")
+
+    cols = _buy_entry_cols()
+    if not cols:
+        return None
+    job_cur = _buy_currency(vid)
+    today = None
+    try:
+        today = _dc.now().strftime("%Y-%m-%d")
+    except Exception:
+        try:
+            from datetime import datetime as _d2
+            today = _d2.now().strftime("%Y-%m-%d")
+        except Exception:
+            today = None
+
+    made = []
+    for it in items:
+        cur = it["cur"] or job_cur
+        qty = it["qty"]
+        amount = None
+        if it["price"] is not None:
+            amount = it["price"] * (qty if (qty and it["each"]) else 1)
+
+        want = {
+            "venture_id": vid,
+            "person_id": None,
+            "against_id": None,
+            "kind": "agreed",
+            "status": "open",
+            "note": it["name"],
+            "description": it["name"],
+            "name": it["name"],
+            "currency": cur,
+            "amount": amount,
+            "quantity": qty,
+            "unit": it["unit"],
+            "unit_price": it["price"] if it["each"] else None,
+            "date": today,
+            "entry_date": today,
+            "created_at": today,
+            "created_on": today,
+        }
+
+        use, vals = [], []
+        for c, (notnull, dflt) in cols.items():
+            if c in ("id",):
+                continue
+            if c not in want:
+                continue
+            v = want[c]
+            if v is None and notnull and dflt is None:
+                v = 0 if c in ("amount", "quantity", "unit_price") else ""
+            if v is None and c not in ("amount", "quantity", "unit_price",
+                                       "person_id", "against_id"):
+                continue
+            use.append(c)
+            vals.append(v)
+        if not use:
+            continue
+        try:
+            db.execute("INSERT INTO ledger_entries (" + ", ".join(use) +
+                       ") VALUES (" + ", ".join(["?"] * len(use)) + ")",
+                       tuple(vals))
+            made.append(it)
+        except Exception as e:
+            import traceback as _tbb
+            print("BUY LIST FAILED:", repr(e), flush=True)
+            _tbb.print_exc()
+
+    if not made:
+        return None
+
+    bits = []
+    for it in made:
+        s = it["name"]
+        if it["qty"]:
+            q = int(it["qty"]) if float(it["qty"]).is_integer() else it["qty"]
+            s = "%s %s %s" % (q, (it["unit"] + " of") if it["unit"] else "",
+                              it["name"])
+            s = " ".join(s.split())
+        if it["price"] is not None:
+            cur = it["cur"] or job_cur
+            p = it["price"]
+            p = int(p) if float(p).is_integer() else p
+            s += " at %s %s%s" % ("{:,}".format(p), cur,
+                                  " each" if it["each"] else "")
+        bits.append(s)
+
+    listed = bits[0] if len(bits) == 1 else \
+        ", ".join(bits[:-1]) + " and " + bits[-1]
+    noprice = [b for b, it in zip(bits, made) if it["price"] is None]
+    tailtxt = ""
+    if noprice:
+        tailtxt = (" No price on it yet - tell me when you know."
+                   if len(noprice) == len(made) else
+                   " No price yet on %s." % ", ".join(noprice))
+    if not said:
+        tailtxt += (" You didn't say which job, so I used %s - move it if "
+                    "that's wrong." % vname)
+    return "On the %s list: %s.%s" % (vname, listed, tailtxt)
+
+
+
+# ===========================================================================
+# What Charlie drives.
+# Two Toyotas, a Keke and a small electric bike, all in Freetown. She needs
+# to know them so "the car is making a noise" can be answered about the
+# right engine, and so selling one takes it off the list for good.
+# ===========================================================================
+
+_VEH_SET = {"done": False}
+
+_VEH_WORDS = {
+    "car": "car", "cars": "car", "motor": "car", "vehicle": None,
+    "vehicles": None, "bike": "bike", "cycle": "bike", "scooter": "bike",
+    "keke": "keke", "tuktuk": "keke", "tuk tuk": "keke", "kehkeh": "keke",
+    "tricycle": "keke",
+}
+
+
+def _veh_ready():
+    """Build the tables the first time anything asks for them, so there is
+    no lock fight with a server that is already up."""
+    if _VEH_SET["done"]:
+        return
+    db.execute("CREATE TABLE IF NOT EXISTS vehicles ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, kind TEXT, "
+               "make TEXT, model TEXT, year INTEGER, colour TEXT, plate TEXT, "
+               "vin TEXT, engine_no TEXT, engine_cc INTEGER, fuel TEXT, "
+               "seats INTEGER, category TEXT, doc_no TEXT, kept_at TEXT, "
+               "notes TEXT, got_on TEXT, gone_on TEXT, gone_why TEXT, "
+               "active INTEGER DEFAULT 1, created_at TEXT)")
+    db.execute("CREATE TABLE IF NOT EXISTS vehicle_service ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, "
+               "happened_on TEXT, what TEXT, cost REAL, currency TEXT, "
+               "who TEXT, notes TEXT, created_at TEXT)")
+    _VEH_SET["done"] = True
+    try:
+        if not db.query("SELECT id FROM vehicles LIMIT 1"):
+            _veh_seed()
+    except Exception as e:
+        print("VEHICLES: could not seed -", repr(e), flush=True)
+
+
+def _veh_seed():
+    """The four he has in Freetown, as the papers read. Where a card looks
+    wrong it is written down as the card has it, with the doubt in notes -
+    his paperwork is the record, not my guess."""
+    from datetime import datetime as _dt
+    now = _dt.now().strftime("%Y-%m-%d")
+    rows = [
+        ("the Corolla", "car", "Toyota", "Corolla", 1987, "Silver",
+         "SAI 1250J", "RKLBL9HEOF5216367", "3ZRX404050", 1600, "Petrol", 4,
+         "AP2", "SL1087922", "Freetown",
+         "Off the registration card."),
+        ("the CHR", "car", "Toyota", "C-HR", 2019, "Black",
+         "SAI 16C41", "JTNKHMBX4K1027049", "JTNK27049", 3500, "Petrol", 4,
+         "B2", "SL1110548", "Freetown",
+         "It is a 2019 - Charlie says so and the VIN agrees. The "
+         "registration card prints 2010, which is wrong; go by 2019. The "
+         "card's 3500cc is doubtful too for a C-HR, so read the engine "
+         "itself before ordering parts."),
+        ("the Keke", "keke", None, None, 2024, None,
+         None, None, None, None, "Petrol", 3,
+         None, None, "Freetown",
+         "The old tuk tuk. He said it was two years old in October 2026."),
+        ("the electric bike", "bike", None, None, None, None,
+         None, None, None, None, "Electric", 1,
+         None, None, "Freetown",
+         "A small electric bike."),
+    ]
+    for r in rows:
+        try:
+            db.execute("INSERT INTO vehicles (name, kind, make, model, year, "
+                       "colour, plate, vin, engine_no, engine_cc, fuel, seats, "
+                       "category, doc_no, kept_at, notes, active, created_at) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)",
+                       tuple(list(r) + [now]))
+        except Exception as e:
+            print("VEHICLES: could not add", r[0], "-", repr(e), flush=True)
+
+
+def _veh_all(gone_too=False):
+    _veh_ready()
+    sql = "SELECT * FROM vehicles"
+    if not gone_too:
+        sql += " WHERE COALESCE(active,1) = 1"
+    return db.query(sql + " ORDER BY kind, name") or []
+
+
+def _veh_age(v):
+    from datetime import datetime as _dt
+    if not v.get("year"):
+        return None
+    try:
+        return _dt.now().year - int(v["year"])
+    except Exception:
+        return None
+
+
+def _veh_title(v):
+    made = [str(x) for x in (v.get("make"), v.get("model")) if x]
+    if not made:
+        return ""
+    return " ".join([str(v["year"])] + made) if v.get("year") else " ".join(made)
+
+
+def _veh_say(v, full=False):
+    """One readable line. Short in a list, fuller on its own."""
+    out = (v.get("name") or _veh_title(v) or "it")
+    inner = []
+    t = _veh_title(v)
+    if t and t.lower() != (v.get("name") or "").lower():
+        inner.append(t)
+    if v.get("colour"):
+        inner.append(str(v["colour"]).lower())
+    age = _veh_age(v)
+    if age is not None:
+        inner.append("%d year%s old" % (age, "" if age == 1 else "s"))
+    if v.get("plate"):
+        inner.append(str(v["plate"]))
+    if inner:
+        out += " - " + ", ".join(inner)
+    if full:
+        more = []
+        if v.get("engine_cc"):
+            more.append("%scc" % v["engine_cc"])
+        if v.get("fuel"):
+            more.append(str(v["fuel"]).lower())
+        if v.get("seats"):
+            more.append("%s seats" % v["seats"])
+        if v.get("engine_no"):
+            more.append("engine %s" % v["engine_no"])
+        if v.get("vin"):
+            more.append("VIN %s" % v["vin"])
+        if more:
+            out += "\n   " + ", ".join(more)
+        if v.get("notes"):
+            out += "\n   " + str(v["notes"])
+    return out
+
+
+def _veh_brief():
+    """Everything she knows about what he drives, for her own context."""
+    vs = _veh_all()
+    if not vs:
+        return ""
+    return "What Charlie drives: " + "; ".join(_veh_say(v) for v in vs) + "."
+
+
+def _veh_match(text):
+    """Which one he means. Nothing clever - his own words for them."""
+    import re
+    low = (text or "").lower()
+    hits = []
+    for v in _veh_all():
+        words = [v.get("name"), v.get("model"), v.get("make"), v.get("plate")]
+        for w in words:
+            if not w:
+                continue
+            w = str(w).lower().replace("the ", "").strip()
+            if len(w) < 3:
+                continue
+            if w in low or w.replace("-", "") in low.replace("-", ""):
+                hits.append(v)
+                break
+        else:
+            kind = (v.get("kind") or "").lower()
+            for word, means in _VEH_WORDS.items():
+                if means == kind and re.search(r"\b" + word + r"\b", low):
+                    hits.append(v)
+                    break
+    seen, out = set(), []
+    for v in hits:
+        if v["id"] not in seen:
+            seen.add(v["id"])
+            out.append(v)
+    return out
+
+
+def _veh_service_say(vid, limit=5):
+    rows = db.query("SELECT happened_on, what, cost, currency, who "
+                    "FROM vehicle_service WHERE vehicle_id = ? "
+                    "ORDER BY COALESCE(happened_on,'') DESC, id DESC LIMIT ?",
+                    (vid, limit)) or []
+    if not rows:
+        return ""
+    out = []
+    for r in rows:
+        s = "   " + (r.get("happened_on") or "no date") + " - " + \
+            str(r.get("what") or "work done")
+        if r.get("cost"):
+            s += " (%s %s)" % (r["cost"], r.get("currency") or "SLE")
+        if r.get("who"):
+            s += " by " + str(r["who"])
+        out.append(s)
+    return "\n".join(out)
+
+
+def _vehicle_from_chat(text):
+    """What he drives, from chat. Returns a reply, or None when he meant
+    something else. Questions never change anything."""
+    import re
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    if not re.search(r"\b(car|cars|vehicle|vehicles|motor|keke|tuk ?tuk|bike|"
+                     r"corolla|chr|c-hr|drive|driving|engine|tyre|tire|"
+                     r"plate|vin|toyota|honda|nissan|kia|hyundai|mercedes|"
+                     r"bmw|ford|mazda|mitsubishi|suzuki|lexus)\b", low):
+        return None
+    _veh_ready()
+
+    asking = bool(re.match(r"^(and\s+)?(how|what|what's|whats|which|when|who|"
+                           r"where|why|do i|did i|am i|is there|any|list|show|"
+                           r"tell me|give me|can you|can yu)\b", low)
+                  or low.rstrip().endswith("?"))
+
+    # --- what do I drive -------------------------------------------------
+    if re.search(r"\b(what|which)\b.{0,20}\b(do i (drive|have|own)|cars?|"
+                 r"vehicles?)\b", low) or re.search(
+                 r"^(list|show)\b.{0,20}\b(cars?|vehicles?|rides?)\b", low):
+        vs = _veh_all()
+        if not vs:
+            return "A no get any vehicle write down for yu yet, bo."
+        head = "Yu get %d:" % len(vs)
+        return head + "\n" + "\n".join(" - " + _veh_say(v) for v in vs)
+
+    # --- how old is it ---------------------------------------------------
+    if re.search(r"\bhow old\b", low):
+        hits = _veh_match(low)
+        if len(hits) > 1:
+            return ("Which one, bo? " +
+                    ", ".join(str(v.get("name")) for v in hits))
+        if hits:
+            v = hits[0]
+            age = _veh_age(v)
+            if age is None:
+                return ("A no get a year for %s. Tell me the year and a go "
+                        "keep am." % v.get("name"))
+            return "%s na %d year%s old (%s)." % (
+                v.get("name"), age, "" if age == 1 else "s", v.get("year"))
+
+    # --- tell me about it ------------------------------------------------
+    if asking:
+        hits = _veh_match(low)
+        if len(hits) == 1:
+            v = hits[0]
+            out = _veh_say(v, full=True)
+            log = _veh_service_say(v["id"])
+            if log:
+                out += "\n   Last work:\n" + log
+            return out
+        return None
+
+    # --- I sold it / it is gone ------------------------------------------
+    m = re.search(r"\b(i\s+)?(sold|sell|got rid of|gave away|scrapped|"
+                  r"wrecked|lost)\b(.{0,40})", low)
+    if m:
+        hits = _veh_match(m.group(3) or low)
+        if len(hits) > 1:
+            return "Which one, bo? " + ", ".join(str(v.get("name"))
+                                                 for v in hits)
+        if hits:
+            from datetime import datetime as _dt
+            v = hits[0]
+            db.execute("UPDATE vehicles SET active = 0, gone_on = ?, "
+                       "gone_why = ? WHERE id = ?",
+                       (_dt.now().strftime("%Y-%m-%d"),
+                        m.group(2), v["id"]))
+            left = _veh_all()
+            return ("A don take %s off the list. Yu get %d left: %s"
+                    % (v.get("name"), len(left),
+                       ", ".join(str(x.get("name")) for x in left)))
+
+    # --- I bought one ----------------------------------------------------
+    m = re.search(r"\b(i\s+)?(bought|buy|got|just got|picked up)\b(.{2,70})",
+                  low)
+    if m and re.search(r"\b(car|keke|tuk ?tuk|bike|motor|van|truck|toyota|"
+                       r"honda|nissan|kia|hyundai|mercedes|bmw|ford|mazda|"
+                       r"mitsubishi|suzuki|lexus)\b", m.group(3)):
+        chunk = m.group(3)
+        kind = "car"
+        for word, means in _VEH_WORDS.items():
+            if means and re.search(r"\b" + word + r"\b", chunk):
+                kind = means
+                break
+        yr = None
+        y = re.search(r"\b(19[6-9]\d|20[0-4]\d)\b", chunk)
+        if y:
+            yr = int(y.group(1))
+        make = None
+        mk = re.search(r"\b(toyota|honda|nissan|kia|hyundai|mercedes|bmw|ford|"
+                       r"mazda|mitsubishi|suzuki|lexus)\b", chunk)
+        if mk:
+            make = mk.group(1).title()
+        model = None
+        if make:
+            after = chunk.split(mk.group(1), 1)[1]
+            after = re.sub(r"\b(19[6-9]\d|20[0-4]\d)\b", " ", after)
+            after = re.sub(r"[^a-z0-9\- ]", " ", after)
+            words = [w for w in after.split()
+                     if w not in ("a", "an", "the", "for", "in", "and", "car",
+                                  "bike", "keke", "new", "used", "from")]
+            if words:
+                model = " ".join(words[:2]).title()
+        nm = ("the " + (model or make or kind)).strip()
+        if db.query("SELECT id FROM vehicles WHERE LOWER(name) = LOWER(?)",
+                    (nm,)):
+            nm = (nm + " (" + str(yr or "new") + ")")[:60]
+        from datetime import datetime as _dt
+        now = _dt.now().strftime("%Y-%m-%d")
+        db.execute("INSERT INTO vehicles (name, kind, make, model, year, "
+                   "kept_at, notes, got_on, active, created_at) "
+                   "VALUES (?,?,?,?,?,?,?,?,1,?)",
+                   (nm, kind, make, model, yr, "Freetown",
+                    "Added from chat: " + (text or "")[:160], now, now))
+        return ("A don add %s. Tell me the plate, colour and engine when yu "
+                "get the papers and a go fill am in." % nm)
+
+    # --- work done on it --------------------------------------------------
+    m = re.search(r"\b(changed|change|serviced|service|fixed|fix|repaired|"
+                  r"replaced|replace|washed|topped up|put)\b(.{2,80})",
+                  text or "", flags=re.I)
+    if m and not asking:
+        hits = _veh_match(low)
+        if len(hits) == 1:
+            from datetime import datetime as _dt
+            v = hits[0]
+            what = (m.group(1) + m.group(2)).strip()
+            core = (v.get("name") or "").replace("the ", "").strip()
+            if core:
+                what = re.sub(r"\s*\b(on|for|in|to)\s+(the\s+)?" +
+                              re.escape(core) + r"\b", "", what, flags=re.I)
+            what = re.sub(r"\s*\b(for|at|cost(?:ing)?)\s*[\d][\d,]*"
+                          r"(?:\.\d+)?\s*(?:sle|usd|cad|gbp|eur|leones?|"
+                          r"dollars?)?\b", "", what, flags=re.I)
+            what = " ".join(what.split()).strip(" .,")
+            cost, cur = None, None
+            c = re.search(r"(?:for|cost|at)\s*([\d][\d,]*(?:\.\d+)?)\s*"
+                          r"(sle|usd|cad|gbp|eur|leones?|dollars?)?", low)
+            if c:
+                try:
+                    cost = float(c.group(1).replace(",", ""))
+                except Exception:
+                    cost = None
+                cur = (c.group(2) or "SLE").upper()[:3]
+                if cur in ("LEO", "LEN"):
+                    cur = "SLE"
+                if cur == "DOL":
+                    cur = "USD"
+            db.execute("INSERT INTO vehicle_service (vehicle_id, happened_on, "
+                       "what, cost, currency, notes, created_at) "
+                       "VALUES (?,?,?,?,?,?,?)",
+                       (v["id"], _dt.now().strftime("%Y-%m-%d"), what[:160],
+                        cost, cur, (text or "")[:200],
+                        _dt.now().strftime("%Y-%m-%d")))
+            s = "Write down for %s: %s." % (v.get("name"), what)
+            if cost:
+                s += " %s %s." % ("{:,}".format(cost).rstrip("0").rstrip("."),
+                                  cur)
+            return s
+
+    return None
+
+
+# ------------------------------------------------------------- the screens
+
+@app.get("/api/vehicles")
+@require_password
+def vehicles_list():
+    try:
+        gone = str(request.args.get("gone", "0")) in ("1", "true", "yes")
+        vs = _veh_all(gone_too=gone)
+        return {"status": "success", "vehicles": [dict(v) for v in vs],
+                "says": _veh_brief()}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/vehicles/<int:vid>")
+@require_password
+def vehicles_one(vid):
+    try:
+        _veh_ready()
+        rows = db.query("SELECT * FROM vehicles WHERE id = ?", (vid,))
+        if not rows:
+            return {"error": "no such vehicle"}, 404
+        log = db.query("SELECT * FROM vehicle_service WHERE vehicle_id = ? "
+                       "ORDER BY COALESCE(happened_on,'') DESC, id DESC",
+                       (vid,)) or []
+        return {"status": "success", "vehicle": dict(rows[0]),
+                "service": [dict(r) for r in log],
+                "says": _veh_say(rows[0], full=True)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/vehicles")
+@require_password
+def vehicles_add():
+    try:
+        from datetime import datetime as _dt
+        _veh_ready()
+        d = request.get_json() or {}
+        name = (d.get("name") or "").strip()[:60]
+        if len(name) < 2:
+            return {"error": "what do you call it?"}, 400
+        if db.query("SELECT id FROM vehicles WHERE LOWER(name) = LOWER(?)",
+                    (name,)):
+            return {"error": "you already have one called that"}, 400
+        cols = ["name", "kind", "make", "model", "year", "colour", "plate",
+                "vin", "engine_no", "engine_cc", "fuel", "seats", "category",
+                "doc_no", "kept_at", "notes", "got_on"]
+        vals = [name] + [d.get(c) for c in cols[1:]]
+        cur = db.execute("INSERT INTO vehicles (" + ", ".join(cols) +
+                         ", active, created_at) VALUES (" +
+                         ", ".join(["?"] * len(cols)) + ", 1, ?)",
+                         tuple(vals + [_dt.now().strftime("%Y-%m-%d")]))
+        new = getattr(cur, "lastrowid", None)
+        return {"status": "success", "id": new,
+                "says": "Added " + name + "."}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/vehicles/<int:vid>")
+@require_password
+def vehicles_edit(vid):
+    try:
+        _veh_ready()
+        d = request.get_json() or {}
+        ok = ("name", "kind", "make", "model", "year", "colour", "plate",
+              "vin", "engine_no", "engine_cc", "fuel", "seats", "category",
+              "doc_no", "kept_at", "notes", "got_on", "gone_on", "gone_why",
+              "active")
+        sets, vals = [], []
+        for k in ok:
+            if k in d:
+                sets.append(k + " = ?")
+                vals.append(d[k])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(vid)
+        db.execute("UPDATE vehicles SET " + ", ".join(sets) + " WHERE id = ?",
+                   tuple(vals))
+        return {"status": "success", "changed": len(sets)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.delete("/api/vehicles/<int:vid>")
+@require_password
+def vehicles_gone(vid):
+    """Sold or scrapped. It stays in the book so old service still reads,
+    unless he says to wipe it."""
+    try:
+        from datetime import datetime as _dt
+        _veh_ready()
+        d = request.get_json() or {}
+        if str(d.get("forget", "0")) in ("1", "true", "yes"):
+            db.execute("DELETE FROM vehicle_service WHERE vehicle_id = ?",
+                       (vid,))
+            db.execute("DELETE FROM vehicles WHERE id = ?", (vid,))
+            return {"status": "success", "says": "Gone for good."}
+        db.execute("UPDATE vehicles SET active = 0, gone_on = ?, gone_why = ? "
+                   "WHERE id = ?",
+                   (d.get("on") or _dt.now().strftime("%Y-%m-%d"),
+                    d.get("why") or "sold", vid))
+        return {"status": "success", "says": "Taken off the list."}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/vehicles/<int:vid>/service")
+@require_password
+def vehicles_service(vid):
+    try:
+        from datetime import datetime as _dt
+        _veh_ready()
+        d = request.get_json() or {}
+        what = (d.get("what") or "").strip()[:160]
+        if len(what) < 2:
+            return {"error": "what was done?"}, 400
+        cur = db.execute("INSERT INTO vehicle_service (vehicle_id, "
+                         "happened_on, what, cost, currency, who, notes, "
+                         "created_at) VALUES (?,?,?,?,?,?,?,?)",
+                         (vid, d.get("on") or _dt.now().strftime("%Y-%m-%d"),
+                          what, d.get("cost"), (d.get("currency") or "SLE"),
+                          d.get("who"), d.get("notes"),
+                          _dt.now().strftime("%Y-%m-%d")))
+        return {"status": "success", "id": getattr(cur, "lastrowid", None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000, use_reloader=False)
