@@ -17761,6 +17761,17 @@ def fitness_plans_list():
         return {"error": str(e)}, 400
 
 
+def _is_for_work(pid):
+    """Did he agree work with them, or lend them money? An unpaid agreement
+    means he owes them - not the other way round."""
+    try:
+        ks = {str(k['kind']) for k in (db.query(
+            "SELECT DISTINCT kind FROM ledger_entries WHERE person_id = ?", (pid,)) or [])}
+        return ('agreed' in ks) and not (ks & {'lent'})
+    except Exception:
+        return False
+
+
 def _ledger_balance(person_id, currency=None):
     """What stands between him and this person. Positive means they owe him."""
     rows = db.query("""SELECT kind, who_owes, amount, currency, status
@@ -17825,6 +17836,7 @@ def ledger_people():
             has = any(abs(b['net']) > 0.01 for b in bal.values()) if bal else False
             entry = {"id": r['id'], "name": r['name'],
                      "what_they_do": r.get('what_they_do') or '',
+                     "for_work": (_is_for_work(r['id']) if has else False),
                      "balances": (bal if has else {}), "quiet": not has}
             (live if has else quiet).append(entry)
 
@@ -18010,8 +18022,11 @@ def ledger_overview():
                 row = {"id": p['id'], "name": p['name'],
                        "what_they_do": p.get('what_they_do') or '',
                        "amount": abs(b['net']), "currency": cur,
-                       "usd": b['usd']}
-                (owed_to_him if b['net'] > 0 else he_owes).append(row)
+                       "usd": b['usd'],
+                       "for_work": _is_for_work(p['id'])}
+                # an unpaid agreement for work is something HE owes
+                _his = (b['net'] < 0) or (b['net'] > 0 and row['for_work'])
+                (he_owes if _his else owed_to_him).append(row)
         owed_to_him.sort(key=lambda x: -(x['usd'] or x['amount']))
         he_owes.sort(key=lambda x: -(x['usd'] or x['amount']))
         return {"status": "success",
@@ -18560,6 +18575,7 @@ def ledger_job(vid):
             first = list(everywhere.items())[0] if everywhere else None
             out.append({"id": f['id'], "name": f['name'],
                         "what_they_do": f.get('what_they_do') or '',
+                        "for_work": _is_for_work(f['id']),
                         "currency": cur or (first[0] if first else ''),
                         "net": round(agreed - paid, 2),
                         "agreed_here": round(agreed, 2),
