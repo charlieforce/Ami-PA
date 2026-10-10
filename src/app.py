@@ -19602,23 +19602,61 @@ def ledger_clone_job(vid):
             return {"error": "it did not save"}, 400
         new_id = got[0]['id']
 
-        rows = db.query("""SELECT person_id, amount, currency, note, quantity, unit,
-                                  unit_price FROM ledger_entries
-                           WHERE venture_id = ? AND kind = 'agreed'
-                             AND against_id IS NULL
-                             AND COALESCE(status,'open') = 'open'""", (vid,)) or []
         today = _dc.now().strftime('%Y-%m-%d')
-        n = 0
-        for r in rows:
-            db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind, who_owes,
-                          amount, currency, note, happened_on, quantity, unit, unit_price)
-                          VALUES (?, ?, 'agreed', 'them', ?, ?, ?, ?, ?, ?, ?)""",
-                       (r.get('person_id'), new_id, r['amount'], r['currency'],
-                        r.get('note'), today, r.get('quantity'), r.get('unit'),
-                        r.get('unit_price')))
-            n += 1
+        counted = {"lines": 0, "parts": 0}
+
+        def _lines_across(from_id, to_id):
+            """The agreements only - nothing paid, nothing written off."""
+            rows = db.query("""SELECT person_id, amount, currency, note, quantity,
+                                      unit, unit_price FROM ledger_entries
+                               WHERE venture_id = ? AND kind = 'agreed'
+                                 AND against_id IS NULL
+                                 AND COALESCE(status,'open') = 'open'""",
+                            (from_id,)) or []
+            for r in rows:
+                db.execute("""INSERT INTO ledger_entries (person_id, venture_id, kind,
+                              who_owes, amount, currency, note, happened_on,
+                              quantity, unit, unit_price)
+                              VALUES (?, ?, 'agreed', 'them', ?, ?, ?, ?, ?, ?, ?)""",
+                           (r.get('person_id'), to_id, r['amount'], r['currency'],
+                            r.get('note'), today, r.get('quantity'), r.get('unit'),
+                            r.get('unit_price')))
+                counted["lines"] += 1
+
+        def _parts_across(from_id, to_id, depth=0):
+            """And the rooms under it, and anything under those."""
+            if depth > 5:
+                return
+            kids = db.query("""SELECT id, name, description, type FROM ventures
+                               WHERE parent_id = ? AND COALESCE(active,1) = 1
+                               ORDER BY name""", (from_id,)) or []
+            for k in kids:
+                db.execute("""INSERT INTO ventures (name, description, type, stage,
+                              parent_id, active)
+                              VALUES (?, ?, ?, 'planning', ?, 1)""",
+                           (k['name'], k.get('description') or '',
+                            (k.get('type') or 'project'), to_id))
+                got = db.query("""SELECT id FROM ventures WHERE name = ? AND parent_id = ?
+                                  ORDER BY id DESC LIMIT 1""", (k['name'], to_id))
+                if not got:
+                    continue
+                counted["parts"] += 1
+                _lines_across(k['id'], got[0]['id'])
+                _parts_across(k['id'], got[0]['id'], depth + 1)
+
+        _lines_across(vid, new_id)
+        if str(d.get('parts_too', '1')) not in ('0', 'false', 'no'):
+            _parts_across(vid, new_id)
+
         return {"status": "success", "id": new_id, "name": name,
-                "copied": n, "from": old[0]['name']}
+                "copied": counted["lines"], "parts": counted["parts"],
+                "from": old[0]['name'],
+                "says": ("Copied " + str(counted["lines"]) + " line"
+                         + ("s" if counted["lines"] != 1 else "")
+                         + (" and " + str(counted["parts"]) + " part"
+                            + ("s" if counted["parts"] != 1 else "")
+                            if counted["parts"] else "")
+                         + " from " + str(old[0]['name']) + ". Nothing paid yet.")}
     except Exception as e:
         return {"error": str(e)}, 400
 
