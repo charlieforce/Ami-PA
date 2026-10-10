@@ -17999,6 +17999,7 @@ def ledger_person(pid):
         return {"status": "success",
                 "person": {"id": p[0]['id'], "name": p[0]['name'],
                            "what_they_do": p[0].get('what_they_do') or '',
+                           "for_work": _is_for_work(pid),
                            "phone": p[0].get('phone') or ''},
                 "balances": _ledger_balance(pid),
                 "lines": lines,

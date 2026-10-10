@@ -570,11 +570,12 @@ export default function MoneyTab() {
                   </div>
                   <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: '15px', fontWeight: 700,
-                                  color: p.net > 0 ? '#10b981' : '#f59e0b' }}>
+                                  color: (p.net > 0 && !p.for_work)
+                                           ? '#10b981' : '#f59e0b' }}>
                       {n0(Math.abs(p.net))} {p.currency}
                     </div>
                     <div style={{ fontSize: '11px', color: '#777' }}>
-                      {p.net > 0 ? 'owed' : 'you owe'}
+                      {(p.net > 0 && !p.for_work) ? 'owed to you' : 'you owe'}
                     </div>
                   </div>
                 </div>
@@ -1038,7 +1039,7 @@ export default function MoneyTab() {
                       {n0(Math.abs(net))} {b ? b[0] : ''}
                     </div>
                     <div style={{ fontSize: '11px', color: '#777' }}>
-                      {net > 0 ? 'they owe you' : 'you owe'}
+                      {(net > 0 && !p.for_work) ? 'they owe you' : 'you owe'}
                     </div>
                   </div>
                 </div>
