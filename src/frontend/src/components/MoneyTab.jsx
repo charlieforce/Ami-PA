@@ -250,10 +250,10 @@ export default function MoneyTab() {
           <div key={cur} style={{ ...S.card, marginTop: '12px' }}>
             <div style={{ fontSize: '11px', color: '#8b8b9e', textTransform: 'uppercase',
                           letterSpacing: '0.6px', fontWeight: 700 }}>
-              {b.net > 0 ? 'They owe you' : 'You owe them'}
+              {(b.net > 0 && !acct.person.for_work) ? 'They owe you' : 'You owe them'}
             </div>
             <div style={{ fontSize: '26px', fontWeight: 700,
-                          color: b.net > 0 ? '#10b981' : '#f59e0b' }}>
+                          color: (b.net > 0 && !acct.person.for_work) ? '#10b981' : '#f59e0b' }}>
               {n0(Math.abs(b.net))} <span style={{ fontSize: '15px' }}>{cur}</span>
             </div>
             {b.usd && cur !== 'USD' && <div style={S.sub}>about {n0(b.usd)} USD</div>}
