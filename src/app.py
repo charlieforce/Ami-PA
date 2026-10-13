@@ -36158,18 +36158,18 @@ _KD_SOURCE = "A Dictionary of Sierra Leone Krio (ERIC ED012454)"
 def _kd_ready():
     if _KD_SET["done"]:
         return
-    db.execute("CREATE TABLE IF NOT EXISTS krio_dictionary ("
+    db.execute("CREATE TABLE IF NOT EXISTS krio_book ("
                "id INTEGER PRIMARY KEY AUTOINCREMENT, krio TEXT, "
                "english TEXT, gloss TEXT, pos TEXT, example TEXT, "
                "source TEXT, times INTEGER DEFAULT 0)")
     try:
-        db.execute("CREATE INDEX IF NOT EXISTS krio_dict_word "
-                   "ON krio_dictionary (krio)")
+        db.execute("CREATE INDEX IF NOT EXISTS krio_book_word "
+                   "ON krio_book (krio)")
     except Exception:
         pass
     _KD_SET["done"] = True
     try:
-        have = db.query("SELECT COUNT(*) c FROM krio_dictionary")
+        have = db.query("SELECT COUNT(*) c FROM krio_book")
         if have and int(have[0]["c"]) > 0:
             return
     except Exception:
@@ -36183,7 +36183,7 @@ def _kd_ready():
     n = 0
     for r in rows:
         try:
-            db.execute("INSERT INTO krio_dictionary (krio, english, gloss, "
+            db.execute("INSERT INTO krio_book (krio, english, gloss, "
                        "pos, example, source) VALUES (?,?,?,?,?,?)",
                        (r.get("k"), r.get("e"), r.get("g"), r.get("p"),
                         r.get("x"), _KD_SOURCE))
@@ -36213,10 +36213,10 @@ def _kd_look(word, n=4):
         return []
     out, seen = [], set()
     for sql, args in (
-            ("SELECT * FROM krio_dictionary WHERE krio = ? LIMIT 6", (w,)),
-            ("SELECT * FROM krio_dictionary WHERE krio LIKE ? "
+            ("SELECT * FROM krio_book WHERE krio = ? LIMIT 6", (w,)),
+            ("SELECT * FROM krio_book WHERE krio LIKE ? "
              "ORDER BY LENGTH(krio) LIMIT 6", (w + "%",)),
-            ("SELECT * FROM krio_dictionary WHERE LOWER(gloss) LIKE ? "
+            ("SELECT * FROM krio_book WHERE LOWER(gloss) LIKE ? "
              "ORDER BY LENGTH(gloss) LIMIT 4", ("%" + w + "%",))):
         try:
             for r in (db.query(sql, args) or []):
@@ -36239,7 +36239,7 @@ def _kd_english(want, n=4):
         return []
     try:
         return db.query(
-            "SELECT * FROM krio_dictionary WHERE LOWER(gloss) = ? OR "
+            "SELECT * FROM krio_book WHERE LOWER(gloss) = ? OR "
             "LOWER(english) = ? OR LOWER(gloss) LIKE ? "
             "ORDER BY (LOWER(gloss) = ?) DESC, LENGTH(gloss) LIMIT ?",
             (w, w, "%" + w + "%", w, n)) or []
@@ -36254,7 +36254,7 @@ def krio_dictionary():
         _kd_ready()
         q = (request.args.get("q") or "").strip().lower()
         if not q:
-            c = db.query("SELECT COUNT(*) c FROM krio_dictionary")
+            c = db.query("SELECT COUNT(*) c FROM krio_book")
             return {"status": "success", "words": (c[0]["c"] if c else 0),
                     "source": _KD_SOURCE}
         rows = _kd_look(q, 20) or _kd_english(q, 20)
