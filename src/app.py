@@ -884,6 +884,14 @@ def schedule_morning_briefing():
     result = search_news_simple()
     if result.get("status") == "success":
         briefing_text = format_news_briefing_for_ami(result.get("results", {}))
+        # _pap_brief() in the morning - insurance, licence, inspection,
+        # only while they are close or already late
+        try:
+            _pp = _pap_brief()
+            if _pp:
+                briefing_text = (briefing_text or '') + '\n\n' + _pp
+        except Exception as _ppe:
+            print('PAPERS in briefing failed:', repr(_ppe), flush=True)
         db.execute("INSERT INTO briefing_messages (type, briefing_text, stories_json, date_created) VALUES (?, ?, ?, CURRENT_TIMESTAMP)", ("morning", briefing_text, __import__("json").dumps(result.get("results", {}))))
         # Insert into chat so Ami delivers briefing
         pass  # briefing no longer pasted into chat - Ami reads it from briefing_messages
@@ -15127,11 +15135,38 @@ def _ledger_say(pid, name):
     return "; ".join(parts) if parts else ("Yu and " + name + " dey level.")
 
 
-def _ledger_from_chat(query):
+def _ledger_from_chat_inner(query):
     """Money between him and someone. Returns a reply, or None."""
+    # Krio teaching - reads only, so it can go first
+    try:
+        _kr = _krio_from_chat(query)
+        if _kr:
+            return _kr
+    except Exception as _kre:
+        import traceback as _tbk
+        print('KRIO HOOK FAILED:', repr(_kre), flush=True)
+        _tbk.print_exc()
+    # medicine before money - 'I took' must never be just words
+    try:
+        _md = _med_from_chat(query)
+        if _md:
+            return _md
+    except Exception as _mde:
+        import traceback as _tbm
+        print('MEDS HOOK FAILED:', repr(_mde), flush=True)
+        _tbm.print_exc()
+    # proverbs and Krio - never touches anything, safe first
+    try:
+        _pv = _proverb_from_chat(query)
+        if _pv:
+            return _pv
+    except Exception as _pve:
+        import traceback as _tbp
+        print('PROVERBS HOOK FAILED:', repr(_pve), flush=True)
+        _tbp.print_exc()
     # what he drives - this never touches money, so it is safe first
     try:
-        _vh = _vehicle_from_chat(query)
+        _vh = _vehicle_chat(query)
         if _vh:
             return _vh
     except Exception as _vhe:
@@ -23138,7 +23173,7 @@ def _vehicle_from_chat(text):
         if not vs:
             return "A no get any vehicle write down for yu yet, bo."
         head = "Yu get %d:" % len(vs)
-        return head + "\n" + "\n".join(" - " + _veh_say(v) for v in vs)
+        return head + "\n\n" + "\n\n".join("- " + _veh_say(v) for v in vs)
 
     # --- how old is it ---------------------------------------------------
     if re.search(r"\bhow old\b", low):
@@ -23404,6 +23439,3387 @@ def vehicles_service(vid):
                           d.get("who"), d.get("notes"),
                           _dt.now().strftime("%Y-%m-%d")))
         return {"status": "success", "id": getattr(cur, "lastrowid", None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+# ===========================================================================
+# Something is wrong with the car.
+# She finds out which one first - "my car" is two cars - then answers with
+# that engine's own details in front of her, not a general answer about
+# cars. If Gemini cannot be reached she still gives the checks worth doing
+# before paying a mechanic.
+# ===========================================================================
+
+_VEH_ASKED = {"what": None, "when": 0.0}
+
+_VEH_TROUBLE = (r"(wrong with|problem|trouble|issue|noise|noisy|knock|rattl|"
+                r"shak|vibrat|smok|overheat|heating up|leak|burning|smell|"
+                r"stall|cut(?:s|ting)? off|won'?t start|wont start|not start|"
+                r"no start|dead|flat battery|brake|braking|clutch|gear|"
+                r"steering|pull(?:s|ing)? to|wobbl|puncture|flat tyre|"
+                r"flat tire|engine light|check engine|not charging|"
+                r"no power|jerk|misfir|hard to start|blow|broke down|"
+                r"break(?:ing)? down|stuck)")
+
+_VEH_DID = (r"\b(changed|serviced|fixed|repaired|replaced|washed|"
+            r"topped up|installed)\b")
+
+_VEH_FIRST_CHECKS = (
+    (r"won'?t start|wont start|not start|no start|dead|flat battery",
+     ["the battery terminals - loose or green crust stops a good battery "
+      "dead",
+      "whether the lights and horn still have strength; strong lights and "
+      "no crank points at the starter, weak lights at the battery",
+      "fuel - a gauge can lie"]),
+    (r"brake|braking|squeal|grind",
+     ["the pad thickness through the wheel, and whether it pulls to one "
+      "side when you brake",
+      "the fluid level",
+      "whether the noise only comes when braking, or all the time - all "
+      "the time is usually a bearing, not pads"]),
+    (r"overheat|heating up|temperature|steam",
+     ["coolant level, cold engine only - never open a hot cap",
+      "whether the radiator fan actually spins when it gets hot",
+      "any wet or crusty trail on the hoses"]),
+    (r"smok|burning|smell",
+     ["what colour the smoke is - blue is oil, white is coolant or just "
+      "water, black is too much fuel",
+      "the oil level",
+      "whether the smell is sweet (coolant), sharp (electrical) or like "
+      "petrol"]),
+    (r"pull(?:s|ing)? to|steering|wobbl|vibrat|shak",
+     ["tyre pressures on all four, and the wear across each tyre",
+      "whether it pulls under braking only, or all the time",
+      "the wheel balance if it shakes at one particular speed"]),
+    (r"knock|rattl|grind|squeal|clunk|noise",
+     ["when it happens - turning, braking, over bumps, or only when "
+      "accelerating; each one points somewhere different",
+      "whether it changes with speed or with engine revs - with revs is "
+      "the engine, with speed is wheels or bearings",
+      "the wheel nuts and anything loose underneath, before driving far"]),
+    (r"not charging|won'?t charge|wont charge|charg|electric|batter",
+     ["the charger itself on another socket - the charger fails more "
+      "often than the battery",
+      "the plug and the socket on the bike for heat, dirt or a bent pin",
+      "how long it holds a charge now against when it was new"]),
+    (r"leak",
+     ["the colour of the puddle - black is oil, red is transmission, "
+      "green or orange is coolant, clear is just the air conditioning",
+      "where it sits under the car",
+      "the levels before driving it far"]),
+)
+
+
+def _veh_facts(v):
+    """Everything about this one, laid out for thinking with."""
+    bits = []
+    t = _veh_title(v)
+    if t:
+        bits.append(t)
+    for label, key in (("colour", "colour"), ("plate", "plate"),
+                       ("engine", "engine_no"), ("VIN", "vin"),
+                       ("fuel", "fuel")):
+        if v.get(key):
+            bits.append("%s %s" % (label, v[key]))
+    if v.get("engine_cc"):
+        bits.append("%scc" % v["engine_cc"])
+    age = _veh_age(v)
+    if age is not None:
+        bits.append("%d years old" % age)
+    if v.get("kept_at"):
+        bits.append("kept in %s" % v["kept_at"])
+    out = (v.get("name") or "it") + ": " + ", ".join(bits) + "."
+    if v.get("notes"):
+        out += " Note: " + str(v["notes"])
+    log = _veh_service_say(v["id"], limit=6)
+    if log:
+        out += "\nWork done lately:\n" + log
+    return out
+
+
+def _veh_ai(prompt):
+    """Her own brain, asked directly. Returns None if it cannot be reached,
+    and the caller still has something useful to say."""
+    try:
+        import os as _os
+        key = (_os.environ.get("GOOGLE_API_KEY")
+               or _os.environ.get("GEMINI_API_KEY"))
+        if not key:
+            return None
+        import google.genai as genai
+        client = genai.Client(api_key=key)
+        r = client.models.generate_content(
+            model="models/gemini-3.6-flash", contents=prompt)
+        txt = (getattr(r, "text", None) or "").strip()
+        return txt or None
+    except Exception as e:
+        print("VEHICLES: could not ask Gemini -", repr(e), flush=True)
+        return None
+
+
+def _veh_fallback(v, complaint):
+    """No Gemini - still worth more than nothing."""
+    import re
+    low = (complaint or "").lower()
+    checks = []
+    for pat, items in _VEH_FIRST_CHECKS:
+        if re.search(pat, low):
+            checks = items
+            break
+    out = _veh_say(v, full=True)
+    if checks:
+        out += "\n\nBefore yu pay anybody, check:"
+        for c in checks:
+            out += "\n\n- " + c
+        out += "\n\nTell me what yu find and we go from there."
+    else:
+        out += ("\n\nTell me more: when e dey happen - cold engine or hot, "
+                "moving or standing, and wetin yu dey hear or smell?")
+    return out
+
+
+def _veh_diagnose(v, complaint):
+    """What is wrong with this one, thought about as this one."""
+    from datetime import datetime as _dt
+    _VEH_ASKED["what"] = None
+    prompt = (
+        "You are Ami, Charlie's assistant in Freetown, Sierra Leone. He has "
+        "a problem with one of his vehicles. Here is that exact vehicle:\n\n"
+        + _veh_facts(v) + "\n\nWhat he said is wrong:\n\"" +
+        str(complaint or "")[:400] + "\"\n\n"
+        "Answer him directly and practically. Rules:\n"
+        "- Speak the way he does: English mixed with a little Krio, warm, "
+        "no lecture.\n"
+        "- Talk about THIS vehicle, its age and engine, not cars in "
+        "general.\n"
+        "- Give the two or three most likely causes, most likely first, and "
+        "say what to check for each - things he or a mechanic in Freetown "
+        "can actually check.\n"
+        "- Say plainly if it is the kind of fault he should not drive on.\n"
+        "- Parts and specialist tools are hard to get there; prefer what "
+        "can be checked by hand or eye.\n"
+        "- Ask at most two questions back, only if they would change the "
+        "answer.\n"
+        "- Keep it under 200 words. No headings, no bullet symbols other "
+        "than a simple dash.\n"
+        "Today is " + _dt.now().strftime("%d %B %Y") + ".")
+    said = _veh_ai(prompt)
+    if not said:
+        return _veh_fallback(v, complaint)
+    head = "%s (%s)" % (v.get("name"), _veh_title(v) or v.get("kind") or "")
+    return head.strip(" ()") + "\n\n" + said
+
+
+def _veh_trouble(text):
+    """Is he telling me something is wrong, and with which one?"""
+    import re
+    import time
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    _veh_ready()
+
+    # he was asked which one and this is the answer
+    pend = _VEH_ASKED.get("what")
+    if pend and (time.time() - float(_VEH_ASKED.get("when") or 0)) < 1800:
+        hits = _veh_match(low)
+        if len(hits) == 1 and len(low) < 120:
+            return _veh_diagnose_x(hits[0], pend)
+        if re.match(r"^(never ?mind|forget it|leave it|no)\b", low):
+            _VEH_ASKED["what"] = None
+            return None
+
+    if re.search(_VEH_DID, low):
+        return None                      # that is work done, not a complaint
+    if not re.search(_VEH_TROUBLE, low):
+        return None
+
+    hits = _veh_match(low)
+    if len(hits) == 1:
+        return _veh_diagnose_x(hits[0], text)
+
+    # he said "my car" and he has more than one, or named nothing at all
+    if not hits:
+        if not re.search(r"\b(car|motor|vehicle|bike|keke|tuk ?tuk|it)\b",
+                         low):
+            return None
+        hits = _veh_all()
+    _VEH_ASKED["what"] = text
+    _VEH_ASKED["when"] = time.time()
+    names = [str(v.get("name")) for v in hits]
+    if len(names) > 1:
+        which = ", ".join(names[:-1]) + " or " + names[-1]
+    else:
+        which = names[0] if names else "which one"
+    return "Which one, bo - %s?" % which
+
+
+def _vehicle_chat(text):
+    """Papers first, then trouble, then the plain questions."""
+    try:
+        _pp = _pap_from_chat(text)
+        if _pp:
+            return _pp
+    except Exception as e:
+        import traceback as _tbp
+        print("PAPERS FAILED:", repr(e), flush=True)
+        _tbp.print_exc()
+    try:
+        out = _veh_trouble(text)
+        if out:
+            return out
+    except Exception as e:
+        import traceback as _tbt
+        print("VEHICLE TROUBLE FAILED:", repr(e), flush=True)
+        _tbt.print_exc()
+    return _vehicle_from_chat(text)
+
+
+
+
+# ===========================================================================
+# Papers, and faults that keep coming back.
+#
+# Two things the roads there make worth having:
+#   1. Insurance, licence and inspection - what was paid last time, what it
+#      is costing now, and when the next one falls due.
+#   2. The same fault twice is a mechanic who did not fix it. She keeps
+#      every complaint and says so the third time the brakes come up.
+# ===========================================================================
+
+_PAP_SET = {"done": False}
+
+_PAP_KINDS = {
+    "insurance": "insurance", "insure": "insurance", "cover": "insurance",
+    "licence": "road licence", "license": "road licence",
+    "road licence": "road licence", "road license": "road licence",
+    "inspection": "inspection", "inspect": "inspection",
+    "roadworthy": "inspection", "mot": "inspection",
+    "registration": "registration", "reg": "registration",
+    "sticker": "registration", "papers": None, "paper": None,
+}
+
+_FAULT_TAGS = (
+    ("brakes", r"brake|braking|pad|disc|squeal|grind"),
+    ("overheating", r"overheat|heating up|temperature|radiator|coolant|steam"),
+    ("starting", r"won'?t start|wont start|not start|no start|crank|starter|"
+                 r"dead|flat battery|hard to start"),
+    ("electrics", r"light|wiring|fuse|alternator|not charging|charg|horn|"
+                  r"indicator|wiper"),
+    ("suspension", r"suspension|shock|bush|spring|bump|knock|clunk|rattl|"
+                   r"pothole"),
+    ("steering", r"steering|pull(?:s|ing)? to|wobbl|align|vibrat|shak|"
+                 r"tie rod"),
+    ("tyres", r"tyre|tire|puncture|flat|wheel|rim"),
+    ("engine", r"misfir|stall|cut(?:s|ting)? off|smok|power|jerk|knocking"),
+    ("leak", r"leak|dripping|puddle|oil on the ground"),
+    ("gearbox", r"gear|clutch|transmission|slipping"),
+)
+
+
+def _pap_ready():
+    if _PAP_SET["done"]:
+        return
+    _veh_ready()
+    db.execute("CREATE TABLE IF NOT EXISTS vehicle_papers ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, "
+               "kind TEXT, provider TEXT, last_paid_on TEXT, "
+               "last_amount REAL, currency TEXT, every_months INTEGER "
+               "DEFAULT 12, next_due_on TEXT, warn_days INTEGER DEFAULT 21, "
+               "notes TEXT, active INTEGER DEFAULT 1, created_at TEXT)")
+    db.execute("CREATE TABLE IF NOT EXISTS vehicle_paper_log ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, paper_id INTEGER, "
+               "paid_on TEXT, amount REAL, currency TEXT, note TEXT, "
+               "created_at TEXT)")
+    db.execute("CREATE TABLE IF NOT EXISTS vehicle_faults ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, "
+               "said_on TEXT, tag TEXT, said TEXT, created_at TEXT)")
+    for col, kind in (("owner", "TEXT"), ("owner_address", "TEXT"),
+                      ("first_reg_on", "TEXT"), ("reg_on", "TEXT")):
+        try:
+            db.execute("ALTER TABLE vehicles ADD COLUMN %s %s" % (col, kind))
+        except Exception:
+            pass
+    _PAP_SET["done"] = True
+    try:
+        _pap_cards()
+    except Exception as e:
+        print("PAPERS: could not write the card details -", repr(e),
+              flush=True)
+
+
+def _pap_cards():
+    """What the registration cards say. The SAI numbers on the technical
+    cards are not plates, so they move out of the plate field."""
+    cards = (
+        ("the CHR", "BAE 467", "2026-05-21", "2026-06-21",
+         "Charles Pratt Kebbi", "52 Main Road, Congotown, Freetown",
+         "SAI 16C41 is off the technical card, not the plate."),
+        ("the Corolla", "AJV 069", "2014-10-21", "2025-12-05",
+         "Aminata Sellu", "Old School Hill Station, Freetown",
+         "Registered in Aminata Sellu's name. SAI 1250J is off the "
+         "technical card, not the plate."),
+    )
+    for name, plate, first_reg, reg, owner, addr, note in cards:
+        rows = db.query("SELECT id, plate, notes FROM vehicles "
+                        "WHERE LOWER(name) = LOWER(?)", (name,))
+        if not rows:
+            continue
+        v = rows[0]
+        if (v.get("plate") or "") == plate:
+            continue
+        notes = (v.get("notes") or "")
+        if note not in notes:
+            notes = (notes + " " + note).strip()
+        db.execute("UPDATE vehicles SET plate = ?, first_reg_on = ?, "
+                   "reg_on = ?, owner = ?, owner_address = ?, notes = ? "
+                   "WHERE id = ?",
+                   (plate, first_reg, reg, owner, addr, notes, v["id"]))
+
+
+def _pap_date(text):
+    """A date out of his own words. None when there is nothing to read."""
+    import re
+    from datetime import datetime as _dt
+    t = (text or "").lower()
+    m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", t)
+    if m:
+        return "%04d-%02d-%02d" % tuple(int(x) for x in m.groups())
+    m = re.search(r"\b(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})\b", t)
+    if m:
+        d, mo, y = (int(x) for x in m.groups())
+        if d > 12 >= mo:
+            pass                      # day first, as he writes it
+        elif mo > 12 >= d:
+            d, mo = mo, d
+        y = y + 2000 if y < 100 else y
+        try:
+            return _dt(y, mo, d).strftime("%Y-%m-%d")
+        except Exception:
+            return None
+    months = ("january february march april may june july august september "
+              "october november december").split()
+    m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(" + "|".join(
+        x[:3] for x in months) + r")[a-z]*\s*(\d{4})?\b", t)
+    if not m:
+        m2 = re.search(r"\b(" + "|".join(x[:3] for x in months) +
+                       r")[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})?\b",
+                       t)
+        if m2:
+            mo = [x[:3] for x in months].index(m2.group(1)) + 1
+            d = int(m2.group(2))
+            y = int(m2.group(3)) if m2.group(3) else _dt.now().year
+            try:
+                return _dt(y, mo, d).strftime("%Y-%m-%d")
+            except Exception:
+                return None
+        return None
+    d = int(m.group(1))
+    mo = [x[:3] for x in months].index(m.group(2)) + 1
+    y = int(m.group(3)) if m.group(3) else _dt.now().year
+    try:
+        return _dt(y, mo, d).strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _pap_plus(date_s, months):
+    from datetime import datetime as _dt
+    try:
+        d = _dt.strptime(date_s, "%Y-%m-%d")
+    except Exception:
+        return None
+    y = d.year + (d.month - 1 + int(months or 12)) // 12
+    mo = (d.month - 1 + int(months or 12)) % 12 + 1
+    day = min(d.day, [31, 29 if y % 4 == 0 and (y % 100 or y % 400 == 0)
+                      else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1])
+    return _dt(y, mo, day).strftime("%Y-%m-%d")
+
+
+def _pap_days(date_s):
+    from datetime import datetime as _dt
+    try:
+        return (_dt.strptime(date_s, "%Y-%m-%d") - _dt.now()).days + 1
+    except Exception:
+        return None
+
+
+def _pap_money(a, cur):
+    if a is None:
+        return ""
+    try:
+        a = float(a)
+        s = "{:,.0f}".format(a) if a == int(a) else "{:,.2f}".format(a)
+    except Exception:
+        s = str(a)
+    return s + " " + (cur or "SLE")
+
+
+def _pap_all(vid=None):
+    _pap_ready()
+    sql = ("SELECT p.*, v.name AS vname FROM vehicle_papers p "
+           "LEFT JOIN vehicles v ON v.id = p.vehicle_id "
+           "WHERE COALESCE(p.active,1) = 1")
+    args = ()
+    if vid:
+        sql += " AND p.vehicle_id = ?"
+        args = (vid,)
+    return db.query(sql + " ORDER BY COALESCE(p.next_due_on,'9999')",
+                    args) or []
+
+
+def _pap_line(p):
+    out = "%s %s" % (p.get("vname") or "a vehicle", p.get("kind") or "papers")
+    if p.get("next_due_on"):
+        d = _pap_days(p["next_due_on"])
+        when = p["next_due_on"]
+        if d is None:
+            out += " - due " + when
+        elif d < 0:
+            out += " - OVERDUE by %d day%s (%s)" % (
+                -d, "" if d == -1 else "s", when)
+        elif d == 0:
+            out += " - due TODAY"
+        else:
+            out += " - due in %d day%s (%s)" % (d, "" if d == 1 else "s", when)
+    else:
+        out += " - no due date set"
+    if p.get("last_amount"):
+        out += ", last time %s" % _pap_money(p["last_amount"],
+                                             p.get("currency"))
+    return out
+
+
+def _pap_brief(within=45):
+    """For the morning word - only what is close or already late."""
+    try:
+        soon = []
+        for p in _pap_all():
+            if not p.get("next_due_on"):
+                continue
+            d = _pap_days(p["next_due_on"])
+            if d is not None and d <= max(int(within),
+                                          int(p.get("warn_days") or 21)):
+                soon.append(_pap_line(p))
+        if not soon:
+            return ""
+        return "Vehicle papers:\n\n" + "\n\n".join("- " + s for s in soon)
+    except Exception as e:
+        print("PAPERS: brief failed -", repr(e), flush=True)
+        return ""
+
+
+def _pap_find(vid, kind):
+    rows = db.query("SELECT * FROM vehicle_papers WHERE vehicle_id = ? "
+                    "AND LOWER(kind) = LOWER(?) AND COALESCE(active,1) = 1 "
+                    "ORDER BY id DESC LIMIT 1", (vid, kind))
+    return rows[0] if rows else None
+
+
+def _pap_paid(vid, kind, amount, cur, on, every=12, who=None):
+    """Write down a payment and roll the next one forward."""
+    from datetime import datetime as _dt
+    _pap_ready()
+    now = _dt.now().strftime("%Y-%m-%d")
+    on = on or now
+    p = _pap_find(vid, kind)
+    nxt = _pap_plus(on, every)
+    if p:
+        db.execute("UPDATE vehicle_papers SET last_paid_on = ?, "
+                   "last_amount = ?, currency = ?, next_due_on = ?, "
+                   "every_months = ?, provider = COALESCE(?, provider) "
+                   "WHERE id = ?",
+                   (on, amount, cur or "SLE", nxt, every, who, p["id"]))
+        pid = p["id"]
+        before = p.get("last_amount")
+    else:
+        cur_ = db.execute("INSERT INTO vehicle_papers (vehicle_id, kind, "
+                          "provider, last_paid_on, last_amount, currency, "
+                          "every_months, next_due_on, active, created_at) "
+                          "VALUES (?,?,?,?,?,?,?,?,1,?)",
+                          (vid, kind, who, on, amount, cur or "SLE", every,
+                           nxt, now))
+        pid = getattr(cur_, "lastrowid", None)
+        before = None
+    if pid:
+        db.execute("INSERT INTO vehicle_paper_log (paper_id, paid_on, amount, "
+                   "currency, created_at) VALUES (?,?,?,?,?)",
+                   (pid, on, amount, cur or "SLE", now))
+    return pid, nxt, before
+
+
+def _fault_tag(text):
+    import re
+    low = (text or "").lower()
+    for tag, pat in _FAULT_TAGS:
+        if re.search(pat, low):
+            return tag
+    return "other"
+
+
+def _fault_note(v, complaint):
+    """Keep the complaint, and say if this one keeps coming back."""
+    from datetime import datetime as _dt
+    _pap_ready()
+    tag = _fault_tag(complaint)
+    now = _dt.now().strftime("%Y-%m-%d")
+    before = db.query("SELECT said_on, said FROM vehicle_faults "
+                      "WHERE vehicle_id = ? AND tag = ? AND said_on >= ? "
+                      "ORDER BY said_on DESC LIMIT 5",
+                      (v["id"], tag, _pap_plus(now, -12) or "0")) or []
+    db.execute("INSERT INTO vehicle_faults (vehicle_id, said_on, tag, said, "
+               "created_at) VALUES (?,?,?,?,?)",
+               (v["id"], now, tag, (complaint or "")[:300], now))
+    work = db.query("SELECT happened_on, what, cost, currency FROM "
+                    "vehicle_service WHERE vehicle_id = ? AND happened_on >= ?"
+                    " ORDER BY happened_on DESC LIMIT 8",
+                    (v["id"], _pap_plus(now, -12) or "0")) or []
+    import re
+    pat = dict(_FAULT_TAGS).get(tag)
+    same = [w for w in work
+            if pat and re.search(pat, str(w.get("what") or "").lower())]
+    if len(before) < 1 and len(same) < 1:
+        return "", ""
+    times = len(before) + 1
+    nth = {2: "second", 3: "third", 4: "fourth"}.get(times, "%dth" % times)
+    say = ("This is the %s time yu mention %s on %s this year."
+           % (nth, tag, v.get("name")))
+    if before:
+        say += " Before: " + "; ".join(
+            "%s - %s" % (b.get("said_on"), str(b.get("said"))[:60])
+            for b in before[:3]) + "."
+    if same:
+        spent = sum(float(w.get("cost") or 0) for w in same)
+        say += " Work already paid for: " + "; ".join(
+            "%s %s" % (w.get("happened_on"), str(w.get("what"))[:40])
+            for w in same[:3])
+        if spent:
+            say += " (%s so far)" % _pap_money(
+                spent, same[0].get("currency") or "SLE")
+        say += "."
+    return say, tag
+
+
+def _pap_from_chat(text):
+    """Papers, from chat. Questions never change anything."""
+    import re
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    if not re.search(r"\b(insurance|insure|licen[cs]es?|inspections?|"
+                     r"roadworthy|registrations?|papers?|stickers?|"
+                     r"renewals?|road tax)\b", low):
+        return None
+    _pap_ready()
+
+    asking = bool(re.match(r"^(and\s+)?(how|what|what's|whats|which|when|who|"
+                           r"where|why|do i|did i|am i|is|are|any|list|show|"
+                           r"tell me|can you|can yu)\b", low)
+                  or low.rstrip().endswith("?"))
+
+    kind = None
+    for word in sorted(_PAP_KINDS, key=len, reverse=True):
+        if re.search(r"\b" + word + r"s?\b", low) and _PAP_KINDS[word]:
+            kind = _PAP_KINDS[word]
+            break
+
+    hits = _veh_match(low)
+    v = hits[0] if len(hits) == 1 else None
+
+    # --- when is it due -------------------------------------------------
+    if asking:
+        rows = _pap_all(v["id"] if v else None)
+        if kind:
+            rows = [r for r in rows
+                    if (r.get("kind") or "").lower() == kind.lower()]
+        if not rows:
+            what = (kind or "papers") + (" for " + v["name"] if v else "")
+            return ("A no get %s write down yet. Tell me when yu last pay "
+                    "and how much, and a go keep the next one." % what)
+        out = "\n\n".join("- " + _pap_line(r) for r in rows)
+        return "Papers:\n\n" + out
+
+    # --- I paid it ------------------------------------------------------
+    m = re.search(r"\b(paid|pay|renewed|renew|bought)\b", low)
+    if m and kind:
+        if not v:
+            if len(hits) > 1:
+                return ("Which one, bo - " +
+                        ", ".join(str(x.get("name")) for x in hits) + "?")
+            return "Which vehicle is that %s for, bo?" % kind
+        amt, cur = None, None
+        a = re.search(r"([\d][\d,]*(?:\.\d+)?)\s*(m|million|k|thousand)?\s*"
+                      r"(sle|usd|cad|gbp|eur|leones?|dollars?)?", low)
+        if a:
+            try:
+                amt = float(a.group(1).replace(",", ""))
+            except Exception:
+                amt = None
+            if amt is not None and a.group(2):
+                amt *= 1000000 if a.group(2) in ("m", "million") else 1000
+            cur = (a.group(3) or "SLE").upper()[:3]
+            if cur.startswith("LEO") or cur == "LE":
+                cur = "SLE"
+            if cur.startswith("DOL"):
+                cur = "USD"
+        every = 12
+        mo = re.search(r"\b(?:for|every)\s+(\d{1,2})\s*month", low)
+        if mo:
+            every = int(mo.group(1))
+        elif re.search(r"\b(six|6)\s*month|half year", low):
+            every = 6
+        on = _pap_date(low)
+        pid, nxt, before = _pap_paid(v["id"], kind, amt, cur, on, every)
+        out = "Write down: %s %s" % (v.get("name"), kind)
+        if amt:
+            out += " " + _pap_money(amt, cur)
+        out += (" on " + on + ".") if on else " today."
+        if nxt:
+            out += " Next one " + nxt + "."
+        if before and amt and float(before) != float(amt):
+            diff = float(amt) - float(before)
+            out += (" Last time na %s, so e %s %s."
+                    % (_pap_money(before, cur),
+                       "go up" if diff > 0 else "come down",
+                       _pap_money(abs(diff), cur)))
+        return out
+
+    # --- it is due on ... -------------------------------------------------
+    if kind and re.search(r"\b(due|expires?|expiry|runs out|finish)\b", low):
+        when = _pap_date(low)
+        if not v:
+            return "Which one, bo?"
+        if not when:
+            return "When exactly, bo? Give me the date."
+        from datetime import datetime as _dt
+        p = _pap_find(v["id"], kind)
+        if p:
+            db.execute("UPDATE vehicle_papers SET next_due_on = ? "
+                       "WHERE id = ?", (when, p["id"]))
+        else:
+            db.execute("INSERT INTO vehicle_papers (vehicle_id, kind, "
+                       "next_due_on, currency, every_months, active, "
+                       "created_at) VALUES (?,?,?,'SLE',12,1,?)",
+                       (v["id"], kind, when,
+                        _dt.now().strftime("%Y-%m-%d")))
+        d = _pap_days(when)
+        return ("Noted - %s %s due %s%s." %
+                (v.get("name"), kind, when,
+                 (" (%d days)" % d) if d and d > 0 else ""))
+    return None
+
+
+# ------------------------------------------------------------- the screens
+
+@app.get("/api/vehicles/papers")
+@require_password
+def papers_all():
+    try:
+        rows = _pap_all()
+        return {"status": "success", "papers": [dict(r) for r in rows],
+                "says": _pap_brief(within=400) or "Nothing written down yet."}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/vehicles/<int:vid>/paper")
+@require_password
+def papers_add(vid):
+    try:
+        from datetime import datetime as _dt
+        _pap_ready()
+        d = request.get_json() or {}
+        kind = (d.get("kind") or "").strip()[:40]
+        if len(kind) < 3:
+            return {"error": "insurance, road licence or inspection?"}, 400
+        cur = db.execute("INSERT INTO vehicle_papers (vehicle_id, kind, "
+                         "provider, last_paid_on, last_amount, currency, "
+                         "every_months, next_due_on, warn_days, notes, "
+                         "active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?)",
+                         (vid, kind, d.get("provider"), d.get("last_paid_on"),
+                          d.get("last_amount"), d.get("currency") or "SLE",
+                          d.get("every_months") or 12, d.get("next_due_on"),
+                          d.get("warn_days") or 21, d.get("notes"),
+                          _dt.now().strftime("%Y-%m-%d")))
+        return {"status": "success", "id": getattr(cur, "lastrowid", None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/vehicles/paper/<int:pid>/paid")
+@require_password
+def papers_paid(pid):
+    try:
+        _pap_ready()
+        d = request.get_json() or {}
+        rows = db.query("SELECT * FROM vehicle_papers WHERE id = ?", (pid,))
+        if not rows:
+            return {"error": "no such paper"}, 404
+        p = rows[0]
+        _, nxt, before = _pap_paid(p["vehicle_id"], p["kind"],
+                                   d.get("amount"), d.get("currency"),
+                                   d.get("on"),
+                                   d.get("every_months")
+                                   or p.get("every_months") or 12,
+                                   d.get("provider"))
+        return {"status": "success", "next_due_on": nxt,
+                "last_time": before}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.put("/api/vehicles/paper/<int:pid>")
+@require_password
+def papers_edit(pid):
+    try:
+        _pap_ready()
+        d = request.get_json() or {}
+        ok = ("kind", "provider", "last_paid_on", "last_amount", "currency",
+              "every_months", "next_due_on", "warn_days", "notes", "active")
+        sets, vals = [], []
+        for k in ok:
+            if k in d:
+                sets.append(k + " = ?")
+                vals.append(d[k])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        vals.append(pid)
+        db.execute("UPDATE vehicle_papers SET " + ", ".join(sets) +
+                   " WHERE id = ?", tuple(vals))
+        return {"status": "success", "changed": len(sets)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/vehicles/<int:vid>/faults")
+@require_password
+def papers_faults(vid):
+    try:
+        _pap_ready()
+        rows = db.query("SELECT tag, COUNT(*) n, MAX(said_on) last_time "
+                        "FROM vehicle_faults WHERE vehicle_id = ? "
+                        "GROUP BY tag ORDER BY n DESC", (vid,)) or []
+        return {"status": "success", "faults": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+def _veh_diagnose_x(v, complaint):
+    """The same answer, but she checks first whether this one keeps coming
+    back - and tells him before she says anything else."""
+    again = ""
+    try:
+        again, _tag = _fault_note(v, complaint)
+    except Exception as e:
+        print("FAULTS: could not check -", repr(e), flush=True)
+    if again:
+        complaint = (complaint or "") + "\n\nThis is not the first time: " + again
+    out = _veh_diagnose(v, complaint)
+    if again:
+        out = again + "\n\n" + out
+    return out
+
+
+
+
+
+# ===========================================================================
+# A money question is never answered by guessing.
+#
+# "How much do I owe the electrician?" found nobody, fell through to the
+# model, and came back with 2,760 SLE out of thin air. In a book of
+# accounts a wrong number is worse than no number, so:
+#   * names are matched harder - "the electrician", "allie", "mr allie"
+#   * "him" and "her" mean whoever was just being discussed
+#   * and if she still cannot find the person, she stops there and says
+#     so. She does not hand the question on to be imagined.
+# ===========================================================================
+
+_MONEY_WHO = {"id": None, "name": None, "when": 0.0}
+_MONEY_TABLE = {"name": None}
+
+_MONEY_Q = (r"\b(owe|owes|owing|owed|debt|balance)\b"
+            r"|\bhow much (?:do|did|have|i)\b.{0,24}\b(owe|pay|paid)\b"
+            r"|\bwhat do i owe\b")
+
+_MONEY_DROP = ("the", "my", "our", "di", "de", "mr", "mrs", "miss", "ms",
+               "dr", "uncle", "aunty", "auntie", "pa", "mama", "papa")
+
+
+def _money_table():
+    """Whichever table holds people in this database."""
+    if _MONEY_TABLE["name"]:
+        return _MONEY_TABLE["name"]
+    for t in ("ledger_people", "people", "contacts", "persons"):
+        try:
+            db.query("SELECT id, name FROM %s LIMIT 1" % t)
+            _MONEY_TABLE["name"] = t
+            return t
+        except Exception:
+            continue
+    return None
+
+
+def _money_people():
+    """Everyone who has anything in the books."""
+    t = _money_table()
+    if not t:
+        return []
+    try:
+        return db.query(
+            "SELECT p.id, p.name FROM %s p WHERE p.id IN "
+            "(SELECT DISTINCT person_id FROM ledger_entries "
+            "WHERE person_id IS NOT NULL) ORDER BY p.name" % t) or []
+    except Exception as e:
+        print("MONEY: could not read the people -", repr(e), flush=True)
+        return []
+
+
+def _money_clean(s):
+    import re
+    s = re.sub(r"[^a-z0-9 ]", " ", (s or "").lower())
+    return [w for w in s.split() if w and w not in _MONEY_DROP]
+
+
+def _money_find(text):
+    """Who he means. His own words, not an exact spelling."""
+    words = set(_money_clean(text))
+    if not words:
+        return None, None
+    best, score = None, 0
+    for p in _money_people():
+        nm = _money_clean(p.get("name"))
+        if not nm:
+            continue
+        hit = sum(1 for w in nm if w in words)
+        if hit and hit >= score:
+            full = " ".join(nm)
+            bonus = 1 if full and full in (text or "").lower() else 0
+            if hit + bonus > score:
+                best, score = p, hit + bonus
+    if best:
+        return best["id"], best["name"]
+    return None, None
+
+
+def _money_near(text, cutoff=0.76):
+    """Close enough to be worth asking about. He types on a phone, so
+    'elctrician' has to still find the electrician."""
+    import difflib
+    words = [w for w in _money_clean(text) if len(w) > 3]
+    if not words:
+        return []
+    out = []
+    for p in _money_people():
+        nm = [w for w in _money_clean(p.get("name")) if len(w) > 2]
+        if not nm:
+            continue
+        r = 0.0
+        for w in words:
+            for n in nm:
+                r = max(r, difflib.SequenceMatcher(None, w, n).ratio())
+        if r >= cutoff:
+            out.append((r, p))
+    out.sort(key=lambda x: -x[0])
+    return out
+
+
+def _money_remember(text):
+    import time
+    pid, name = _money_find(text)
+    if pid:
+        _MONEY_WHO.update({"id": pid, "name": name, "when": time.time()})
+    return pid
+
+
+def _money_guard(query):
+    """The last word on a money question. Either the books answer it, or
+    she says she cannot - never the model."""
+    import re
+    import time
+    low = (query or "").strip().lower()
+    if not low or not re.search(_MONEY_Q, low):
+        return None
+
+    pid, name = _money_find(low)
+
+    if not pid and re.search(r"\b(him|her|them|he|she|they|am|dat man|"
+                             r"dat woman)\b", low):
+        if (_MONEY_WHO.get("id")
+                and (time.time() - float(_MONEY_WHO.get("when") or 0)) < 3600):
+            pid, name = _MONEY_WHO["id"], _MONEY_WHO["name"]
+
+    if pid:
+        _MONEY_WHO.update({"id": pid, "name": name, "when": time.time()})
+        try:
+            out = _ledger_breakdown(pid, name)
+            if out:
+                return out
+        except Exception as e:
+            print("MONEY: breakdown failed -", repr(e), flush=True)
+        return ("A get %s pan mi book but a no fit pull di breakdown just "
+                "now. Try again, bo." % name)
+
+    # a typo, most likely - he is on a phone
+    near = _money_near(low)
+    if near and (len(near) == 1 or near[0][0] >= 0.92
+                 or (len(near) > 1 and near[0][0] - near[1][0] >= 0.12)):
+        p = near[0][1]
+        _MONEY_WHO.update({"id": p["id"], "name": p["name"],
+                           "when": time.time()})
+        try:
+            out = _ledger_breakdown(p["id"], p["name"])
+        except Exception as e:
+            print("MONEY: breakdown failed -", repr(e), flush=True)
+            out = None
+        if out:
+            return "A take am say yu mean %s.\n\n%s" % (p["name"], out)
+
+    if near:
+        names = [p["name"] for _r, p in near[:4]]
+        return ("Yu mean %s? Tell mi which one and a go pull di breakdown."
+                % (", ".join(names[:-1]) + " or " + names[-1]
+                   if len(names) > 1 else names[0]))
+
+    # nobody at all - this is where the made-up number used to come from
+    known = [str(p.get("name")) for p in _money_people()]
+    out = ("A no get dat person pan mi book, so a no go guess a number.")
+    if known:
+        out += ("\n\nDi people wey a get: " + ", ".join(known) + "."
+                "\n\nTell mi which one, or add di person first.")
+    return out
+
+
+
+
+_MONEY_OWE = r"\b(owe|owes|owing|owed|debt|balance)\b"
+
+_MONEY_GENERAL = set((
+    "altogether total overall everybody everyone anybody anyone people all "
+    "money now still much them in so far right today this month week year "
+    "for the work it anything something anybody who whom and or to me my "
+    "any left outstanding each other others"
+).split())
+
+
+def _money_named(low):
+    """Did he actually name somebody? 'how much do I owe altogether' did
+    not; 'how much do I owe the elektricia' did."""
+    import re
+    m = re.search(r"\bowe(?:s|d)?\b\s*(?:to\s+)?(.{0,40})", low)
+    if not m:
+        return False
+    rest = re.sub(r"[^a-z ]", " ", m.group(1))
+    words = [w for w in rest.split()
+             if len(w) > 2 and w not in _MONEY_GENERAL]
+    return bool(words)
+
+
+def _money_first(query):
+    """Who he owes is settled here, before anything else gets a say.
+    An answer about the wrong person is worse than no answer at all."""
+    import re
+    import time
+    low = (query or "").strip().lower()
+    if not low or not re.search(_MONEY_OWE, low):
+        return None
+
+    said = ""
+    pid, name = _money_find(low)
+    if not pid and re.search(r"(him|her|them|he|she|they|am)", low):
+        if (_MONEY_WHO.get("id")
+                and (time.time() - float(_MONEY_WHO.get("when") or 0)) < 3600):
+            pid, name = _MONEY_WHO["id"], _MONEY_WHO["name"]
+    if not pid:
+        near = _money_near(low)
+        if near and near[0][0] >= 0.82 and (
+                len(near) == 1 or near[0][0] - near[1][0] >= 0.10):
+            pid = near[0][1]["id"]
+            name = near[0][1]["name"]
+            said = "A take am say yu mean %s.\n\n" % name
+        elif near and len(near) > 1:
+            names = [p["name"] for _r, p in near[:4]]
+            return ("Yu mean %s? Tell mi which one."
+                    % (", ".join(names[:-1]) + " or " + names[-1]))
+    if not pid:
+        # he named somebody and I cannot place them. The old handler will
+        # answer anyway, and last time it answered "The painter" - so stop
+        # it here rather than let a wrong name through.
+        if _money_named(low):
+            return _money_guard(query) or (
+                "A no sabi who yu mean, so a no go guess a number.")
+        return None
+
+    _MONEY_WHO.update({"id": pid, "name": name, "when": time.time()})
+    try:
+        out = _ledger_breakdown(pid, name)
+    except Exception as e:
+        print("MONEY FIRST: breakdown failed -", repr(e), flush=True)
+        return None
+    return (said + out) if out else None
+
+
+def _ledger_from_chat(query):
+    """The books answer first. If they cannot, and the question was about
+    money, she says so rather than letting it fall through to be
+    imagined."""
+    try:
+        _mf = _money_first(query)
+        if _mf:
+            return _mf
+    except Exception as _mfe:
+        import traceback as _tbf
+        print("MONEY FIRST FAILED:", repr(_mfe), flush=True)
+        _tbf.print_exc()
+    out = None
+    try:
+        out = _ledger_from_chat_inner(query)
+    except Exception as _lfe:
+        import traceback as _tbm
+        print("LEDGER FAILED:", repr(_lfe), flush=True)
+        _tbm.print_exc()
+    if out:
+        try:
+            _money_remember(query)
+        except Exception:
+            pass
+        return out
+    try:
+        g = _money_guard(query)
+        if g:
+            return g
+    except Exception as _mge:
+        import traceback as _tbg
+        print("MONEY GUARD FAILED:", repr(_mge), flush=True)
+        _tbg.print_exc()
+    return None
+
+import base64
+_PROV_DATA = base64.b64decode("""
+W3siayI6IlPJlEwgS0xFTSBISUwiLCJwIjoiU29MIEtMRU0gSElMIiwiZSI6IlNhbHQgaGFzIGNs
+aW1iZWQgdGhlIGhpbGwuIFNhaWQgd2hlbiB5b3UgbWVldCBzb21lb25lIGluIGEgc2l0dWF0aW9u
+IHlvdSBkb24ndCBleHBlY3QsIGFzIHdoZW4geW91IGFyZSBhZG1pcmluZyBzb21lb25lIG9yIHRo
+ZSBwZXJzb24gaXMgc2hvd2luZyBvZmYuIiwibyI6IlRlbW5lIiwidCI6ImZhbWlseSxwcmlkZSxj
+b25zZXF1ZW5jZSIsImEiOjB9LHsiayI6IldFIFlVIE3Jm04gTMmbUMmbVCwgWVUgTsmUIEbJlCBW
+yZtLUyBXRSBJIERFIElUIFlVIEdPVC4iLCJwIjoiV0UgWVUgTWVOIExlUGVULCBZVSBObyBGbyBW
+ZUtTIFdFIEkgREUgSVQgWVUgR09ULiIsImUiOiJXaGVuIHlvdSByYWlzZSBhIGxlb3BhcmQsIHlv
+dSBzaG91bGRuJ3QgYmUgdXBzZXQgd2hlbiBpdCBlYXRzIHlvdXIgZ29hdC4iLCJvIjoiU2hlcmJy
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJTTkVMIE7JlCBNSVggUEFOIEJMyZREIEJJWk7Jm1MuIiwi
+cCI6IlNORUwgTm8gTUlYIFBBTiBCTG9EIEJJWk5lUy4iLCJlIjoiU25haWxzIGFyZSBub3QgaW52
+b2x2ZWQgd2l0aCBhbnl0aGluZyBjb25jZXJuaW5nIGJsb29kLiBTb21ldGhpbmcgaXMgbm90IHNv
+bWVvbmUncyBidXNpbmVzcyAoaS5lLiwgc25haWxzIGhhdmUgbm8gYmxvb2QpLiIsIm8iOiJLcmlv
+IiwidCI6IiIsImEiOjB9LHsiayI6IkRBVCBQSUtJTiBXRSBXyZtSIElOIFBBUEEgSU4gVFLJlFNJ
+UywgTkEgUk9QIEdPIETJlE4gSU4gV0VTLiIsInAiOiJEQVQgUElLSU4gV0UgV2VSIElOIFBBUEEg
+SU4gVFJvU0lTLCBOQSBST1AgR08gRG9OIElOIFdFUy4iLCJlIjoiIiwibyI6IktyaW8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiV0UgWVUgUEFQQSBOQSBDSElGLCBOQSBGyZQgU08gR0FXTjsgV0UgWVUg
+UEFQQSBEQUksIENIRU5KIERJIEdBV04gVFUgUkFQyZtMLiIsInAiOiJXRSBZVSBQQVBBIE5BIENI
+SUYsIE5BIEZvIFNPIEdBV047IFdFIFlVIFBBUEEgREFJLCBDSEVOSiBESSBHQVdOIFRVIFJBUGVM
+LiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJZVSBLSU4gTUVLIEJBQlUg
+Tk9TIFRFVEUsIEkgV8mUV8mULiIsInAiOiJZVSBLSU4gTUVLIEJBQlUgTk9TIFRFVEUsIEkgV29X
+by4iLCJlIjoiTm8gbWF0dGVyIGhvdyB5b3UgZml4IGEgY2hpbXBhbnplZSdzIG5vc2UsIGl0J3Mg
+c3RpbGwgdWdseS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJGSVNIIE7JlCBHyZtU
+IE5BVElOIEbJlCBEVSBXSVQgUkVOS09ULiIsInAiOiJGSVNIIE5vIEdlVCBOQVRJTiBGbyBEVSBX
+SVQgUkVOS09ULiIsImUiOiJBIGZpc2ggaGFzIG5vdGhpbmcgdG8gZG8gd2l0aCBhIHJhaW5jb2F0
+LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkRBVCBST1AgV0UgQsmUU0lOIEjJm05H
+IFBBTiwgTkEtSU4gTk8gREkgV0VULiIsInAiOiJEQVQgUk9QIFdFIEJvU0lOIEhlTkcgUEFOLCBO
+QS1JTiBOTyBESSBXRVQuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IllV
+IE7JlCBHTyBCTE8gWVUgTk9TIMmbTiBXSVNIVUwuIiwicCI6IllVIE5vIEdPIEJMTyBZVSBOT1Mg
+ZU4gV0lTSFVMLiIsImUiOiJZb3UgY2FuJ3QgYmxvdyB5b3VyIG5vc2UgYW5kIHdoaXN0bGUgYXQg
+dGhlIHNhbWUgdGltZS4iLCJvIjoiS3JpbyIsInQiOiJwYXRpZW5jZSIsImEiOjB9LHsiayI6IkRJ
+IFRJVCBXRSBEyZRHIERFIFRFSyBGyZQgUExFLCBOQS1JTiBJIERFIFRFSyBGyZQgQsmbVC4iLCJw
+IjoiREkgVElUIFdFIERvRyBERSBURUsgRm8gUExFLCBOQS1JTiBJIERFIFRFSyBGbyBCZVQuIiwi
+ZSI6IlRoZSB0ZWV0aCBhIGRvZyB1c2VzIHRvIHBsYXkgd2l0aCBhcmUgdGhlIHNhbWUgaGUgdXNl
+cyB0byBiaXRlIHdpdGguIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiREkgTUFNSSBJ
+TiDJm04gSU4gR0lBTCBQSUtJTiBERSBUQUkgREkgU0VNIMmbSEtJQ0hBLiIsInAiOiJESSBNQU1J
+IElOIGVOIElOIEdJQUwgUElLSU4gREUgVEFJIERJIFNFTSBlSEtJQ0hBLiIsImUiOiIiLCJvIjoi
+S3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBZVSBTRSBZVSBHTyBQVVQgRkVOQ0ggUEFOIERJ
+IFJJVkEsIELJlEtVIFdBVEEgR08gRMmUTiBQQVMuIiwicCI6IldFIFlVIFNFIFlVIEdPIFBVVCBG
+RU5DSCBQQU4gREkgUklWQSwgQm9LVSBXQVRBIEdPIERvTiBQQVMuIiwiZSI6IklmIHlvdSBzYXkg
+eW91IGFyZSBnb2luZyB0byBmZW5jZSB0aGUgcml2ZXIsIGEgbG90IG9mIHdhdGVyIHdpbGwgaGF2
+ZSBnb3QgdGhyb3VnaC4gQW4gZXhlcmNpc2UgaW4gZnV0aWxpdHkuIiwibyI6IktyaW8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiQklGTyBCyZREIEZMQUksIEFIIETJlE4gS8mUTlQgREkgRUcgTkEgSU4g
+QsmbTMmbLiIsInAiOiJCSUZPIEJvRCBGTEFJLCBBSCBEb04gS29OVCBESSBFRyBOQSBJTiBCZUxl
+LiIsImUiOiJCZWZvcmUgYSBiaXJkIGZsaWVzIG9mZiwgSSd2ZSBjb3VudGVkIHRoZSBlZ2dzIGlu
+IGl0cyBiZWxseS4gQnkgdGhlIHRpbWUgeW91IHRoaW5rLCBJ4oCZdmUgYWxyZWFkeSByZWFkIHlv
+dXIgbWluZC4iLCJvIjoiS3JpbyIsInQiOiJwYXRpZW5jZSIsImEiOjB9LHsiayI6IldFIFlVIFnJ
+m1JJIFBJS0lOIFNFIFwiTUFNQSBERSBLVUsgyZRLUsmUXCIsIFBBUEEgQklOIETJlE4gVMmUSyBB
+TS4iLCJwIjoiV0UgWVUgWWVSSSBQSUtJTiBTRSBcIk1BTUEgREUgS1VLIG9LUm9cIiwgUEFQQSBC
+SU4gRG9OIFRvSyBBTS4iLCJlIjoiSWYgeW91IGhlYXIgYSBjaGlsZCBzYXkgXCJNYW1hIGlzIGNv
+b2tpbmcgb2tyYSxcIiBpdCdzIGJlY2F1c2UgUGFwYSBzYWlkIGl0LiIsIm8iOiJLcmlvIiwidCI6
+ImZhbWlseSIsImEiOjB9LHsiayI6IldFIFlVIE9MIERJIFNORUsgSU4gSEVELCBESSDJlERBIFdB
+TiBOQSBST1AuIiwicCI6IldFIFlVIE9MIERJIFNORUsgSU4gSEVELCBESSBvREEgV0FOIE5BIFJP
+UC4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiV0UgWVUgWcmbUkkgS1JF
+U01BTiBMQUYsIEkgRMmUTiBTSSBTyZRNVElOIEbJlE5JLiIsInAiOiJXRSBZVSBZZVJJIEtSRVNN
+QU4gTEFGLCBJIERvTiBTSSBTb01USU4gRm9OSS4iLCJlIjoiV2hlbiB5b3UgaGVhciBhIG1hZG1h
+biBsYXVnaCwgKGl0J3MgYmVjYXVzZSkgaGUncyBzZWVuIHNvbWV0aGluZyBmdW5ueS4gVGhlIG1h
+ZG1hbiBzZWVzIHNvbWV0aGluZyBmdW5ueSBhYm91dCB5b3UgKHNpbmNlIG1hZG1lbiBzdXBwb3Nl
+ZGx5IGRvbid0IGxhdWdoKS4iLCJvIjoiS3JpbyIsInQiOiJ0cm91YmxlIiwiYSI6MH0seyJrIjoi
+TkEgR09UIElOIFlBSSBOQSBLQVcgS0FLQSBCSUcuIiwicCI6Ik5BIEdPVCBJTiBZQUkgTkEgS0FX
+IEtBS0EgQklHLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJOyZQgVEVL
+IE1JIEhBTiBQVUwgQkFOR0dBIE5BIEZBWUEuIiwicCI6Ik5vIFRFSyBNSSBIQU4gUFVMIEJBTkdH
+QSBOQSBGQVlBLiIsImUiOiJEb24ndCB1c2UgbXkgaGFuZCB0byByZW1vdmUgcGFsbSBrZXJuZWxz
+IGZyb20gdGhlIGZpcmUuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiQk9UIFdFIERF
+IFdBS0EtV0FLQSBOyZQgREUgyZtWQSBHyZtUIExJRiBJTlNBSS4iLCJwIjoiQk9UIFdFIERFIFdB
+S0EtV0FLQSBObyBERSBlVkEgR2VUIExJRiBJTlNBSS4iLCJlIjoiTGVhdmVzIG5ldmVyIGZhbGwg
+aW50byBhIGJvYXQgdGhhdCBpcyBhbHdheXMgbW92aW5nLiBBIHBlcnNvbiB3aG8gaXNuJ3Qgc3Rl
+YWR5IGluIG9uZSBwbGFjZSB3aWxsIG5vdCBiZW5lZml0LiIsIm8iOiJUZW1uZSIsInQiOiJmYW1p
+bHkiLCJhIjowfSx7ImsiOiJJRiBZVSBCSVQgRsmUIEtSRVNNQU4sIFlVU8mbRiBLUkVTLiIsInAi
+OiJJRiBZVSBCSVQgRm8gS1JFU01BTiwgWVVTZUYgS1JFUy4iLCJlIjoiSWYgeW91IGJlYXQgKHRo
+ZSBkcnVtKSBmb3IgYSBtYWRtYW4sIHlvdSBhcmUgY3JhenkgdG9vLiIsIm8iOiJLcmlvIiwidCI6
+InRyb3VibGUiLCJhIjowfSx7ImsiOiJJRiBLUkVTTUFOIFRFSyBZVSBLTE9TLCBZVSBOyZQgRsmU
+IFLJlE4gQUZUQS1SQU0gWVUgTkVLyZtEIFdBTi4gSUYgWVUgRFUgQU0sIETJm04gR08gVEVLIFVO
+QSBUVSBBUyBLUkVTTUFOIETJm04uIiwicCI6IklGIEtSRVNNQU4gVEVLIFlVIEtMT1MsIFlVIE5v
+IEZvIFJvTiBBRlRBLVJBTSBZVSBORUtlRCBXQU4uIElGIFlVIERVIEFNLCBEZU4gR08gVEVLIFVO
+QSBUVSBBUyBLUkVTTUFOIERlTi4iLCJlIjoiSWYgYSBtYWRtYW4gdGFrZXMgeW91ciBjbG90aGVz
+IHlvdSBzaG91bGRuJ3QgcnVuIGFmdGVyIGhpbSBuYWtlZC4gSWYgeW91IGRvLCBwZW9wbGUgd2ls
+bCB0aGluayB0aGF0IGJvdGggb2YgeW91IGFyZSBjcmF6eS4iLCJvIjoiS29ubyIsInQiOiJ0cm91
+YmxlIiwiYSI6MX0seyJrIjoiREFUIFRSVSBXRSBLSU4gUFfJm0wgTUFSRUQsIE7JlCBUyZRLIEFN
+LiIsInAiOiJEQVQgVFJVIFdFIEtJTiBQV2VMIE1BUkVELCBObyBUb0sgQU0uIiwiZSI6IlRoYXQg
+dHJ1dGggdGhhdCBjYW4gcnVpbiBhIG1hcnJpYWdlLCBsZWF2ZSBpdCB1bnNhaWQuIiwibyI6Ikty
+aW8iLCJ0IjoidHJ1dGgiLCJhIjowfSx7ImsiOiJXRSBEyZtOIFNFIE1BTiBMyZtGIE5BIEZBWUEs
+IE7JlCBBS1MgSUYgSU4gQklBQklBIFJPUyIsInAiOiJXRSBEZU4gU0UgTUFOIExlRiBOQSBGQVlB
+LCBObyBBS1MgSUYgSU4gQklBQklBIFJPUyIsImUiOiJXaGVuIHRoZXkgc2F5IGEgcGVyc29uIGJ1
+cm5lZCB0byBkZWF0aCwgZG9uJ3QgYXNrIGlmIGhpcyBiZWFyZCBidXJudC4gU29tZXRoaW5nIHRo
+YXQgaXMgb2J2aW91cy4iLCJvIjoiS29ubyIsInQiOiJmYW1pbHksdHJ1dGgiLCJhIjowfSx7Imsi
+OiJZVSBGyZtOIEbJlEwsIEkgQsmUTiBGQUlWIFBJS0lOLCBOyZQgR1LJlE1CVUwgU0UgREkgRsmU
+TCBOyZQgQsmUTiBCyZtUyZsiLCJwIjoiWVUgRmVOIEZvTCwgSSBCb04gRkFJViBQSUtJTiwgTm8g
+R1JvTUJVTCBTRSBESSBGb0wgTm8gQm9OIEJlVGUiLCJlIjoiWW91IGZpbmQgYSBjaGlja2VuLCBh
+bmQgaXQgaGFzIGZpdmUgY2hpY2tzLCBkb24ndCBjb21wbGFpbiBhYm91dCBpdCBub3QgaGF2aW5n
+IGVub3VnaCBjaGlja3MuIFwiRG9uJ3QgbG9vayBhIGdpZnQgaG9yc2UgaW4gdGhlIG1vdXRoLlwi
+IiwibyI6Iktvbm8iLCJ0IjoiZ29zc2lwLGdyZWVkIiwiYSI6MH0seyJrIjoiQklHIE1BTiBOyZQg
+RsmUIFNJRMmUTiBXQUNIIFRFLVRFIFBJSklOIFDJlFQgVFJPV0UgTkEgRkFZQSwgV0UgSSBOTyBT
+RSBOQS1JTiBHyZtUIEbJlCBJVCBERSIsInAiOiJCSUcgTUFOIE5vIEZvIFNJRG9OIFdBQ0ggVEUt
+VEUgUElKSU4gUG9UIFRST1dFIE5BIEZBWUEsIFdFIEkgTk8gU0UgTkEtSU4gR2VUIEZvIElUIERF
+IiwiZSI6IkFuIGFkdWx0IHNob3VsZCBub3Qgc2l0IGFuZCB3YXRjaCB0aGUgcG90IGNvb2tpbmcg
+cGlnZW9uIHNwaWxsIGludG8gdGhlIGZpcmUgd2hlbiBoZSBrbm93cyB0aGF0IGhlIHdpbGwgc2hh
+cmUgaW4gdGhlIGZvb2QuIiwibyI6Iktvbm8iLCJ0IjoiZ3JlZWQiLCJhIjowfSx7ImsiOiJZVSBO
+yZRIIEvJlE3JlFQgQkxPIEjJlG4gWVUgQklHSU4gQkxPIFlVIE5PUy4iLCJwIjoiWVUgTm9IIEtv
+TW9UIEJMTyBIb24gWVUgQklHSU4gQkxPIFlVIE5PUy4iLCJlIjoiWW91IHdvbid0IGxlYXZlIG9m
+ZiBibG93aW5nIGEgaG9ybiBhbmQgdGhlbiBzdGFydCB0byBibG93IHlvdXIgbm9zZS4gQSByZWZl
+cmVuY2UgdG8gZW1iZXp6bGVtZW50LiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkRJ
+IEjJlEsgSU4gTcmbSFLJm1PJm04sIE5BIFdFIEkgUEVTSMmbTlQiLCJwIjoiREkgSG9LIElOIE1l
+SFJlU2VOLCBOQSBXRSBJIFBFU0hlTlQiLCJlIjoiVGhlIGhhd2sncyBtZWRpY2luZSBpcyBwYXRp
+ZW5jZS4gUGF0aWVuY2UgaXMgcmV3YXJkZWQuIiwibyI6Iktvbm8iLCJ0IjoicGF0aWVuY2Usd29y
+ayx0cm91YmxlIiwiYSI6MH0seyJrIjoiREkgU0FOIERFIEvJlE3JlFQgVFUtVFUiLCJwIjoiREkg
+U0FOIERFIEtvTW9UIFRVLVRVIiwiZSI6IlRoZSBzdW4gY29tZXMgb3V0IHR3aWNlLiBJZiB5b3Ug
+ZG8gc29tZXRoaW5nIGJhZCB0byBtZSB0b2RheSwgdG9tb3Jyb3cgaXQgd2lsbCBiZSBteSB0dXJu
+LiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkRBVCBCSVRVTCBXRSBERSBSyZRMIEtB
+S0EsIEkgTsmUIE5PIFNFIEbJlCBLQUtBLCBJIFRSQU5HR0EiLCJwIjoiREFUIEJJVFVMIFdFIERF
+IFJvTCBLQUtBLCBJIE5vIE5PIFNFIEZvIEtBS0EsIEkgVFJBTkdHQSIsImUiOiJUaGUgZHVuZyBi
+ZWV0bGUgZG9lc24ndCBrbm93IHRoYXQgaXQncyBub3QgZWFzeSB0byBkZWZlY2F0ZS4iLCJvIjoi
+S29ubyIsInQiOiIiLCJhIjoxfSx7ImsiOiJESSBCyZREIFdFIERFIE5PIMmbTiBESSBCyZREIFdF
+IERFIMmUTkRBU1RBTiwgTsmUVE8gREkgU0VNIiwicCI6IkRJIEJvRCBXRSBERSBOTyBlTiBESSBC
+b0QgV0UgREUgb05EQVNUQU4sIE5vVE8gREkgU0VNIiwiZSI6IlRoZSBiaXJkIHRoYXQga25vd3Mg
+aXMgZGlmZmVyZW50IGZyb20gdGhlIGJpcmQgdGhhdCB1bmRlcnN0YW5kcy4gVGhlcmUgaXMgYSBk
+aWZmZXJlbmNlIGJldHdlZW4ga25vd2xlZGdlIGFuZCB3aXNkb20uIiwibyI6Iktvbm8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiV0UgWVUgyZtOIEjJlE5USU4tTUFOIE7JlCBHUkkgTkEgVMmUTiwgTsmU
+IEdPIFdJVCBBTSBOQSBCVVNIIiwicCI6IldFIFlVIGVOIEhvTlRJTi1NQU4gTm8gR1JJIE5BIFRv
+TiwgTm8gR08gV0lUIEFNIE5BIEJVU0giLCJlIjoiV2hlbiB5b3UgZG9uJ3QgZ2V0IGFsb25nIHdp
+dGggYSBodW50ZXIgaW4gdG93biwgZG9uJ3QgZm9sbG93IGhpbSB0byB0aGUgYnVzaC4gSWYgeW91
+IGRvbid0IHRydXN0IGEgcGVyc29uLCBkb24ndCB0YWtlIGhpbSBpbnRvIHlvdXIgY29uZmlkZW5j
+ZS4iLCJvIjoiS29ubyIsInQiOiJ0cnVzdCxmYW1pbHksY29uc2VxdWVuY2UiLCJhIjoxfSx7Imsi
+OiJJRiBZVSBFQlVMIElUIFDJlFNJTiBJTiBIRUQsIE7JlCBGUkVEIETJlFRJIE5BIERJIFlBSSIs
+InAiOiJJRiBZVSBFQlVMIElUIFBvU0lOIElOIEhFRCwgTm8gRlJFRCBEb1RJIE5BIERJIFlBSSIs
+ImUiOiJJZiB5b3UgY2FuIGJyaW5nIHlvdXJzZWxmIHRvIGVhdCBhIHBlcnNvbidzIGhlYWQsIHlv
+dSBkb24ndCBoYXZlIHRvIGJlIGFmcmFpZCB0byBlYXQgdGhlIGRpcnQgKHRoZSBzYW5kKSBpbiB0
+aGUgZXllLiBJZiBhIHBlcnNvbiBjYW4gY29tbWl0IGEgc2VyaW91cyBjcmltZSwgaGUgd29uJ3Qg
+aGVzaXRhdGUgdG8gY29tbWl0IGEgc21hbGwgY3JpbWUuIiwibyI6Iktvbm8iLCJ0IjoiZmFtaWx5
+IiwiYSI6MH0seyJrIjoiRMmURyBOyZQgR8mbVCBCSVNOSVMgRsmUIEtMRU0gTkEgREkgSE9TIElO
+IFJVRiIsInAiOiJEb0cgTm8gR2VUIEJJU05JUyBGbyBLTEVNIE5BIERJIEhPUyBJTiBSVUYiLCJl
+IjoiQSBkb2cgaGFzIG5vIGJ1c2luZXNzIGNsaW1iaW5nIG9uIHRoZSByb29mLiBJZiBzb21ldGhp
+bmcgaXMgbWlzc2luZyBmcm9tIHRoZSByb29mLCB0aGUgZG9nIGlzIG5vdCBhIHN1c3BlY3QuIiwi
+byI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiV0VUSU4gR08gTUVLIFBVUyBTSUTJlE4gVFUg
+QkxBS1NNSVQgVEUgRkFZQSBHTyBGyZREyZROIE5BIElOIFlBSSIsInAiOiJXRVRJTiBHTyBNRUsg
+UFVTIFNJRG9OIFRVIEJMQUtTTUlUIFRFIEZBWUEgR08gRm9Eb04gTkEgSU4gWUFJIiwiZSI6Ildo
+YXQgd291bGQgbWFrZSBhIGNhdCBzaXQgbmVhciBhIGJsYWNrc21pdGggdW50aWwgYSBzcGFyayBn
+b2VzIGludG8gaXRzIGV5ZT8iLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJZVSBOyZQg
+R08gVElDSCBTTkVLIEhBVyBGyZQgTEVEyZROIiwicCI6IllVIE5vIEdPIFRJQ0ggU05FSyBIQVcg
+Rm8gTEVEb04iLCJlIjoiWW91IGRvbid0IG5lZWQgdG8gdGVhY2ggYSBzbmFrZSBob3cgdG8gbGll
+IGRvd24uIiwibyI6Iktvbm8iLCJ0IjoidHJ1c3QiLCJhIjowfSx7ImsiOiJZVSBOyZQgR08gVElD
+SCBCT05EVSBJTiBNQU1BIEhBVyBGyZQgRFUgTUFNSSDJm04gREFESSBCSVNOSVMiLCJwIjoiWVUg
+Tm8gR08gVElDSCBCT05EVSBJTiBNQU1BIEhBVyBGbyBEVSBNQU1JIGVOIERBREkgQklTTklTIiwi
+ZSI6IllvdSBkb24ndCBuZWVkIHRvIHRlYWNoIHRoZSBtb3RoZXIgb2YgZml2ZSBkYXVnaHRlcnMg
+aG93IHRvIGhhdmUgc2V4LiIsIm8iOiJLb25vIiwidCI6ImZhbWlseSIsImEiOjF9LHsiayI6IldF
+IFlVIFdJViBESUZSyZtOLURJRlLJm04gS8mUTMmULCBXRSBCTEFLIFRSyZtEIETJlE4sIFNLSUwg
+RMmUTiBUQVAiLCJwIjoiV0UgWVUgV0lWIERJRlJlTi1ESUZSZU4gS29MbywgV0UgQkxBSyBUUmVE
+IERvTiwgU0tJTCBEb04gVEFQIiwiZSI6IldoZW4gYSB3ZWF2ZXIgd2VhdmVzIGRpZmZlcmVudCBj
+b2xvdXJzIG9mIHRocmVhZCwgd2hlbiB0aGUgYmxhY2sgdGhyZWFkIGlzIGdvbmUsIHRoZSBza2ls
+bCBpcyBhdCBhbiBlbmQuIFRoZSBzZWNyZXQgb2Ygd2VhdmluZyBtdWx0aXBsZSBjb2xvdXJzIGxp
+ZXMgaW4gdGhlIGJsYWNrIHRocmVhZCwgbm90IGluIHRoZSBza2lsbCBvZiB0aGUgd2VhdmVyLiIs
+Im8iOiJLb25vIiwidCI6InRydXN0IiwiYSI6MH0seyJrIjoiSU5DSCBOTyBJTiBNQVNUQSwgS0FC
+QVNMyZRUIE5PIElOIE1JU0lTLiIsInAiOiJJTkNIIE5PIElOIE1BU1RBLCBLQUJBU0xvVCBOTyBJ
+TiBNSVNJUy4iLCJlIjoiQW4gaW1wbGljYXRpb24ga25vd3MgaXRzIG1hc3RlciAoanVzdCBhcykg
+YSBkcmVzcyBrbm93cyBpdHMgbWlzdHJlc3MuIFVzZWQgdG8gd2FybiBwZW9wbGUgd2hlbiB5b3Ug
+YXJlIGF3YXJlIHlvdSBhcmUgdGhlIG9iamVjdCBvZiB0aGVpciBpbnNpbnVhdGluZyByZW1hcmtz
+LiIsIm8iOiJLcmlvIiwidCI6InRyb3VibGUiLCJhIjowfSx7ImsiOiJXRSBZVSBJVCBBUkFUQSwg
+WVUgTsmUIEbJlCBUQVlBIFBBTiBESSBURUwuIiwicCI6IldFIFlVIElUIEFSQVRBLCBZVSBObyBG
+byBUQVlBIFBBTiBESSBURUwuIiwiZSI6IldoZW4geW91IGVhdCBhIHJhdCwgeW91IHNob3VsZCBl
+YXQgdGhlIHRhaWwgYXMgd2VsbC4gRmluaXNoIHdoYXQgeW91IGJlZ2luLiIsIm8iOiJLcmlvIiwi
+dCI6IiIsImEiOjB9LHsiayI6Ik9HSVJJIERFIExBRiBLRU5EQSBGyZQgU03Jm0wuIiwicCI6Ik9H
+SVJJIERFIExBRiBLRU5EQSBGbyBTTWVMLiIsImUiOiJPZ2lyaSBsYXVnaHMgYXQga2VuZGEgb24g
+YWNjb3VudCBvZiBpdHMgc21lbGwuIEtlbmRhIGFuZCBvZ2lyaSwgd2hlbiB1bmNvb2tlZCwgYXJl
+IGJvdGggcmFuay1zbWVsbGluZyBzZWFzb25pbmdzLiBcIlRoZSBwb3QgY2FsbGluZyB0aGUga2V0
+dGxlIGJsYWNrLlwiIiwibyI6IktyaW8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiS0FLSSBO
+yZQgRFUgRsmUIFMuSS4sIFDJlFRBIFNFIEkgV0FOIEzJlE5HIFBBTktTIFtGyZQgWUFEXS4iLCJw
+IjoiS0FLSSBObyBEVSBGbyBTLkkuLCBQb1RBIFNFIEkgV0FOIExvTkcgUEFOS1MgW0ZvIFlBRF0u
+IiwiZSI6IlRoZXJlJ3Mgbm90IGVub3VnaCBraGFraSBmb3IgdGhlIFMuSS4gKFNlbmlvciBJbnNw
+ZWN0b3IpLCB0aGUgcG9ydGVyIHNheXMgaGUgd2FudHMgbG9uZyBwYW50cyAoZm91ciB5YXJkcyku
+IiwibyI6IktyaW8iLCJ0IjoiZ3JlZWQiLCJhIjowfSx7ImsiOiJQQU1BSSBOyZQgRFUgUEFOIEJP
+TkRPIFBJS0lOLCBZVSBSyZRCIEFNIE5BIElOIEZVVD8iLCJwIjoiUEFNQUkgTm8gRFUgUEFOIEJP
+TkRPIFBJS0lOLCBZVSBSb0IgQU0gTkEgSU4gRlVUPyIsImUiOiJUaGVyZSdzIG5vdCBlbm91Z2gg
+cGFsbSBvaWwgZm9yIHRoZSBCb25kbyBnaXJsLCB5b3UgcnViIGl0IG9uIGhlciBmb290PyIsIm8i
+OiJNZW5kZSIsInQiOiJncmVlZCIsImEiOjB9LHsiayI6IlRJTkcgV0UgTsmUIERVIEbJlCBXQU4g
+TUFOLCBJRiBUVSBNQU4gSVQgQU0sIE5BIFNUQVZFU0jJlE4uIiwicCI6IlRJTkcgV0UgTm8gRFUg
+Rm8gV0FOIE1BTiwgSUYgVFUgTUFOIElUIEFNLCBOQSBTVEFWRVNIb04uIiwiZSI6IlRoZXJlJ3Mg
+bm90IGVub3VnaCBvZiBhIHRoaW5nIGZvciBvbmUgbWFuLCBpZiB0d28gbWVuIGVhdCBpdCBpdCdz
+IHN0YXJ2YXRpb24uIiwibyI6IktyaW8iLCJ0IjoiZ3JlZWQiLCJhIjowfSx7ImsiOiJCTEFLIFRS
+yZtEIE7JlCBSQVdORCBQSUpJTiBJTiBOyZtLLCBBIE7JlCBHTyBTRSBET1YuIiwicCI6IkJMQUsg
+VFJlRCBObyBSQVdORCBQSUpJTiBJTiBOZUssIEEgTm8gR08gU0UgRE9WLiIsImUiOiJUaGUgYmxh
+Y2sgdGhyZWFkIHdvbid0IGdvIGFyb3VuZCB0aGUgcGlnZW9uJ3MgbmVjaywgbXVjaCBsZXNzIHRo
+ZSBkb3ZlJ3MuIFRoZXJlIGlzbid0IGVub3VnaCBmb3IgbWUsIHNvIHRoZXJlJ3Mgbm8gcXVlc3Rp
+b24gb2YgbXkgZ2l2aW5nIGFueSBhd2F5LiIsIm8iOiJLcmlvIiwidCI6ImdyZWVkIiwiYSI6MH0s
+eyJrIjoiTcmUTktJIFTJlEssIE3JlE5LSSBZyZtSSS4iLCJwIjoiTW9OS0kgVG9LLCBNb05LSSBZ
+ZVJJLiIsImUiOiJNb25rZXkgdGFsa3MsIG1vbmtleSBsaXN0ZW5zLiBQZXJzb25zIHdobyB0aGlu
+ayBhbGlrZSB3aWxsIHVuZGVyc3RhbmQgb25lIGFub3RoZXIuIiwibyI6IktyaW8iLCJ0IjoiZ29z
+c2lwLGZhbWlseSIsImEiOjB9LHsiayI6IllVIERVIE1JLCBBIERVIFlVOiBNT1NFUycgTEFXLiIs
+InAiOiJZVSBEVSBNSSwgQSBEVSBZVTogTU9TRVMnIExBVy4iLCJlIjoiWW91IGRvIHVudG8gbWUs
+IEkgZG8gdW50byB5b3U6IE1vc2VzJyBMYXcuIFwiQW4gZXllIGZvciBhbiBleWUgYW5kIGEgdG9v
+dGggZm9yIGEgdG9vdGguXCIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBZVSBC
+yZRTIE1JIFlBSSwgQSBDSFVLIFlVIFdFUy4gWVUgUFVMIERJIEtBTkRBIMmUTkRBIE1JIEZVVCwg
+QSBQVUwgREkgS0FOREEgyZROREEgWVUgV0VTOyBBIE7JlCBHTyBUSU5BUCwgWVUgTsmUIEdPIFNJ
+RMmUTi4iLCJwIjoiV0UgWVUgQm9TIE1JIFlBSSwgQSBDSFVLIFlVIFdFUy4gWVUgUFVMIERJIEtB
+TkRBIG9OREEgTUkgRlVULCBBIFBVTCBESSBLQU5EQSBvTkRBIFlVIFdFUzsgQSBObyBHTyBUSU5B
+UCwgWVUgTm8gR08gU0lEb04uIiwiZSI6IlwiQW4gZXllIGZvciBhbiBleWUgYW5kIGEgdG9vdGgg
+Zm9yIGEgdG9vdGguXCIgXCJUaXQgZm9yIHRhdC5cIiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9
+LHsiayI6IkTJlFRJIFdBVEEgU8mbRiBLSU4gyZRUIEZBWUEuIiwicCI6IkRvVEkgV0FUQSBTZUYg
+S0lOIG9UIEZBWUEuIiwiZSI6IkV2ZW4gZGlydHkgd2F0ZXIgY2FuIHB1dCBvdXQgYSBmaXJlLiBU
+aGUgd2lkZXIgbWVhbmluZyBpcywgXCJBbnkgcG9ydCBpbiBhIHN0b3JtLFwiIGJ1dCBpdCBpcyBv
+ZnRlbiB1c2VkIGFzIGEgc2V4dWFsIGFsbHVzaW9uLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjF9
+LHsiayI6IkJBRCBCVVNIIE7JlCBERSBGyZQgVFJPV0UgQkFEIFBJS0lOLiIsInAiOiJCQUQgQlVT
+SCBObyBERSBGbyBUUk9XRSBCQUQgUElLSU4uIiwiZSI6IkEgYmFkIGNoaWxkIG1heSBub3QgYmUg
+dGhyb3duIGludG8gdGhlIGJ1c2guIE5vIG1hdHRlciBob3cgYmFkIGEgY2hpbGQgbWF5IHR1cm4g
+b3V0IHRvIGJlLCBoZSBjYW4ndCBiZSBkaXNvd25lZCBieSBoaXMgZmFtaWx5LiIsIm8iOiJLcmlv
+IiwidCI6ImZhbWlseSIsImEiOjB9LHsiayI6IkFTIFlVIE1FSyBZVSBCRUQsIE5BIFNPIFlVIEdP
+IExFRMmUTiBQQU4gQU0uIiwicCI6IkFTIFlVIE1FSyBZVSBCRUQsIE5BIFNPIFlVIEdPIExFRG9O
+IFBBTiBBTS4iLCJlIjoiQXMgeW91IG1ha2UgeW91ciBiZWQsIHNvIHlvdSBzaGFsbCBsaWUgb24g
+aXQuIFVzZWQgcG9zaXRpdmVseSByYXRoZXIgdGhhbiBuZWdhdGl2ZWx5LCBpdCBtZWFucyB0aGF0
+IG9uZSB3aWxsIGVuam95IHRoZSBmcnVpdHMgb2Ygb25lJ3MgbGFib3VyLiIsIm8iOiJLcmlvIiwi
+dCI6IndvcmssdHJ1c3QsY29uc2VxdWVuY2UiLCJhIjowfSx7ImsiOiJQSUtJTiBXRSBOyZQgWcmb
+UkkgSU4gTUFNQSBJTiBXyZRELCBOQSBUUklUIEdPIE3Jm04gQU0uIiwicCI6IlBJS0lOIFdFIE5v
+IFllUkkgSU4gTUFNQSBJTiBXb0QsIE5BIFRSSVQgR08gTWVOIEFNLiIsImUiOiJBIGNoaWxkIHdo
+byBkb2Vzbid0IGxpc3RlbiB0byBpdHMgbW90aGVyIHdpbGwgYmUgYnJvdWdodCB1cCBieSB0aGUg
+c3RyZWV0LiBBIGNoaWxkIHdobyBpcyBkaXNvYmVkaWVudCBhdCBob21lIHdpbGwgZXZlbnR1YWxs
+eSBoYXZlIHRvIGZhY2UgdGhlIGNvbnNlcXVlbmNlcyBvZiBhIHBvb3IgdXBicmluZ2luZy4iLCJv
+IjoiS3JpbyIsInQiOiJtb25leSxmYW1pbHksY29uc2VxdWVuY2UiLCJhIjowfSx7ImsiOiJCRUdB
+LUJFR0EgTsmUIERFIFBJSyDJm04gQ0hVWi4gW0JFR0FNQU4gTsmUIE5PIElOIENIT0lTLl0iLCJw
+IjoiQkVHQS1CRUdBIE5vIERFIFBJSyBlTiBDSFVaLiBbQkVHQU1BTiBObyBOTyBJTiBDSE9JUy5d
+IiwiZSI6IkEgYmVnZ2FyIGNhbid0IHBpY2sgYW5kIGNob29zZS4iLCJvIjoiS3JpbyIsInQiOiJt
+b25leSIsImEiOjB9LHsiayI6IlDJlCBNQU4gW0jJm05HR01BTl0gTsmUIEfJm1QgU0FJUy4iLCJw
+IjoiUG8gTUFOIFtIZU5HR01BTl0gTm8gR2VUIFNBSVMuIiwiZSI6IkEgcG9vciBtYW4gaGFzIG5v
+IHNpemUuIiwibyI6IktyaW8iLCJ0IjoibW9uZXkiLCJhIjowfSx7ImsiOiJZVSBOyZQgSsmbTlRS
+SSwgWVUgU0UgWVUgTsmUIERFIElUIETJlEcuIiwicCI6IllVIE5vIEplTlRSSSwgWVUgU0UgWVUg
+Tm8gREUgSVQgRG9HLiIsImUiOiJZb3UncmUgbm90IHJpY2gsIHlvdSBzYXkgeW91IHdvbid0IGVh
+dCBkb2cuIFwiQmVnZ2FycyBjYW4ndCBiZSBjaG9vc2Vycy5cIiIsIm8iOiJLb25vIiwidCI6Im1v
+bmV5IiwiYSI6MH0seyJrIjoiTcmUTktJIE7JlEJBIFtOyZQgR09dIEzJm0YgSU4gQkxBSyBIQU4u
+IiwicCI6Ik1vTktJIE5vQkEgW05vIEdPXSBMZUYgSU4gQkxBSyBIQU4uIiwiZSI6IkEgbW9ua2V5
+IHdpbGwgbmV2ZXIgYmUgcmlkIG9mIGl0cyBibGFjayBoYW5kcy4gQSBiYWQgcGVyc29uLCBlc3Bl
+Y2lhbGx5IGEgdGhpZWYsIHdpbGwgbmV2ZXIgZ2l2ZSB1cCBoaXMgYmFkIHdheXMuIFwiQSBsZW9w
+YXJkIHdvbid0IGNoYW5nZSBoaXMgc3BvdHMuXCIiLCJvIjoiS3JpbyIsInQiOiJmYW1pbHkiLCJh
+IjowfSx7ImsiOiJZVSBLyZRCQSBTTU9LIFNPVEUsIEkgTcmUUyBLyZRNyZRULiIsInAiOiJZVSBL
+b0JBIFNNT0sgU09URSwgSSBNb1MgS29Nb1QuIiwiZSI6Ik5vIG1hdHRlciBob3cgeW91IHRyeSB0
+byBjb3ZlciB1cCBzbW9rZSwgaXQgbXVzdCBjb21lIG91dC4gQSBwZXJzb24ncyBiYWQgY2hhcmFj
+dGVyIGNhbm5vdCBiZSBsb25nIGhpZGRlbi4iLCJvIjoiS3JpbyIsInQiOiJmYW1pbHksdHJ1dGgi
+LCJhIjowfSx7ImsiOiJBQsmUQsmUIE7JlCBXQU4gS09MIFdBVEEsIFBBUyBXQU0gV0FUQS4iLCJw
+IjoiQUJvQm8gTm8gV0FOIEtPTCBXQVRBLCBQQVMgV0FNIFdBVEEuIiwiZSI6IkNvb2tlZCBiZWFu
+cyBkb24ndCB3YW50IGNvbGQgd2F0ZXIsIG9ubHkgaG90IHdhdGVyLiBBIGNoaWxkIGRvZXNuJ3Qg
+cmVzcG9uZCB0byBwZXJzdWFzaW9uLCBidXQgb25seSB0byBjb21wdWxzaW9uLiIsIm8iOiJLcmlv
+IiwidCI6ImZhbWlseSIsImEiOjB9LHsiayI6IllVIE5BIFNIQUxBVDogWVUgTsmUIERFIFbJm0tT
+LiIsInAiOiJZVSBOQSBTSEFMQVQ6IFlVIE5vIERFIFZlS1MuIiwiZSI6IiIsIm8iOiJLcmlvIiwi
+dCI6IiIsImEiOjB9LHsiayI6IldBTiBNQU4gTsmUIERFIEZVTCBCyZRLUy4iLCJwIjoiV0FOIE1B
+TiBObyBERSBGVUwgQm9LUy4iLCJlIjoiT25lIG1hbiBjYW4ndCBmaWxsIHRoZSBib3guIEEgd29t
+YW4gbmVlZHMgc2V2ZXJhbCBsb3ZlcnMgdG8gZnVsZmlsbCBoZXIgbWF0ZXJpYWwgd2FudHMuIiwi
+byI6IktyaW8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiRsmbVCBGyZQgWVUgSEVELCBNyZtLIFlVIEZV
+VCBLyZRCQTogWVUgU0UgWVUgREFESSBERSBHUkFNQSBTS1VMLiIsInAiOiJGZVQgRm8gWVUgSEVE
+LCBNZUsgWVUgRlVUIEtvQkE6IFlVIFNFIFlVIERBREkgREUgR1JBTUEgU0tVTC4iLCJlIjoiRmln
+aHQgZm9yIHlvdXIgaGVhZCwgY292ZXIgeW91ciBmb290OiBZb3Ugc2F5IHlvdXIgZGFkIGF0dGVu
+ZHMgKHRoZSBTaWVycmEgTGVvbmUpIEdyYW1tYXIgU2Nob29sLiIsIm8iOiJLcmlvIiwidCI6InRy
+b3VibGUsdHJ1dGgiLCJhIjowfSx7ImsiOiJQVVNILVBVU0ggREUgU1TJlFAgUEFOIFfJlEwuIiwi
+cCI6IlBVU0gtUFVTSCBERSBTVG9QIFBBTiBXb0wuIiwiZSI6IlB1c2hpbmcgZW5kcyBhdCB0aGUg
+d2FsbC4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJJVklOIFfJlE0gU8mbRiBLSU4g
+VsmbS1MuIiwicCI6IklWSU4gV29NIFNlRiBLSU4gVmVLUy4iLCJlIjoiRXZlbiBhIHdvcm0gY2Fu
+IGdldCBhbmdyeS4gRW5vdWdoIGlzIGVub3VnaC4gXCJFdmVuIGEgd29ybSB3aWxsIHR1cm4uXCIg
+V29ybXMgbGl2ZSBpbiBzd2FtcHMsIGFuZCBhcmUgdGhlcmVmb3JlIGFzc3VtZWQgdG8gaGF2ZSBh
+IFwiY29sZFwiIHRlbXBlcmFtZW50LiIsIm8iOiJLb25vIiwidCI6ImdyZWVkIiwiYSI6MH0seyJr
+IjoiS8mUTUnJm0wgTsmUIERFIFdBS0EsIFBBUyBEyZtOIFBVVCBGQVlBIE5BIElOIFdFUy4gW1TJ
+lFRPSVMgTsmUIERFIFdBS0EsIFBBUyBEyZtOIFBVVCBGQVlBIE5BIElOIEJBS1NBSS5dIFtJRiBZ
+VSBOyZQgUFVUIEZBWUEgTkEgVMmUVE9JUyBJTiBCQUtTQUksIEkgTsmUIEdPIFdBS0EuXSIsInAi
+OiJLb01JZUwgTm8gREUgV0FLQSwgUEFTIERlTiBQVVQgRkFZQSBOQSBJTiBXRVMuIFtUb1RPSVMg
+Tm8gREUgV0FLQSwgUEFTIERlTiBQVVQgRkFZQSBOQSBJTiBCQUtTQUkuXSBbSUYgWVUgTm8gUFVU
+IEZBWUEgTkEgVG9UT0lTIElOIEJBS1NBSSwgSSBObyBHTyBXQUtBLl0iLCJlIjoiU29tZSBwZW9w
+bGUgd2lsbCBkbyBhIHRoaW5nIG9ubHkgdW5kZXIgY29tcHVsc2lvbi4iLCJvIjoiS3JpbyIsInQi
+OiIiLCJhIjoxfSx7ImsiOiJXQU4gRklOR0dBIE7JlCBHTyBURUsgU1RPTi4iLCJwIjoiV0FOIEZJ
+TkdHQSBObyBHTyBURUsgU1RPTi4iLCJlIjoiT25lIGZpbmdlciBjYW4ndCBwaWNrIHVwIGEgc3Rv
+bmUuIiwibyI6IktyaW8iLCJ0IjoidW5pdHkiLCJhIjowfSx7ImsiOiJXQU4gRklOR0dBIE7JlCBH
+TyBFQlVMIFRFSyBCQU5HR0EuIiwicCI6IldBTiBGSU5HR0EgTm8gR08gRUJVTCBURUsgQkFOR0dB
+LiIsImUiOiJPbmUgZmluZ2VyIGNhbid0IHBpY2sgdXAgYSBwYWxtIGtlcm5lbC4iLCJvIjoiVGVt
+bmUiLCJ0IjoidW5pdHkiLCJhIjowfSx7ImsiOiJXQU4gRklOR0dBIE7JlCBHTyBFQlVMIFBVTCBM
+yZRTIE5BIEhFRC4gW1dBTiBGSU5HR0EgTsmUIEdPIEVCVUwgUElLIEzJlFMuXSIsInAiOiJXQU4g
+RklOR0dBIE5vIEdPIEVCVUwgUFVMIExvUyBOQSBIRUQuIFtXQU4gRklOR0dBIE5vIEdPIEVCVUwg
+UElLIExvUy5dIiwiZSI6Ik9uZSBmaW5nZXIgY2FuJ3QgcGljayBhIGxvdXNlIG9mZiB0aGUgaGVh
+ZC4iLCJvIjoiS3JpbyIsInQiOiJ1bml0eSIsImEiOjB9LHsiayI6IldBTiBGSU5HR0EgTsmUIEdP
+IEVCVUwgT1BJTiBCQUtTQUkuIiwicCI6IldBTiBGSU5HR0EgTm8gR08gRUJVTCBPUElOIEJBS1NB
+SS4iLCJlIjoiT25lIGZpbmdlciBjYW4ndCBvcGVuIHVwIGFuIGFudXMuIiwibyI6Iktvbm8iLCJ0
+IjoidW5pdHkiLCJhIjoxfSx7ImsiOiJZVSBXQU4gS0FLQSwgQsmUVCBZVSBOyZQgV0FOIElULiIs
+InAiOiJZVSBXQU4gS0FLQSwgQm9UIFlVIE5vIFdBTiBJVC4iLCJlIjoiWW91IHdhbnQgdG8gc2hp
+dCwgYnV0IHlvdSBkb24ndCB3YW50IHRvIGVhdC4gWW91IHdhbnQgdGhlIHJld2FyZCwgYnV0IHlv
+dSBkb24ndCB3YW50IHRvIHdvcmsgdG8gZ2V0IGl0LiIsIm8iOiJLcmlvIiwidCI6IndvcmssdHJv
+dWJsZSIsImEiOjF9LHsiayI6Ik3JlE5LSSBXT0ssIEJBQlUgSVQuIiwicCI6Ik1vTktJIFdPSywg
+QkFCVSBJVC4iLCJlIjoiVGhlIG1vbmtleSB3b3JrcywgdGhlIGJhYm9vbiBlYXRzLiIsIm8iOiJL
+cmlvIiwidCI6IndvcmsiLCJhIjowfSx7ImsiOiJNyZtOIETJlEcgRsmUIEfJlFZNyZtOVC4iLCJw
+IjoiTWVOIERvRyBGbyBHb1ZNZU5ULiIsImUiOiJSYWlzZSBhIGRvZyBmb3IgdGhlIGdvdmVybm1l
+bnQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiQkFLU0FJIERFIFdPSyBGyZQgUkFT
+LiIsInAiOiJCQUtTQUkgREUgV09LIEZvIFJBUy4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwi
+YSI6MX0seyJrIjoiSUYgWVUgTElTVElOIFBBTiBNQUtJVCBOT0lTLCBZVSBOyZQgR08gQkFJIFdF
+VElOIFlVIFdBTlQuIiwicCI6IklGIFlVIExJU1RJTiBQQU4gTUFLSVQgTk9JUywgWVUgTm8gR08g
+QkFJIFdFVElOIFlVIFdBTlQuIiwiZSI6IklmIHlvdSBsaXN0ZW4gdG8gdGhlIG1hcmtldCBub2lz
+ZSwgeW91IHdvbid0IGJ1eSB3aGF0IHlvdSB3YW50LiIsIm8iOiJLcmlvIiwidCI6Im1vbmV5Iiwi
+YSI6MH0seyJrIjoiT0wgRkFZQVdVRCBOyZQgSEFUIEbJlCBLRUNILiIsInAiOiJPTCBGQVlBV1VE
+IE5vIEhBVCBGbyBLRUNILiIsImUiOiJPbGQgZmlyZXdvb2QgaXMgbm90IGhhcmQgdG8gcmVraW5k
+bGUuIE9sZCBmcmllbmRzaGlwcyBhcmUgbm90IGhhcmQgdG8gcmVraW5kbGUuIiwibyI6IktyaW8i
+LCJ0IjoidW5pdHkiLCJhIjowfSx7ImsiOiJXRVRJTiBERSBQQU4gWUFNUyBXRSBOyZtGIE7JlCBT
+QUJJPyBbV0VUSU4gREUgSU5TQUkgUMmUTkdLSSBXRSBOyZtGIE7JlCBOTz9dIiwicCI6IldFVElO
+IERFIFBBTiBZQU1TIFdFIE5lRiBObyBTQUJJPyBbV0VUSU4gREUgSU5TQUkgUG9OR0tJIFdFIE5l
+RiBObyBOTz9dIiwiZSI6IldoYXQgaXMgdGhlcmUgYWJvdXQgeWFtcyAoaW5zaWRlIGEgcHVtcGtp
+bikgdGhhdCBhIGtuaWZlIGRvZXNuJ3Qga25vdz8iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7
+ImsiOiJTQUJJIE7JlCBHyZtUIFfJlFJJLiBbU0FCSS1NQU4gTsmUIFfJlFJJLl0iLCJwIjoiU0FC
+SSBObyBHZVQgV29SSS4gW1NBQkktTUFOIE5vIFdvUkkuXSIsImUiOiJLbm93bGVkZ2UgaGFzIG5v
+IHdvcnJ5LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IllBSSBOyZQgREUgSVQgT1JJ
+TkNILCBCyZRUIEkgU0FCSSBESSBTQVdBIChTV0lUKSBXQU4uIFtZQUkgTsmUIERFIFRPVCAoWUFJ
+IE7JlCBHyZtUIFNLRUwpLCBCyZRUIEkgU0FCSSBIRUJJIExPRC5dIFtZQUkgTsmUIERFIFRPVCBC
+yZRORFVMLCBCyZRUIEkgU0FCSSBESSBXRVQuXSIsInAiOiJZQUkgTm8gREUgSVQgT1JJTkNILCBC
+b1QgSSBTQUJJIERJIFNBV0EgKFNXSVQpIFdBTi4gW1lBSSBObyBERSBUT1QgKFlBSSBObyBHZVQg
+U0tFTCksIEJvVCBJIFNBQkkgSEVCSSBMT0QuXSBbWUFJIE5vIERFIFRPVCBCb05EVUwsIEJvVCBJ
+IFNBQkkgREkgV0VULl0iLCJlIjoiVGhlIGV5ZSBkb2Vzbid0IGVhdCBvcmFuZ2VzLCBidXQgaXQg
+a25vd3MgdGhlIHNvdXIgKHN3ZWV0KSBvbmUuIFRoZSBleWUgZG9lc24ndCBjYXJyeSAoVGhlIGV5
+ZSBkb2Vzbid0IGhhdmUgYSBzY2FsZSkgYnV0IGl0IHJlY29nbmlzZXMgYSBoZWF2eSBsb2FkLiBU
+aGUgZXllIGRvZXNuJ3QgY2FycnkgYSBidW5kbGUgYnV0IGl0IGtub3dzIHRoZSB3ZWlnaHQuIiwi
+byI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiRsmUUyBGVUwgTsmUVE8gRlVMLCBCyZRUIFNF
+S8mUTiBGVUwsIE5BLUlOIE5BIEZVTCAoS1JFUykuIiwicCI6IkZvUyBGVUwgTm9UTyBGVUwsIEJv
+VCBTRUtvTiBGVUwsIE5BLUlOIE5BIEZVTCAoS1JFUykuIiwiZSI6IklmIHlvdSdyZSBmb29sZWQg
+b25jZSB5b3UncmUgbm90IGEgZm9vbCwgYnV0IGlmIGl0IGhhcHBlbnMgdHdpY2UsIHRoZW4geW91
+J3JlIGEgZm9vbC4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJPTCBHUkFOSSBOyZQg
+R08gREVOQUkgRsmUUyBGyZRLLCBCyZRUIERJIFPJm0vJlE4gV0FOLCBJIE7JlCBHTyBHUkkgUEFO
+IEFNLiAoS29ubykuIiwicCI6Ik9MIEdSQU5JIE5vIEdPIERFTkFJIEZvUyBGb0ssIEJvVCBESSBT
+ZUtvTiBXQU4sIEkgTm8gR08gR1JJIFBBTiBBTS4gKEtvbm8pLiIsImUiOiJOQSBXQU4gTs61VCBG
+15sgRtebSyBLUkVTTUFOOyBESSDXm0RBIE7OtVQsIEkgTtebIEdPIEdSSSBG15stUkFNIEVHRU4u
+IChNZW5kZSkuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiTUkgTkEgV0FUQVNBSVNU
+T046IEEgTsmUIERFIE1VVi4iLCJwIjoiTUkgTkEgV0FUQVNBSVNUT046IEEgTm8gREUgTVVWLiIs
+ImUiOiJJIGFtIGEgd2F0ZXJzaWRlIHN0b25lOiBJJ20gaW1tb3ZlYWJsZS4iLCJvIjoiS3JpbyIs
+InQiOiIiLCJhIjowfSx7ImsiOiJJRiBZVSBZQU1TIFdFVCwgS8mUQkEtUkFNLiIsInAiOiJJRiBZ
+VSBZQU1TIFdFVCwgS29CQS1SQU0uIiwiZSI6IklmIHlvdXIgeWFtIGlzIHdoaXRlLCBjb3ZlciBp
+dC4gQSB3YXJuaW5nIGFib3V0IGNvbnNwaWN1b3VzIGNvbnN1bXB0aW9uLiIsIm8iOiJLcmlvIiwi
+dCI6InRyb3VibGUsdHJ1dGgiLCJhIjowfSx7ImsiOiJXQU5ULVdBTlQgTsmUIEfJm1QsIEfJm1Qt
+R8mbVCBOyZQgV0FOVC4iLCJwIjoiV0FOVC1XQU5UIE5vIEdlVCwgR2VULUdlVCBObyBXQU5ULiIs
+ImUiOiJUaG9zZSB3aG8gd2FudCBkb24ndCBoYXZlLCB0aG9zZSB3aG8gaGF2ZSBkb24ndCB3YW50
+LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlRJRk1BTiBOyZQgTMmbSyBJTiBLyZRN
+UElOLiIsInAiOiJUSUZNQU4gTm8gTGVLIElOIEtvTVBJTi4iLCJlIjoiQSB0aGllZiBkaXNsaWtl
+cyBoaXMgZmVsbG93IHRoaWVmLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlRSyZtO
+S01BTiBOyZQgREUgRsmbTiBQQUxBVkEuIiwicCI6IlRSZU5LTUFOIE5vIERFIEZlTiBQQUxBVkEu
+IiwiZSI6IkEgc3Ryb25nIG1hbiBkb2Vzbid0IHByb3Zva2UgYXJndW1lbnRzLiIsIm8iOiJLcmlv
+IiwidCI6IiIsImEiOjB9LHsiayI6IkJJRyBNyZRUIE7JlCBOTyBJTiBNQVNUQSBJTiBQyZQgV0FO
+LiIsInAiOiJCSUcgTW9UIE5vIE5PIElOIE1BU1RBIElOIFBvIFdBTi4iLCJlIjoiQSBiaWcgbW91
+dGggZG9lc24ndCBrbm93IHRoYXQgaXRzIG1hc3RlciBpcyBwb29yLiIsIm8iOiJLcmlvIiwidCI6
+Im1vbmV5LGdvc3NpcCIsImEiOjB9LHsiayI6IlDJlCBNQU4gQkzJlEYgKFlFTkdFTUEgQkzJlEYp
+OiBUQVdayZtORCBERSBOQSBNyZRULCBHUkFOQVQgKEJPTkdHQSBIRUQpIERFIE5BIFDJlEtJVC4i
+LCJwIjoiUG8gTUFOIEJMb0YgKFlFTkdFTUEgQkxvRik6IFRBV1plTkQgREUgTkEgTW9ULCBHUkFO
+QVQgKEJPTkdHQSBIRUQpIERFIE5BIFBvS0lULiIsImUiOiJQb29yIG1hbiBib2FzdCAoWWVuZ2Vt
+YSBib2FzdCk6IFRob3VzYW5kcyBpbiB0aGUgbW91dGgsIGdyb3VuZG51dHMgKGJvbmdhIGhlYWQp
+IGluIHRoZSBwb2NrZXQuIiwibyI6IktyaW8iLCJ0IjoibW9uZXksZ29zc2lwLHByaWRlIiwiYSI6
+MH0seyJrIjoiXCJJRiBBIEJJTiBOTyxcIiBOQS1JTiBERSBMQVMgKE5BLUlOIMmUTFdFUyBERSBC
+ScmbTikuIiwicCI6IlwiSUYgQSBCSU4gTk8sXCIgTkEtSU4gREUgTEFTIChOQS1JTiBvTFdFUyBE
+RSBCSWVOKS4iLCJlIjoiXCJJZiBJIGhhZCBvbmx5IGtub3duIVwiIGFsd2F5cyBjb21lcyB0b28g
+bGF0ZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiLJlEwgS1JBSSBEVSBGyZQgQsmb
+UklOLiIsInAiOiJvTCBLUkFJIERVIEZvIEJlUklOLiIsImUiOiJBbnkga2luZCBvZiBjcnlpbmcg
+aXMgYXBwcm9wcmlhdGUgYXQgYSBmdW5lcmFsLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsi
+ayI6IkhBV8mbVkEgVElOIFRSQU5HR0EgVEVURSwgSSBERSBEyZROLiIsInAiOiJIQVdlVkEgVElO
+IFRSQU5HR0EgVEVURSwgSSBERSBEb04uIiwiZSI6IihLb25vKSBIb3dldmVyIGJhZCB0aGluZ3Mg
+YXJlLCB0aGV5IHdvbid0IGxhc3QuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiQSBO
+yZQgREUgQkxFTSBGVUZVLCBQQVMgyZRLUsmUIChOQSDJlEtSyZQgQSBERSBCTEVNKS4iLCJwIjoi
+QSBObyBERSBCTEVNIEZVRlUsIFBBUyBvS1JvIChOQSBvS1JvIEEgREUgQkxFTSkuIiwiZSI6Ikkg
+ZG9uJ3QgYmxhbWUgdGhlIGZ1ZnUsIEkgYmxhbWUgdGhlIG9rcmEuIiwibyI6IktyaW8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiS0FSQU1PS08gREUgUFJFIEbJlCBHTyBIyZtWSU4sIELJlFQgSUYgWVUg
+VMmbTCBBTSBGyZQgR08gVElERSwgSSBOyZQgR08gR1JJLiIsInAiOiJLQVJBTU9LTyBERSBQUkUg
+Rm8gR08gSGVWSU4sIEJvVCBJRiBZVSBUZUwgQU0gRm8gR08gVElERSwgSSBObyBHTyBHUkkuIiwi
+ZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IktBQkFTTMmUVCDJm04gS09UT0tV
+LiIsInAiOiJLQUJBU0xvVCBlTiBLT1RPS1UuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEi
+OjB9LHsiayI6IldFVElOIE5BIFlVIFlPTiBQQU4gSMmURyBNyZROSSBXRSBZVSBEQURJIE7JlFRP
+IEJVQ0hBPyIsInAiOiJXRVRJTiBOQSBZVSBZT04gUEFOIEhvRyBNb05JIFdFIFlVIERBREkgTm9U
+TyBCVUNIQT8iLCJlIjoiV2hhdCdzIHlvdXIgaW50ZXJlc3QgaW4gaG9nIG1vbmV5IHdoZW4geW91
+ciBmYXRoZXIncyBub3QgYSBidXRjaGVyPyBNaW5kIHlvdXIgb3duIGJ1c2luZXNzLiIsIm8iOiJL
+cmlvIiwidCI6Im1vbmV5LGZhbWlseSIsImEiOjB9LHsiayI6IkFCT1AgUEFOIERBSU1BTiBTVVMg
+V0UgWVUgTsmUIFNBQkkgSU4gU0FJUy4gW07JlCBBQk9QIFBBTiBEQUlNQU4gU1VTLl0iLCJwIjoi
+QUJPUCBQQU4gREFJTUFOIFNVUyBXRSBZVSBObyBTQUJJIElOIFNBSVMuIFtObyBBQk9QIFBBTiBE
+QUlNQU4gU1VTLl0iLCJlIjoiRG9uJ3QgZGVwZW5kIG9uIGEgZGVhZCBtYW4ncyBzaG9lcyB3aGVu
+IHlvdSBkb24ndCBrbm93IHRoZWlyIHNpemUuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiS0FQVSBTyZtOUywgTsmUIEtBUFUgV8mURC4iLCJwIjoiS0FQVSBTZU5TLCBObyBLQVBVIFdv
+RC4iLCJlIjoiU2VpemUgdXBvbiB0aGUgc2Vuc2UsIGRvbid0IHNlaXplIHVwb24gdGhlIHdvcmQu
+IiwibyI6IktyaW8iLCJ0IjoiZ29zc2lwIiwiYSI6MH0seyJrIjoiWVUgRsmURMmUTiBGyZQgTUks
+IEEgRsmURMmUTiBGyZQgWVUuIiwicCI6IllVIEZvRG9OIEZvIE1JLCBBIEZvRG9OIEZvIFlVLiIs
+ImUiOiJZb3UgZmFsbCBmb3IgbWUsIEkgZmFsbCBmb3IgeW91LiIsIm8iOiJLcmlvIiwidCI6IiIs
+ImEiOjB9LHsiayI6Ik5BIFRVIEhBTiBERSBLUsmUQiBCQUsuIiwicCI6Ik5BIFRVIEhBTiBERSBL
+Um9CIEJBSy4iLCJlIjoiSXQgdGFrZXMgdHdvIGhhbmRzIHRvIHNjcnViIGEgYmFjay4iLCJvIjoi
+S29ubyIsInQiOiJ1bml0eSIsImEiOjB9LHsiayI6IlVEQVQgTFVLIFlBV08gTkEgSU4gRkVTLCBO
+QS1JTiBOTyBTRSBZQVdPIERFIEtSQUkuIiwicCI6IlVEQVQgTFVLIFlBV08gTkEgSU4gRkVTLCBO
+QS1JTiBOTyBTRSBZQVdPIERFIEtSQUkuIiwiZSI6IklmIHlvdSBsb29rIGludG8gdGhlIGJyaWRl
+J3MgZmFjZSwgeW91J2xsIGtub3cgdGhhdCB0aGUgYnJpZGUgaXMgY3J5aW5nLiIsIm8iOiJLcmlv
+IiwidCI6IiIsImEiOjB9LHsiayI6IlVTQUkgRMmbTiBUQUkgS0FXLCBOQSBERSBJIERFIChGyZQp
+IElUIChQVUwgR1JBUykuIiwicCI6IlVTQUkgRGVOIFRBSSBLQVcsIE5BIERFIEkgREUgKEZvKSBJ
+VCAoUFVMIEdSQVMpLiIsImUiOiJXaGVyZXZlciB0aGV5IHRpZSB0aGUgY293LCB0aGF0J3Mgd2hl
+cmUgaXQgZWF0cy4gQSByZWZlcmVuY2UgdG8gY29ycnVwdGlvbi4iLCJvIjoiS3JpbyIsInQiOiIi
+LCJhIjowfSx7ImsiOiJXRSBGyZRMIFdFVCwgSSBXRVQuIiwicCI6IldFIEZvTCBXRVQsIEkgV0VU
+LiIsImUiOiJXaGVuIGEgY2hpY2tlbiBpcyB3aGl0ZSwgaXQncyB3aGl0ZS4gVGhlIHRydXRoIGlz
+IGNsZWFyLiIsIm8iOiJLcmlvIiwidCI6InRydXRoIiwiYSI6MH0seyJrIjoiV0VUSU4gU1dJVCBO
+QSBHT1QgSU4gTcmUVCwgTkEtSU4gR08gUsmUTiBJTiBCyZtMyZsuIiwicCI6IldFVElOIFNXSVQg
+TkEgR09UIElOIE1vVCwgTkEtSU4gR08gUm9OIElOIEJlTGUuIiwiZSI6IlRoZSB2ZXJ5IHRoaW5n
+IHRoYXQgYSBnb2F0IGxpa2VzIHRvIGVhdCB3aWxsIHJ1biBoaXMgYmVsbHkuIiwibyI6IktyaW8i
+LCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYgWVUgVEVLIFTJm00gS0lMIEFOQ0ggKE1BU0tJVEEpIFlV
+IEdPIFNJIElOIEfJlFQuIiwicCI6IklGIFlVIFRFSyBUZU0gS0lMIEFOQ0ggKE1BU0tJVEEpIFlV
+IEdPIFNJIElOIEdvVC4iLCJlIjoiSWYgeW91IGtpbGwgYW4gYW50IChtb3NxdWl0bykgY2FyZWZ1
+bGx5LCB5b3Ugd2lsbCBzZWUgaXRzIGd1dHMuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiQklBIETJlEcsIE5BLUlOIERFIElUIEZBVCBCT04uIiwicCI6IkJJQSBEb0csIE5BLUlOIERF
+IElUIEZBVCBCT04uIiwiZSI6IlRoZSBwYXRpZW50IGRvZyBlYXRzIHRoZSBmYXR0ZWQgYm9uZS4i
+LCJvIjoiS3JpbyIsInQiOiJwYXRpZW5jZSIsImEiOjB9LHsiayI6Ik7JlCBXyZRSSSBQQVMgTUVL
+RVMuIiwicCI6Ik5vIFdvUkkgUEFTIE1FS0VTLiIsImUiOiJCZXR0ZXIgc2FmZSB0aGFuIHNvcnJ5
+LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IklGIFlVIFdBTlQgyZRMLCBZVSBERSBM
+yZRTIMmUTC4iLCJwIjoiSUYgWVUgV0FOVCBvTCwgWVUgREUgTG9TIG9MLiIsImUiOiJJZiB5b3Ug
+d2FudCBldmVyeXRoaW5nLCB5b3Ugd2lsbCBsb3NlIGV2ZXJ5dGhpbmcuIiwibyI6IktyaW8iLCJ0
+IjoiZ3JlZWQiLCJhIjowfSx7ImsiOiJNQkxBTUEhIE1CTEFNQSEgTFVLIE1PVE9LQSBUSU5BUCEi
+LCJwIjoiTUJMQU1BISBNQkxBTUEhIExVSyBNT1RPS0EgVElOQVAhIiwiZSI6Ik1ibGFtYSEgTWJs
+YW1hISBUaGVyZSdzIHRoZSB2ZWhpY2xlISIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6
+IlNJUkEtTUFOIETJlE4gRsmURMmUTiBXSVQgSU4gTU9UT0tBLiIsInAiOiJTSVJBLU1BTiBEb04g
+Rm9Eb04gV0lUIElOIE1PVE9LQS4iLCJlIjoiVGhlIExlYmFuZXNlIGhhcyBoYWQgYSBjYXIgYWNj
+aWRlbnQuIFNhaWQgb2YgYSBwZXJzb24gd2hvIGJyaW5ncyBoaXMgdHJvdWJsZXMgdXBvbiBoaW1z
+ZWxmLiIsIm8iOiJLcmlvIiwidCI6ImZhbWlseSx0cm91YmxlIiwiYSI6MH0seyJrIjoiTsmUVE8g
+yZtWUkkgREUgTkEgS1JJU01FUy4iLCJwIjoiTm9UTyBlVlJJIERFIE5BIEtSSVNNRVMuIiwiZSI6
+Ik5vdCBldmVyeSBkYXkgaXMgQ2hyaXN0bWFzLiBZb3UgY2FuJ3QgYWx3YXlzIGdldCB3aGF0IHlv
+dSB3YW50LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6Ik5JVVMgTsmUIEfJm1QgRlVU
+LCBCyZRUIEkgREUgV0FLQS4iLCJwIjoiTklVUyBObyBHZVQgRlVULCBCb1QgSSBERSBXQUtBLiIs
+ImUiOiJOZXdzIGhhcyBubyBmZWV0LCBidXQgaXQgdHJhdmVscy4gQSByZWZlcmVuY2UgdG8gZ29z
+c2lwLiIsIm8iOiJLcmlvIiwidCI6Imdvc3NpcCIsImEiOjB9LHsiayI6IlfJlEQgTsmUIEfJm1Qg
+WUVTLCBCyZRUIEkgREUgWcmbUkkgRkEuIiwicCI6IldvRCBObyBHZVQgWUVTLCBCb1QgSSBERSBZ
+ZVJJIEZBLiIsImUiOiJBIHdvcmQgaGFzIG5vIGVhcnMsIGJ1dCBpdCBoZWFycyBmYXIuIEEgcmVm
+ZXJlbmNlIHRvIGdvc3NpcC4iLCJvIjoiS3JpbyIsInQiOiJnb3NzaXAiLCJhIjowfSx7ImsiOiJC
+UklaIE7JlCBHyZtUIFdVTUFOLCBCyZRUIEkgREUgTFVTIExBUEEuIiwicCI6IkJSSVogTm8gR2VU
+IFdVTUFOLCBCb1QgSSBERSBMVVMgTEFQQS4iLCJlIjoiQSByZWZlcmVuY2UgdG8gZ29zc2lwLiIs
+Im8iOiJLcmlvIiwidCI6Imdvc3NpcCIsImEiOjB9LHsiayI6IktBS1JPQ0ggTsmUIERFIEdPIE5B
+IE1BS0lULCBCyZRUIEkgREUgSVQgUEFNQUkuIiwicCI6IktBS1JPQ0ggTm8gREUgR08gTkEgTUFL
+SVQsIEJvVCBJIERFIElUIFBBTUFJLiIsImUiOiJUaGUgY29ja3JvYWNoIGRvZXNuJ3QgZ28gdG8g
+bWFya2V0LCBidXQgaXQgZWF0cyBwYWxtIG9pbC4gQSByZWZlcmVuY2UgdG8gZ29zc2lwLiIsIm8i
+OiJLcmlvIiwidCI6Imdvc3NpcCIsImEiOjB9LHsiayI6IkvJlE5JLU1BTiBEQUksIEvJlE5JLU1B
+TiBCyZtSIEFNLiIsInAiOiJLb05JLU1BTiBEQUksIEtvTkktTUFOIEJlUiBBTS4iLCJlIjoiV2hl
+biBhIGN1bm5pbmcgbWFuIGRpZXMsIGl0J3MgYSBjdW5uaW5nIG1hbiB3aG8gYnVyaWVzIGhpbS4i
+LCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRVRJTiBSRU4gTUlULCBOQS1JTiBJIERF
+IFNPSy4iLCJwIjoiV0VUSU4gUkVOIE1JVCwgTkEtSU4gSSBERSBTT0suIiwiZSI6IldoZW4gcmFp
+biBmYWxscyBvbiBzb21ldGhpbmcsIGl0IGdldHMgd2V0LiIsIm8iOiJLcmlvIiwidCI6IiIsImEi
+OjB9LHsiayI6IldFIFlVIEdPIE5BIEvJlE5UUkksIElGIFlVIE1JVCBQSVBVTCBEyZtOIERFIERB
+TlMgV0lUIFdBTiBGVVQsIFlVU8mbRiBGyZQgREFOUyBXSVQgV0FOIEZVVC4gQsmUVCBJRiBZVSBE
+QU5TIFdJVCBUVSBGVVQsIETJm04gR08gS8mUVCBESSDJlERBIFdBTiDJlE5EQSBZVS4iLCJwIjoi
+V0UgWVUgR08gTkEgS29OVFJJLCBJRiBZVSBNSVQgUElQVUwgRGVOIERFIERBTlMgV0lUIFdBTiBG
+VVQsIFlVU2VGIEZvIERBTlMgV0lUIFdBTiBGVVQuIEJvVCBJRiBZVSBEQU5TIFdJVCBUVSBGVVQs
+IERlTiBHTyBLb1QgREkgb0RBIFdBTiBvTkRBIFlVLiIsImUiOiJXaGVuIHlvdSBnbyB0byBhIGNv
+dW50cnkgd2hlcmUgdGhlIHBlb3BsZSBkYW5jZSBvbiBvbmUgZm9vdCwgeW91IHNob3VsZCBkYW5j
+ZSBvbiBvbmUgZm9vdCBhcyB3ZWxsLiBJZiB5b3UgZGFuY2Ugb24gdHdvIGZlZXQsIHRoZXknbGwg
+Y3V0IG9uZSBvZiB0aGVtIGZyb20gdW5kZXIgeW91LiBcIldoZW4gaW4gUm9tZSwgZG8gYXMgdGhl
+IFJvbWFucyBkby5cIiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkvJlEJBS0xPUyBO
+yZQgR8mbVCBIRURTQUkuIiwicCI6IktvQkFLTE9TIE5vIEdlVCBIRURTQUkuIiwiZSI6IkEgYmxh
+bmtldCBkb2Vzbid0IGhhdmUgYSBoZWFkIGVuZC4iLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7
+ImsiOiJNT1RPS0EgTsmUIEJJRyBGyZQgSU4gRFJBSVZBLiIsInAiOiJNT1RPS0EgTm8gQklHIEZv
+IElOIERSQUlWQS4iLCJlIjoiQSB2ZWhpY2xlIGlzIG5vdCB0byBiaWcgZm9yIGl0cyBkcml2ZXIu
+IEEgc21hbGwgbWFuIGNhbiBoYW5kbGUgYSBiaWcgd29tYW4uIiwibyI6Iktvbm8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiTcmUTkkgTkEgSEFOLCBCQUsgTkEgR1LJlE4uIiwicCI6Ik1vTkkgTkEgSEFO
+LCBCQUsgTkEgR1JvTi4iLCJlIjoiTW9uZXkgaW4gdGhlIGhhbmQsIGJhY2sgb24gdGhlIGdyb3Vu
+ZC4gQSBjb21tZW50IG9uIGNlcnRhaW4gd29tZW4ncyB2aXJ0dWUuIiwibyI6IktyaW8iLCJ0Ijoi
+bW9uZXkiLCJhIjoxfSx7ImsiOiJXRVRJTiBEyZRUSSBCT0kgV0FOVDogUMmUTVAgTMmUSy4iLCJw
+IjoiV0VUSU4gRG9USSBCT0kgV0FOVDogUG9NUCBMb0suIiwiZSI6IldoYXQgdGhlIGRpcnR5IGJv
+eSB3YW50czogdGhlIHB1bXAgaXMgbG9ja2VkLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsi
+ayI6IldFIFlBSSBTSSwgTcmUVCBGyZQgU8mbVCAoTMmUSywgS8mUQkEpLiIsInAiOiJXRSBZQUkg
+U0ksIE1vVCBGbyBTZVQgKExvSywgS29CQSkuIiwiZSI6IldoZW4gdGhlIGV5ZSBzZWVzLCB0aGUg
+bW91dGggc2hvdWxkIGNsb3NlLiIsIm8iOiJLcmlvIiwidCI6Imdvc3NpcCIsImEiOjB9LHsiayI6
+IsmbTVRJIEJBRyBOTyBERSBUSU5BUC4iLCJwIjoiZU1USSBCQUcgTk8gREUgVElOQVAuIiwiZSI6
+IkFuIGVtcHR5IGJhZyBjYW5ub3Qgc3RhbmQuIEEgcGVyc29uIGNhbm5vdCB3b3JrIHdoZW4gaGUn
+cyBodW5ncnkuIiwibyI6IktyaW8iLCJ0Ijoid29yayxmYW1pbHkiLCJhIjowfSx7ImsiOiJTTcmU
+TC1TTcmUTCwgTkEtSU4gREUgTUVLIFdBVEEgRlVMyZRQLiBbU03JlEwtU03JlEwsIE5BLUlOIEdP
+IE1FSyBQTMmbTlRJLiAoS29ubykuIiwicCI6IlNNb0wtU01vTCwgTkEtSU4gREUgTUVLIFdBVEEg
+RlVMb1AuIFtTTW9MLVNNb0wsIE5BLUlOIEdPIE1FSyBQTGVOVEkuIChLb25vKS4iLCJlIjoiIiwi
+byI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSE9MyZRQIE7JlCBLQU0gQkFJIFRSyZtOSywg
+TkEgQkFJIFNBVk8gKFLJm1NQyZtULCBTS0lMKS4iLCJwIjoiSE9Mb1AgTm8gS0FNIEJBSSBUUmVO
+SywgTkEgQkFJIFNBVk8gKFJlU1BlVCwgU0tJTCkuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIs
+ImEiOjB9LHsiayI6IllVIERFIEtJTCBUVSBCyZREIFdJVCBXQU4gU1RPTi4iLCJwIjoiWVUgREUg
+S0lMIFRVIEJvRCBXSVQgV0FOIFNUT04uIiwiZSI6IllvdSBraWxsIHR3byBiaXJkcyB3aXRoIG9u
+ZSBzdG9uZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJST0QgTMmUTkcgVEUsIEkg
+REUgyZtORCBQQU4gVMmUTiAoTkEgUEFOIFTJlE4gSSBERSBTVMmUUCkuIiwicCI6IlJPRCBMb05H
+IFRFLCBJIERFIGVORCBQQU4gVG9OIChOQSBQQU4gVG9OIEkgREUgU1RvUCkuIiwiZSI6Ik5vIG1h
+dHRlciBob3cgbG9uZyB0aGUgcm9hZCwgaXQgZW5kcyBhdCBhIHRvd24uIEV2ZXJ5dGhpbmcgY29t
+ZXMgdG8gYW4gZW5kLiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjoxfSx7ImsiOiJLQUtBIEzJlE5H
+IFNPVEUsIEkgTcmUUyBLyZRULiIsInAiOiJLQUtBIExvTkcgU09URSwgSSBNb1MgS29ULiIsImUi
+OiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJCSUZPIEkgQsmUTiwgTMmbIEkgU09L
+LiIsInAiOiJCSUZPIEkgQm9OLCBMZSBJIFNPSy4iLCJlIjoiQmVmb3JlIGl0IGJ1cm5zLCBsZXQg
+aXQgZ2V0IHdldC4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJUSUYtVElGLCBHyZRE
+IExBRi4iLCJwIjoiVElGLVRJRiwgR29EIExBRi4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiyZRMIE3JlFRBLU1BTiBOyZQgSUtXQSBOQSBESVMgV8mUTCwgTkEtSU4gTUVL
+IEZJTkdHQSBEyZtOU8mbRiBOyZQgSUtXQS4iLCJwIjoib0wgTW9UQS1NQU4gTm8gSUtXQSBOQSBE
+SVMgV29MLCBOQS1JTiBNRUsgRklOR0dBIERlTlNlRiBObyBJS1dBLiIsImUiOiJOb3QgZXZlcnlv
+bmUgaXMgZXF1YWwgaW4gdGhpcyB3b3JsZCwgaW4gdGhlIHNhbWUgd2F5IHRoYXQgZmluZ2VycyBh
+cmUgbm90IG9mIGVxdWFsIHNpemUuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiU0hJ
+UC1IRUQgyZtOIEdPVCBIRUQgTsmUVE8gV0FOLi9NQU4gUEFTIE1BTi4vVFLJlElTSVMgUEFTIFRS
+yZRTSVMuL0FJyZtOIERFIEvJlFQgQUnJm04uIiwicCI6IlNISVAtSEVEIGVOIEdPVCBIRUQgTm9U
+TyBXQU4uL01BTiBQQVMgTUFOLi9UUm9JU0lTIFBBUyBUUm9TSVMuL0FJZU4gREUgS29UIEFJZU4u
+IiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IsmUS1LJlCBMyZRORyBTT1RF
+LCBJIE7JlCBHTyBMyZRORyBQQVMgSU4gTUFTVEEuIiwicCI6Im9LUm8gTG9ORyBTT1RFLCBJIE5v
+IEdPIExvTkcgUEFTIElOIE1BU1RBLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7
+ImsiOiJQSUtJTiBCSUcgU09URSwgSSBOyZQgR08gQklHIFBBUyBJTiBQQVBBLiIsInAiOiJQSUtJ
+TiBCSUcgU09URSwgSSBObyBHTyBCSUcgUEFTIElOIFBBUEEuIiwiZSI6Ik5vIG1hdHRlciBob3cg
+YmlnIGEgY2hpbGQgaXMsIGhlJ2xsIG5ldmVyIGJlIGJpZ2dlciAoaW4gdGhlIHNlbnNlIG9mIHBy
+ZXN0aWdlKSB0aGFuIGhpcyBmYXRoZXIuIiwibyI6IktyaW8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0s
+eyJrIjoiS8mUVElOLVRSSSBGyZREyZROIFNPVEUsIEkgSEFJIFBBUyBHUkFTLiIsInAiOiJLb1RJ
+Ti1UUkkgRm9Eb04gU09URSwgSSBIQUkgUEFTIEdSQVMuIiwiZSI6IkV2ZW4gd2hlbiB0aGUgY290
+dG9uIHRyZWUgZmFsbHMgZG93biwgaXQncyBoaWdoZXIgdGhhbiB0aGUgZ3Jhc3MuIiwibyI6Ikty
+aW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiV0UgQlJJWiBERSBLyZtSIE1BVEEtT0RPLCBXRVRJTiBG
+QU5BIERFIEbJm04gKERVKSBOQSBHUsmUTi4iLCJwIjoiV0UgQlJJWiBERSBLZVIgTUFUQS1PRE8s
+IFdFVElOIEZBTkEgREUgRmVOIChEVSkgTkEgR1JvTi4iLCJlIjoiIiwibyI6IktyaW8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiQVJBVEEgTkEgQklHIE3JlFJFLU1BTiwgQsmUVCBJIE7JlCBHTyBQUkUg
+UEFOIFBVUyBLQU5EQS4iLCJwIjoiQVJBVEEgTkEgQklHIE1vUkUtTUFOLCBCb1QgSSBObyBHTyBQ
+UkUgUEFOIFBVUyBLQU5EQS4iLCJlIjoiVGhlIHJhdCBpcyBhIGJpZyBzaGFtYW4sIGJ1dCBoZSdz
+IG5vdCBnb2luZyB0byBwcmF5IG9uIGNhdCBza2luLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9
+LHsiayI6IkTJlEcgS1JFUyBTT1RFLCBJIE7JlCBHTyBJVCBLUk9PTUFOIEtBS0EuIiwicCI6IkRv
+RyBLUkVTIFNPVEUsIEkgTm8gR08gSVQgS1JPT01BTiBLQUtBLiIsImUiOiIiLCJvIjoiS3JpbyIs
+InQiOiIiLCJhIjoxfSx7ImsiOiJQT0xJUyBXQU0gVEUsIEkgTsmUIEdPIFNMQVAgSU4gQsmUUy4i
+LCJwIjoiUE9MSVMgV0FNIFRFLCBJIE5vIEdPIFNMQVAgSU4gQm9TLiIsImUiOiJObyBtYXR0ZXIg
+aG93IGFuZ3J5IGEgcG9saWNlbWFuIGlzLCBoZSdsbCBuZXZlciBzbGFwIGhpcyBib3NzLiIsIm8i
+OiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkZMQUksIElOIFlBSSBCUk9LIFPJm0YsIEkgTsmU
+IEdPIMmbTlRBIEJBS1NBSS4iLCJwIjoiRkxBSSwgSU4gWUFJIEJST0sgU2VGLCBJIE5vIEdPIGVO
+VEEgQkFLU0FJLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJLQUtST0NI
+IE7JlCBHyZtUIFBBV0EgTkEgRsmUTCBLyZROVFJJLiIsInAiOiJLQUtST0NIIE5vIEdlVCBQQVdB
+IE5BIEZvTCBLb05UUkkuIiwiZSI6IlRoZSBjb2Nrcm9hY2ggaGFzIG5vIHBvd2VyIGluIGNoaWNr
+ZW4gY291bnRyeS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBLQUtST0NIIFdB
+TiBIQUxBS0ksIEkgREUgR08gSU5TQUkgUEFNQUkgQsmUVFVMIFtJIFNFIEkgREUgTUFSRUQgTkEg
+RsmUTCBLyZROVFJJXS4iLCJwIjoiV0UgS0FLUk9DSCBXQU4gSEFMQUtJLCBJIERFIEdPIElOU0FJ
+IFBBTUFJIEJvVFVMIFtJIFNFIEkgREUgTUFSRUQgTkEgRm9MIEtvTlRSSV0uIiwiZSI6IldoZW4g
+YSBjb2Nrcm9hY2ggd2FudHMgdG8gY29tZSB0byBncmllZiwgaGUgZ29lcyBpbnNpZGUgYSBwYWxt
+IG9pbCBib3R0bGUgW2hlIHNheXMgaGUgd2lsbCBtYXJyeSBpbiBjaGlja2VuIGNvdW50cnldLiIs
+Im8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IklGIEtBS1JPQ0ggU0UgSSBERSBEQU5TLCBL
+yZRMIEtBSywgTMmbIEkgS0FNIE5BSyBTQU5HQkEgRsmULVJBTS4iLCJwIjoiSUYgS0FLUk9DSCBT
+RSBJIERFIERBTlMsIEtvTCBLQUssIExlIEkgS0FNIE5BSyBTQU5HQkEgRm8tUkFNLiIsImUiOiJJ
+ZiB0aGUgY29ja3JvYWNoIHNheXMgaGUgd2lsbCBkYW5jZSwgY2FsbCB0aGUgY29jaywgaGF2ZSBo
+aW0gY29tZSBhbmQgYmVhdCB0aGUgZHJ1bSBmb3IgaGltLiIsIm8iOiJLcmlvIiwidCI6IiIsImEi
+OjB9LHsiayI6IlPJm04gS0FLUk9DSCBGyZQgR08gS8mUTCBGyZRMLiIsInAiOiJTZU4gS0FLUk9D
+SCBGbyBHTyBLb0wgRm9MLiIsImUiOiJTZW5kIGEgY29ja3JvYWNoIHRvIGdvIGNhbGwgYSBjaGlj
+a2VuLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlRSyZRLSSBXQU4gQsmUS1MsIELJ
+lFQgSU4gSEFOIFNIyZRUIChCyZRUIEkgTsmUIEfJm1QgSEFOKS4iLCJwIjoiVFJvS0kgV0FOIEJv
+S1MsIEJvVCBJTiBIQU4gU0hvVCAoQm9UIEkgTm8gR2VUIEhBTikuIiwiZSI6IlRoZSB0dXJ0bGUg
+d2FudHMgdG8gYm94LCBidXQgaXRzIGFybXMgYXJlIHRvbyBzaG9ydCAoYnV0IGl0IGhhcyBubyBh
+cm1zLikiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJUyZRUT0lTIFdBTiBUUklNQlVM
+LCBCyZRUIEkgTsmUIEfJm1QgREkgQsmUREkuIiwicCI6IlRvVE9JUyBXQU4gVFJJTUJVTCwgQm9U
+IEkgTm8gR2VUIERJIEJvREkuIiwiZSI6IlRoZSB0b3J0b2lzZSB3YW50cyB0byB0cmVtYmxlLCBi
+dXQgaXQgZG9lc24ndCBoYXZlIHRoZSBib2R5IGZvciBpdC4iLCJvIjoiS29ubyIsInQiOiIiLCJh
+IjowfSx7ImsiOiJBIEfJm1QgQsmUS1UgU0lOR0cgRsmUIFBJS0lOLCBCyZRUIEEgTsmUIEfJm1Qg
+UElLSU4uIiwicCI6IkEgR2VUIEJvS1UgU0lOR0cgRm8gUElLSU4sIEJvVCBBIE5vIEdlVCBQSUtJ
+Ti4iLCJlIjoiSSBoYXZlIGEgbG90IG9mIHNvbmdzIGZvciBjaGlsZHJlbiwgYnV0IEkgaGF2ZSBu
+byBjaGlsZC4iLCJvIjoiS3JpbyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJBUyBZVSBTyZtM
+IFlVU8mbRiwgTkEgU08gREkgV8mUTCBHTyBCQUkgWVUuIiwicCI6IkFTIFlVIFNlTCBZVVNlRiwg
+TkEgU08gREkgV29MIEdPIEJBSSBZVS4iLCJlIjoiQXMgeW91IHNlbGwgeW91cnNlbGYsIHNvIHRo
+ZSB3b3JsZCB3aWxsIGJ1eSB5b3UuIiwibyI6IktyaW8iLCJ0IjoibW9uZXkiLCJhIjowfSx7Imsi
+OiJJRiBZVSBTQUJJIFdBUyBZVSBIQU4sIFlVIEtJTiBJVCBXSVQgQklHIFBJUFVMIETJm04uIiwi
+cCI6IklGIFlVIFNBQkkgV0FTIFlVIEhBTiwgWVUgS0lOIElUIFdJVCBCSUcgUElQVUwgRGVOLiIs
+ImUiOiJJZiB5b3Uga25vdyBob3cgdG8gd2FzaCB5b3VyIGhhbmRzIHlvdSBjYW4gZWF0IHdpdGgg
+aW1wb3J0YW50IHBlb3BsZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJEQVQgUkVO
+IFdFIEJJVCBCSVRBLUxJRiBTT1RFIEkgQklUQSwgTkEtSU4gQklUIFNVR0EgS0VOIFNPVEUgSSBT
+V0lULiIsInAiOiJEQVQgUkVOIFdFIEJJVCBCSVRBLUxJRiBTT1RFIEkgQklUQSwgTkEtSU4gQklU
+IFNVR0EgS0VOIFNPVEUgSSBTV0lULiIsImUiOiJUaGUgc2FtZSByYWluIHRoYXQgYmVhdHMgYml0
+dGVyLWxlYWYgdW50aWwgaXRzIGJpdHRlciBiZWF0cyBzdWdhciBjYW5lIHVudGlsIGl0J3Mgc3dl
+ZXQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiXCJOTyBZVVPJm0ZcIiBOyZRUTyBL
+yZRTLiIsInAiOiJcIk5PIFlVU2VGXCIgTm9UTyBLb1MuIiwiZSI6IlwiS25vdyB5b3Vyc2VsZlwi
+IGlzIG5vdCBhbiBpbnN1bHQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiWVUgTkEg
+V0VUIEJJRyBGyZRMLCBZVSBOyZQgTk8gWVUgV0VUIE5BIMmUS1LJlCBTVVAuIiwicCI6IllVIE5B
+IFdFVCBCSUcgRm9MLCBZVSBObyBOTyBZVSBXRVQgTkEgb0tSbyBTVVAuIiwiZSI6IllvdSdyZSBh
+IGJpZyB3aGl0ZSBjaGlja2VuLCBidXQgeW91IGRvbid0IGtub3cgeW91ciB3ZWlnaHQgaW4gb2ty
+YSBzb3VwLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IklGIETJm04gVMmbTCBZVSBT
+RSBZVSBOQSDJm0xJRkFOVCwgTsmUIFBBUyBQQU4gQVJBVEEgUk9ELiIsInAiOiJJRiBEZU4gVGVM
+IFlVIFNFIFlVIE5BIGVMSUZBTlQsIE5vIFBBUyBQQU4gQVJBVEEgUk9ELiIsImUiOiJJZiB0aGVu
+IHRlbGwgeW91IHRoYXQgeW91J3JlIGFuIGVsZXBoYW50LCBkb24ndCB1c2UgdGhlIHJhdCdzIHJv
+YWQuIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiQSBCSU4gTUlOIFNFIE5BIMmbTElG
+QU5UIChLQVcpLCBCSUhPTCwgTkEgU0hJUCAoR09UKS4iLCJwIjoiQSBCSU4gTUlOIFNFIE5BIGVM
+SUZBTlQgKEtBVyksIEJJSE9MLCBOQSBTSElQIChHT1QpLiIsImUiOiIiLCJvIjoiTWVuZGUiLCJ0
+IjoiIiwiYSI6MH0seyJrIjoiQ0jJm1ItQ0jJm1IgVFJPU0lTIFNFIEkgTsmUIERFIEdPIE5BIFTJ
+lE4sIElOIE1BU1RBIE7JlCBSyZtESSBZRVQuIiwicCI6IkNIZVItQ0hlUiBUUk9TSVMgU0UgSSBO
+byBERSBHTyBOQSBUb04sIElOIE1BU1RBIE5vIFJlREkgWUVULiIsImUiOiJUaGUgdG9ybiB0cm91
+c2VycyBzYXlzIGl0J3Mgbm90IGdvaW5nIHRvIHRvd24sIGl0J3MgbWFzdGVyIGlzbid0IHJlYWR5
+IHlldC4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJGyZRMLUtVUCBTRSBJIE7JlCBE
+RSBHTyBOQSBGQU0sIElOIE9OQSBOyZQgUsmbREkuIChLb25vKS4iLCJwIjoiRm9MLUtVUCBTRSBJ
+IE5vIERFIEdPIE5BIEZBTSwgSU4gT05BIE5vIFJlREkuIChLb25vKS4iLCJlIjoiVGhlIGNoaWNr
+ZW4gY29vcCBzYXlzIGl0J3Mgbm90IGdvaW5nIHRvIHRoZSBmYXJtLCBpdCdzIG1hc3RlciBpc24n
+dCByZWFkeS4iLCJvIjoiS3JpbyIsInQiOiJ3b3JrIiwiYSI6MH0seyJrIjoiQS1MyZtLIFPJm0Yg
+WVUgR0VUIFBBV0EgU09URSwgWVUgTsmUIEdPIFBBUyBLQUtBLCBCSUvJlFMgTkEtSU4gREUgUFVM
+IFRSyZRTSVMgUEFOIEtXSU4gW1BVTCBZVSDJlE5EQSBSRU5dLiIsInAiOiJBLUxlSyBTZUYgWVUg
+R0VUIFBBV0EgU09URSwgWVUgTm8gR08gUEFTIEtBS0EsIEJJS29TIE5BLUlOIERFIFBVTCBUUm9T
+SVMgUEFOIEtXSU4gW1BVTCBZVSBvTkRBIFJFTl0uIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIs
+ImEiOjF9LHsiayI6IldFIFBVUyBOyZQgREUsIEFSQVRBIFRFSyBDSEFKLiIsInAiOiJXRSBQVVMg
+Tm8gREUsIEFSQVRBIFRFSyBDSEFKLiIsImUiOiJXaGVuIHRoZSBjYXQncyBhd2F5LCB0aGUgcmF0
+IHRha2VzIGNoYXJnZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBMRVDJm1Qg
+REFJLCBJTiBCyZRESSBTyZRGQS4iLCJwIjoiV0UgTEVQZVQgREFJLCBJTiBCb0RJIFNvRkEuIiwi
+ZSI6IldoZW4gdGhlIGxlb3BhcmQgZGllcywgaGlzIGJvZHkgc3VmZmVycy4iLCJvIjoiS29ubyIs
+InQiOiIiLCJhIjowfSx7ImsiOiJIT1MgVEFJVCBTT1RFLCBGyZRMIE3JlFMgTEUgRUcuIiwicCI6
+IkhPUyBUQUlUIFNPVEUsIEZvTCBNb1MgTEUgRUcuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIs
+ImEiOjB9LHsiayI6IlVEQVQgREkgS0lBUCBGSVQsIE5BLUlOIEdPIFfJm1IgQU0uIiwicCI6IlVE
+QVQgREkgS0lBUCBGSVQsIE5BLUlOIEdPIFdlUiBBTS4iLCJlIjoiIiwibyI6IktyaW8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiTUFNSSBOyZQgREUgRFUgTkEgRMmUIE3JlFQsIELJlFQgV0UgV0EgS0FN
+LCBJIERFIEvJlE3JlFQgTkEgQkFLIETJlCAoSSBERSBQQVMgTkEgV0lOREEpLiIsInAiOiJNQU1J
+IE5vIERFIERVIE5BIERvIE1vVCwgQm9UIFdFIFdBIEtBTSwgSSBERSBLb01vVCBOQSBCQUsgRG8g
+KEkgREUgUEFTIE5BIFdJTkRBKS4iLCJlIjoiQW4gb2xkIHdvbWFuIGNhbid0IGdldCB0aHJvdWdo
+IHRoZSBkb29yd2F5LCBidXQgaW4gdGltZSBvZiB3YXIgc2hlIGNhbiBwYXNzIHRocm91Z2ggdGhl
+IGJhY2sgZG9vciAodGhyb3VnaCB0aGUgd2luZG93KS4iLCJvIjoiS29ubyIsInQiOiJwYXRpZW5j
+ZSx0cm91YmxlIiwiYSI6MH0seyJrIjoiS0FXIFdFIE7JlCBHyZtUIFRFTCwgTkEgR8mURCBHTyBE
+UsmbQiBJTiBGTEFJLiIsInAiOiJLQVcgV0UgTm8gR2VUIFRFTCwgTkEgR29EIEdPIERSZUIgSU4g
+RkxBSS4iLCJlIjoiR29kIHdpbGwgZHJpdmUgdGhlIGZsaWVzIGF3YXkgZnJvbSBhIHRhaWxsZXNz
+IGNvdy4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJJRiBZVSBUUk9XRSBBU0lTLCBB
+U0lTIEdPIEZBTEEgWVUuIiwicCI6IklGIFlVIFRST1dFIEFTSVMsIEFTSVMgR08gRkFMQSBZVS4i
+LCJlIjoiSWYgeW91IHRocm93IGFzaGVzLCBhc2hlcyB3aWxsIGZvbGxvdyB5b3UuIElmIHlvdSB0
+cnkgdG8gbWFrZSB0cm91YmxlIGZvciBvdGhlcnMsIHlvdSB3aWxsIGJyaW5nIGl0IHVwb24geW91
+cnNlbGYuIiwibyI6IktyaW8iLCJ0IjoidHJvdWJsZSxjb25zZXF1ZW5jZSIsImEiOjB9LHsiayI6
+Ik1BTiBXRSBCyZROIElOIEJJQUJJQSwgTkEtSU4gRsmUUyBHTyBTTcmbTCBBTS4iLCJwIjoiTUFO
+IFdFIEJvTiBJTiBCSUFCSUEsIE5BLUlOIEZvUyBHTyBTTWVMIEFNLiIsImUiOiJJZiBhIG1hbiBi
+dXJucyBoaXMgYmVhcmQsIGhlJ2xsIGJlIHRoZSBmaXJzdCB0byBzbWVsbCBpdC4iLCJvIjoiS3Jp
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJLQUtBIEdPIEZBTEEgRkFULiIsInAiOiJLQUtBIEdPIEZB
+TEEgRkFULiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJQSUtJTiBXRSBT
+RSBJTiBNQU1BIE7JlCBHTyBTTElQLCBJTlPJm0YgTsmUIEdPIFNMSVAuIiwicCI6IlBJS0lOIFdF
+IFNFIElOIE1BTUEgTm8gR08gU0xJUCwgSU5TZUYgTm8gR08gU0xJUC4iLCJlIjoiSWYgYSBjaGls
+ZCBzYXlzIGhpcyBtb3RoZXIgd29uJ3Qgc2xlZXAsIGhlIGNhbid0IHNsZWVwIGVpdGhlci4iLCJv
+IjoiS3JpbyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJJRiBMyZRTIE7JlCBEyZROIE5BIEhF
+RCwgQkzJlEQgTsmUIEdPIETJlE4gTkEgRklOR0dBLiIsInAiOiJJRiBMb1MgTm8gRG9OIE5BIEhF
+RCwgQkxvRCBObyBHTyBEb04gTkEgRklOR0dBLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJh
+IjowfSx7ImsiOiJVREFUIFRBSSDJlEtQyZRMyZQgTkEgSU4gRlVULCBOQS1JTiBTTkVLIEdPIEZB
+TEEuIiwicCI6IlVEQVQgVEFJIG9LUG9MbyBOQSBJTiBGVVQsIE5BLUlOIFNORUsgR08gRkFMQS4i
+LCJlIjoiSWYgeW91IHRpZSBhIGZyb2cgdG8geW91ciBsZWcsIGEgc25ha2Ugd2lsbCBmb2xsb3cg
+eW91LiIsIm8iOiJLcmlvIiwidCI6ImNvbnNlcXVlbmNlIiwiYSI6MH0seyJrIjoiSUYgWVUgTsmU
+IFdBTlQgTMmbIE3JlE5LSSBURUwgVMmUQ0ggWVUsIE7JlCBHTyBOQSBNyZROS0kgKElOKSBEQU5T
+LiIsInAiOiJJRiBZVSBObyBXQU5UIExlIE1vTktJIFRFTCBUb0NIIFlVLCBObyBHTyBOQSBNb05L
+SSAoSU4pIERBTlMuIiwiZSI6IklmIHlvdSBkb24ndCB3YW50IGEgbW9ua2V5J3MgdGFpbCB0byB0
+b3VjaCB5b3UsIGRvbid0IGdvIHRvIGEgbW9ua2V5IGRhbmNlLiIsIm8iOiJLb25vIiwidCI6IiIs
+ImEiOjB9LHsiayI6IklGIFlVIE7JlCBXQU5UIFBBTEFWQSwgTsmUIFBMRSBXSVQgUElLSU4uIiwi
+cCI6IklGIFlVIE5vIFdBTlQgUEFMQVZBLCBObyBQTEUgV0lUIFBJS0lOLiIsImUiOiJJZiB5b3Ug
+ZG9uJ3Qgd2FudCBhbiBhcmd1bWVudCwgZG9uJ3QgcGxheSB3aXRoIGEgY2hpbGQuIiwibyI6Ikty
+aW8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiTllBTkdHQSBERSBTTElQLCBUUsmUQlVMIERF
+IEdPIFdFSyBBTS4iLCJwIjoiTllBTkdHQSBERSBTTElQLCBUUm9CVUwgREUgR08gV0VLIEFNLiIs
+ImUiOiJUaGUgbG91c2Ugc2xlZXBzLCB0cm91YmxlIHdha2VzIGl0LiIsIm8iOiJLcmlvIiwidCI6
+InRyb3VibGUiLCJhIjowfSx7ImsiOiJOQSBUUsmUQlVMIE1FSyBNyZROS0kgSVQgUMmbUMmbLiIs
+InAiOiJOQSBUUm9CVUwgTUVLIE1vTktJIElUIFBlUGUuIiwiZSI6Ikl0J3MgdHJvdWJsZSB0aGF0
+IG1ha2VzIGEgbW9ua2V5IGVhdCBwZXBwZXIuIiwibyI6IktyaW8iLCJ0IjoidHJvdWJsZSIsImEi
+OjB9LHsiayI6IklGIFlVIFNJIEZSyZRHIERFIErJlE1QLUrJlE1QIFNBTlTJm00sIE5BIFPJlE1U
+SU4gREUgQknJm04gQU0uIiwicCI6IklGIFlVIFNJIEZSb0cgREUgSm9NUC1Kb01QIFNBTlRlTSwg
+TkEgU29NVElOIERFIEJJZU4gQU0uIiwiZSI6IklmIHlvdSBzZWUgYSBmcm9nIGhvcHBpbmcgZHVy
+aW5nIHRoZSAoaGVhdCBvZiB0aGUpIGRheSwgdGhlcmUncyBhIHJlYXNvbiBmb3IgaXQuIiwibyI6
+IktyaW8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiSUYgWVUgU0kgTUFOIERFIFLJlE4gSU5T
+QUkgSU4gRFJBSSBSyZtTLCBJRiBOyZRUTyBJTiBERSBSyZROIEFGVEEgU8mUTVRJTiwgV8mbTCBO
+QSBTyZRNVElOIERFIFLJlE4gQUZUQS1SQU0uIiwicCI6IklGIFlVIFNJIE1BTiBERSBSb04gSU5T
+QUkgSU4gRFJBSSBSZVMsIElGIE5vVE8gSU4gREUgUm9OIEFGVEEgU29NVElOLCBXZUwgTkEgU29N
+VElOIERFIFJvTiBBRlRBLVJBTS4iLCJlIjoiSWYgeW91IHNlZSBhIG1hbiBydW5uaW5nIGluc2lk
+ZSBoaXMgZHJ5IChyZWFkeSB0byBoYXJ2ZXN0KSByaWNlLCBpZiBoZSBpc24ndCBydW5uaW5nIGFm
+dGVyIHNvbWV0aGluZyB0aGVuIHNvbWV0aGluZyBpcyBydW5uaW5nIGFmdGVyIGhpbS4iLCJvIjoi
+TWVuZGUiLCJ0IjoiIiwiYSI6MH0seyJrIjoiVFdFTlRJIERFIEbJlCBUSUZNQU4sIFdBTiBERSBG
+yZQgTUFTVEEtT1MgKE9OQSkuIiwicCI6IlRXRU5USSBERSBGbyBUSUZNQU4sIFdBTiBERSBGbyBN
+QVNUQS1PUyAoT05BKS4iLCJlIjoiVHdlbnR5IGRheXMgZm9yIHRoZSB0aGllZiwgb25lIGRheSBm
+b3IgdGhlIG93bmVyLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkdPIElOU0FJIEtX
+SUssIEvJlE3JlFQgS1dJSzogSUYgTcmUVEEtTUFOIE7JlCBTSSBZVSwgTkEgR09TVCBEyZtOIEdP
+IFNFIFlVLiIsInAiOiJHTyBJTlNBSSBLV0lLLCBLb01vVCBLV0lLOiBJRiBNb1RBLU1BTiBObyBT
+SSBZVSwgTkEgR09TVCBEZU4gR08gU0UgWVUuIiwiZSI6IkVudGVyIHF1aWNrbHksIGxlYXZlIHF1
+aWNrbHk6IElmIG5vIG9uZSBzZWVzIHlvdSwgdGhlbiBnaG9zdHMgd2lsbCBzZWUgeW91LiBUaGVy
+ZSBpcyBhbHdheXMgYSB3aXRuZXNzLiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IlRJ
+Rk1BTiBJTiBNyZtSyZtTSU4gTsmUIEhBVCBGyZQgR8mbVCwgTkEgSU4gSEFUIFRSyZRORy4iLCJw
+IjoiVElGTUFOIElOIE1lUmVTSU4gTm8gSEFUIEZvIEdlVCwgTkEgSU4gSEFUIFRSb05HLiIsImUi
+OiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJCQUQgTUFOIELJm1TJmyBQQVMgRU1I
+VEkgQkVELiIsInAiOiJCQUQgTUFOIEJlVGUgUEFTIEVNSFRJIEJFRC4iLCJlIjoiQSBiYWQgaHVz
+YmFuZCBpcyBiZXR0ZXIgdGhhbiBhbiBlbXB0eSBiZWQuIiwibyI6IktyaW8iLCJ0IjoiY29uc2Vx
+dWVuY2UiLCJhIjowfSx7ImsiOiJTSFVCIExJTElCSVQgKFBVU0ggWUFOREEpIFBBUyDJm01USSBC
+RUQuIFwiTW92ZSBvdmVyIGEgbGl0dGxlXCIgaXMgYmV0dGVyIHRoYW4gYW4gZW1wdHkgYmVkLiIs
+InAiOiJTSFVCIExJTElCSVQgKFBVU0ggWUFOREEpIFBBUyBlTVRJIEJFRC4gXCJNb3ZlIG92ZXIg
+YSBsaXR0bGVcIiBpcyBiZXR0ZXIgdGhhbiBhbiBlbXB0eSBiZWQuIiwiZSI6IiIsIm8iOiJLcmlv
+IiwidCI6IiIsImEiOjB9LHsiayI6Ik1BTiBXRSBHyZtUIFdVTUFOLCBJIELJm1TJmyBQQVMgUEFM
+QU1QTy4iLCJwIjoiTUFOIFdFIEdlVCBXVU1BTiwgSSBCZVRlIFBBUyBQQUxBTVBPLiIsImUiOiJB
+IG1hbiB3aXRoIGEgd2lmZSBpcyBiZXR0ZXIgb2ZmIHRoYW4gYSBiYWNoZWxvci4iLCJvIjoiS3Jp
+byIsInQiOiIiLCJhIjoxfSx7ImsiOiJEUklOS01BTiBJTiBXQUzJm1QgTkEgQsmUVFVMLiIsInAi
+OiJEUklOS01BTiBJTiBXQUxlVCBOQSBCb1RVTC4iLCJlIjoiQSBkcnVua2FyZCdzIHdhbGxldCBp
+cyBhIGJvdHRsZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJBIE7JlCBERSBCQUkg
+S0FXIFBBTiBJTiBWT0lTLiIsInAiOiJBIE5vIERFIEJBSSBLQVcgUEFOIElOIFZPSVMuIiwiZSI6
+Ikkgd29uJ3QgYnV5IGEgY293IG9ubHkgYnkgdGhlIHNvdW5kIG9mIGl0cyB2b2ljZS4iLCJvIjoi
+S29ubyIsInQiOiJtb25leSIsImEiOjB9LHsiayI6IkxBSU1BTiBTRSwgSU4gV8mbRiBEyZROIEdP
+IE5BIEZBTS4iLCJwIjoiTEFJTUFOIFNFLCBJTiBXZUYgRG9OIEdPIE5BIEZBTS4iLCJlIjoiVGhl
+IGxpYXIgc2F5cyBoaXMgd2lmZSBoYXMgZ29uZSB0byB0aGUgZmFybS4iLCJvIjoiS29ubyIsInQi
+OiJ3b3JrLHRydXN0IiwiYSI6MH0seyJrIjoiWVUgR8mbVCBUVSBZRVMsIELJlFQgWVUgTsmUIFnJ
+m1JJIFRVIFfJlEQgVFVHyZtEQS4iLCJwIjoiWVUgR2VUIFRVIFlFUywgQm9UIFlVIE5vIFllUkkg
+VFUgV29EIFRVR2VEQS4iLCJlIjoiWW91IGhhdmUgdHdvIGVhcnMsIGJ1dCB5b3UgY2FuJ3QgaGVh
+ciB0d28gd29yZHMgdG9nZXRoZXIuIiwibyI6Iktvbm8iLCJ0IjoiZ29zc2lwLHVuaXR5IiwiYSI6
+MH0seyJrIjoiVMmUSyBTyZRNVElOIFRVIFlFUywgTMmbIEkgWcmbUkksIELJlFQgV0UgWVUgREUg
+VMmUSyBBTSwgSSBERSBLyZRNyZRUIE5BIERJIMmUREEgU0FJLiIsInAiOiJUb0sgU29NVElOIFRV
+IFlFUywgTGUgSSBZZVJJLCBCb1QgV0UgWVUgREUgVG9LIEFNLCBJIERFIEtvTW9UIE5BIERJIG9E
+QSBTQUkuIiwiZSI6IlRhbGsgc29tZXRoaW5nIGZvciB0aGUgZWFyIHRvIGhlYXIsIGJ1dCB3aGVu
+IHlvdSBzYXkgaXQsIGl0IGdvZXMgb3V0IHRoZSBvdGhlciBzaWRlLiBcIkluIG9uZSBlYXIgYW5k
+IG91dCB0aGUgb3RoZXIuXCIiLCJvIjoiS29ubyIsInQiOiJnb3NzaXAiLCJhIjowfSx7ImsiOiJE
+SSBXQVRBIFdFIFlVIFRFSyBGyZQgV0FTLCBOyZRUTyDJlEwgREUgR08gUEFOIFlVLiIsInAiOiJE
+SSBXQVRBIFdFIFlVIFRFSyBGbyBXQVMsIE5vVE8gb0wgREUgR08gUEFOIFlVLiIsImUiOiJOb3Qg
+YWxsIHRoZSB3YXRlciB5b3UgdGFrZSB0byB3YXNoIGdvZXMgb24geW91LiBZb3UgZG9uJ3QgZ2V0
+IGNyZWRpdCBmb3IgZXZlcnl0aGluZyB5b3UgZG8uIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0s
+eyJrIjoiVVNBSSBZVSBUSVQgS8mUTcmUVCwgWVUgVMmUTkcgTsmUIEdPIEvJlE3JlFQgREUuIiwi
+cCI6IlVTQUkgWVUgVElUIEtvTW9ULCBZVSBUb05HIE5vIEdPIEtvTW9UIERFLiIsImUiOiIiLCJv
+IjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJZQUkgTsmUIERFIEvJlE3JlFQgQkFEIFBMRVMg
+KFNBSSkuIiwicCI6IllBSSBObyBERSBLb01vVCBCQUQgUExFUyAoU0FJKS4iLCJlIjoiVGhlIGV5
+ZSBkb2Vzbid0IGxlYXZlIGEgYmFkIHBsYWNlLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsi
+ayI6IkRBTlMgV0UgREUgTUVLIFDJlFNJTiBQyZQsIFlVIE7JlCBHTyBGyZRHyZtUIElOIFNJTkdH
+LiIsInAiOiJEQU5TIFdFIERFIE1FSyBQb1NJTiBQbywgWVUgTm8gR08gRm9HZVQgSU4gU0lOR0cu
+IiwiZSI6IkEgZGFuY2UgdGhhdCBtYWtlcyBhIHBlcnNvbiBwb29yLCB5b3Ugd29uJ3QgZm9yZ2V0
+IHRoZSB0dW5lLiIsIm8iOiJLcmlvIiwidCI6Im1vbmV5LGZhbWlseSIsImEiOjB9LHsiayI6IlRV
+IE1BU1RBIE7JlCBERSBSyZROIFdBTiBTSEFQLiIsInAiOiJUVSBNQVNUQSBObyBERSBSb04gV0FO
+IFNIQVAuIiwiZSI6IlR3byBtYXN0ZXJzIGNhbid0IHJ1biB0aGUgc2FtZSBzaG9wLiIsIm8iOiJL
+b25vIiwidCI6IiIsImEiOjB9LHsiayI6IllVIEtVSyBCSUYsIEkgTsmUIFNXSVQ7IE5BIEJPTiBZ
+VSBHTyBLVUsgV0UgR08gU1dJVD8iLCJwIjoiWVUgS1VLIEJJRiwgSSBObyBTV0lUOyBOQSBCT04g
+WVUgR08gS1VLIFdFIEdPIFNXSVQ/IiwiZSI6IllvdSBjb29rIG1lYXQsIGl0IGRvZXNuJ3QgdGFz
+dGUgZ29vZDsgaWYgeW91IGNvb2sgdGhlIGJvbmUgd2lsbCBpdCB0YXN0ZSBnb29kPyIsIm8iOiJL
+cmlvIiwidCI6IiIsImEiOjB9LHsiayI6IklGIErJm05UUkkgREUgTkEgSMmbVklOLCBEyZtOIEdP
+IFNBQkkgQU0gUEFOIERJIFNJS01BTiBJTiBGRVMuIiwicCI6IklGIEplTlRSSSBERSBOQSBIZVZJ
+TiwgRGVOIEdPIFNBQkkgQU0gUEFOIERJIFNJS01BTiBJTiBGRVMuIiwiZSI6IklmIHRoZXJlIGFy
+ZSByaWNoZXMgaW4gSGVhdmVuLCB5b3Ugd2lsbCBrbm93IGl0IGJ5IHRoZSBzaWNrIHBlcnNvbidz
+IGZhY2UuIiwibyI6Iktvbm8iLCJ0IjoibW9uZXksZmFtaWx5IiwiYSI6MH0seyJrIjoiSUYgWVUg
+UFVUIFRJSyBOQSBIT0wsIEkgS0lOIExBSSBGyZQgWVUsIELJlFQgSUYgWVUgUFVUIFlVIEhBTiBJ
+TlNBSSwgSSBOyZQgR08gTEFJLiIsInAiOiJJRiBZVSBQVVQgVElLIE5BIEhPTCwgSSBLSU4gTEFJ
+IEZvIFlVLCBCb1QgSUYgWVUgUFVUIFlVIEhBTiBJTlNBSSwgSSBObyBHTyBMQUkuIiwiZSI6Iklm
+IHlvdSBwdXQgYSBzdGljayBpbnRvIGEgaG9sZSBpdCBjYW4gZGVjZWl2ZSB5b3UsIGJ1dCBpZiB5
+b3UgcHV0IHlvdXIgaGFuZCBpbnNpZGUgaXQgd29uJ3QgbGllLiIsIm8iOiJNZW5kZSIsInQiOiJ0
+cnVzdCIsImEiOjB9LHsiayI6IlRJTkcgV0UgWVUgTsmUIFTJlEsgyZtOIERVLCBOQS1JTiBOQSBT
+SUtSSVQuIiwicCI6IlRJTkcgV0UgWVUgTm8gVG9LIGVOIERVLCBOQS1JTiBOQSBTSUtSSVQuIiwi
+ZSI6IlNvbWV0aGluZyB5b3UgZG9uJ3QgdGFsayBhbmQgZG8gaXMgYSBzZWNyZXQuIiwibyI6Ik1l
+bmRlIiwidCI6InRydXN0LGdvc3NpcCIsImEiOjB9LHsiayI6IlNORUsgTsmUIERFIELJm1QgUMmU
+U0lOIEJJS8mUUyBJIERFIFRJTkFQIEJJRk8uIiwicCI6IlNORUsgTm8gREUgQmVUIFBvU0lOIEJJ
+S29TIEkgREUgVElOQVAgQklGTy4iLCJlIjoiQSBzbmFrZSBkb2Vzbid0IGJpdGUgYSBwZXJzb24g
+YmVjYXVzZSBoZSBpcyBzdGFuZGluZyBpbiBmcm9udC4iLCJvIjoiTWVuZGUiLCJ0IjoiZmFtaWx5
+IiwiYSI6MH0seyJrIjoiV0FOIFBMQVlBIE7JlCBHTyBFQlVMIFRFSyBUVSBBScmbTiBUVUfJm0RB
+IE5BIEZBWUEuIiwicCI6IldBTiBQTEFZQSBObyBHTyBFQlVMIFRFSyBUVSBBSWVOIFRVR2VEQSBO
+QSBGQVlBLiIsImUiOiJPbmUgcGxpZXJzIGNhbid0IHRha2UgdHdvIGlyb25zIGZyb20gdGhlIGZp
+cmUgYXQgdGhlIHNhbWUgdGltZS4iLCJvIjoiTWVuZGUiLCJ0IjoicGF0aWVuY2UiLCJhIjowfSx7
+ImsiOiJGyZRMIE7JlCBMRSBFRywgSSBTRSBJIERFIEdPIEhBQ0ggQU0uIiwicCI6IkZvTCBObyBM
+RSBFRywgSSBTRSBJIERFIEdPIEhBQ0ggQU0uIiwiZSI6IlRoZSBjaGlja2VuIGhhc24ndCBsYWlk
+IGFuIGVnZywgaXQgc2F5cyBpdCdzIGdvaW5nIHRvIGhhdGNoIGl0LiBcIlB1dHRpbmcgdGhlIGNh
+cnQgYmVmb3JlIHRoZSBob3JzZS5cIiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjowfSx7ImsiOiJM
+yZsgV0kgS0xFTSBISUwsIEzJmyBXRSBJVCBLQU5ZQS4gKEtvbm8gYW5kIE1lbmRlKSIsInAiOiJM
+ZSBXSSBLTEVNIEhJTCwgTGUgV0UgSVQgS0FOWUEuIChLb25vIGFuZCBNZW5kZSkiLCJlIjoiTGV0
+J3MgY2xpbWIgdGhlIGhpbGwgYW5kIGVhdCBrYW55YS4gVGhlbiB3aGF0IHdpbGwgZ2l2ZSB1cyB0
+aGUgc3RyZW5ndGggdG8gY2xpbWIgdGhlIGhpbGw/IFwiUHV0dGluZyB0aGUgY2FydCBiZWZvcmUg
+dGhlIGhvcnNlLlwiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiyZtNVEkgQsmUS0lU
+LCBOQS1JTiBERSBNRUsgUEzJm05USSBOT0lTLiIsInAiOiJlTVRJIEJvS0lULCBOQS1JTiBERSBN
+RUsgUExlTlRJIE5PSVMuIiwiZSI6IkFuIGVtcHR5IGJ1Y2tldCBtYWtlcyBhIGxvdCBvZiBub2lz
+ZS4gXCJBbiBlbXB0eSB2ZXNzZWwgbWFrZXMgdGhlIG1vc3Qgbm9pc2UuXCIiLCJvIjoiTWVuZGUi
+LCJ0IjoiIiwiYSI6MH0seyJrIjoiWVUgR08gU0FCSSBQyZRTSU4gSU4gVFJBSUIgQkFJIERFIFdF
+IEkgREUgS1JBSS4iLCJwIjoiWVUgR08gU0FCSSBQb1NJTiBJTiBUUkFJQiBCQUkgREUgV0UgSSBE
+RSBLUkFJLiIsImUiOiJZb3UgY2FuIHJlY29nbml6ZSBhIHBlcnNvbidzIHRyaWJlIGJ5IHRoZSB3
+YXkgaGUgY3JpZXMuIiwibyI6Ik1lbmRlIiwidCI6ImZhbWlseSIsImEiOjB9LHsiayI6IkbJlEwg
+REUgVEVLIEZST00gSU4gS8mUTVBJTiBGyZRMLiBbRsmUTCBERSBQVUwgRlLJlE0gSU4gS8mUTVBJ
+TiBGyZRMIElOIE3JlFQuXSIsInAiOiJGb0wgREUgVEVLIEZST00gSU4gS29NUElOIEZvTC4gW0Zv
+TCBERSBQVUwgRlJvTSBJTiBLb01QSU4gRm9MIElOIE1vVC5dIiwiZSI6IkEgY2hpY2tlbiB0YWtl
+cyBmcm9tIGhpcyBmZWxsb3cgY2hpY2tlbi4iLCJvIjoiTWVuZGUiLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiWVUgTsmUIFNJRMmUTiwgWVUgV0FOIExFRMmUTjsgWVUgR08gRsmURMmUTi4iLCJwIjoiWVUg
+Tm8gU0lEb04sIFlVIFdBTiBMRURvTjsgWVUgR08gRm9Eb04uIiwiZSI6IllvdSBoYXZlbid0IHNh
+dCBkb3duLCB5b3Ugd2FudCB0byBsaWUgZG93bjsgeW91IHdpbGwgZmFsbCBkb3duLiIsIm8iOiJN
+ZW5kZSIsInQiOiJ0cnVzdCIsImEiOjB9LHsiayI6IkZSyZRHIE7JlCBHyZtUIFdFUyBXRSBJIFnJ
+lE5HOiBXRSBJIE9MLCBJIEdPIEfJm1Q/IiwicCI6IkZSb0cgTm8gR2VUIFdFUyBXRSBJIFlvTkc6
+IFdFIEkgT0wsIEkgR08gR2VUPyIsImUiOiJJZiBhIGZyb2cgZG9lc24ndCBoYXZlIGEgcmVhciB3
+aGVuIGl0cyB5b3VuZywgd2lsbCBpdCBoYXZlIG9uZSB3aGVuIGl0J3Mgb2xkPyIsIm8iOiJLcmlv
+IiwidCI6IiIsImEiOjF9LHsiayI6Ik1BUkVEIFdFIEdPIFNXSVQsIE5BIEZSyZRNIERJIEJBQ0hM
+yZQnUyBJViBZVSBHTyBOTy4iLCJwIjoiTUFSRUQgV0UgR08gU1dJVCwgTkEgRlJvTSBESSBCQUNI
+TG8nUyBJViBZVSBHTyBOTy4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoi
+TUFSRUQgTkEgV0FOIERFOyBDSMmUUCBNyZROSSBOQSDJm1ZSSSBERS4iLCJwIjoiTUFSRUQgTkEg
+V0FOIERFOyBDSG9QIE1vTkkgTkEgZVZSSSBERS4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiV0FOIFRJSyBOyZQgREUgTUVLIEbJlFLJm1NULiIsInAiOiJXQU4gVElLIE5v
+IERFIE1FSyBGb1JlU1QuIiwiZSI6Ik9uZSB0cmVlIGRvZXMgbm90IGEgZm9yZXN0IG1ha2UuIiwi
+byI6Ik1lbmRlIiwidCI6IiIsImEiOjB9LHsiayI6IklGIFlVIE7JlCBMyZtLIERJIEZSVVQsIFlV
+IE7JlCBGyZQgTMmbSyBESSBTSUQuIiwicCI6IklGIFlVIE5vIExlSyBESSBGUlVULCBZVSBObyBG
+byBMZUsgREkgU0lELiIsImUiOiJJZiB5b3UgZG9uJ3QgbGlrZSB0aGUgZnJ1aXQsIHlvdSBzaG91
+bGRuJ3QgbGlrZSB0aGUgc2VlZC4iLCJvIjoiTWVuZGUiLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYg
+WVUgV0FOIEbJlCBGQUlOLCBEyZtOIERFIELJlE4gWVUgV0lUIEFNLiIsInAiOiJJRiBZVSBXQU4g
+Rm8gRkFJTiwgRGVOIERFIEJvTiBZVSBXSVQgQU0uIiwiZSI6IklmIGFyZSBtZWFudCB0byBiZSBo
+YW5kc29tZSwgeW91IGFyZSBib3JuIHRoYXQgd2F5LiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjow
+fSx7ImsiOiJOyZRCyZRESSBOyZQgREUgV0FTIFdBVEEuIiwicCI6Ik5vQm9ESSBObyBERSBXQVMg
+V0FUQS4iLCJlIjoiTm9ib2R5IHdhc2hlcyB3YXRlci4iLCJvIjoiTWVuZGUiLCJ0IjoiY29uc2Vx
+dWVuY2UiLCJhIjowfSx7ImsiOiJZQUkgTkEgV0FUQTogQSBOyZQgREUgRlJFRCBZVSBCSUvJlFMg
+WVUgREUgTFVLIE1JLiIsInAiOiJZQUkgTkEgV0FUQTogQSBObyBERSBGUkVEIFlVIEJJS29TIFlV
+IERFIExVSyBNSS4iLCJlIjoiVGhlIGV5ZSBpcyB3YXRlcjogSSdtIG5vdCBhZnJhaWQgb2YgeW91
+IGJlY2F1c2UgeW91IGdsYXJlIGF0IG1lLiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjowfSx7Imsi
+OiJMyZtQyZtULCBJIERFIE3Jm01CQSBJTiBCQUQgV0FOLCBOQS1JTiBNRUsgSSBOyZQgREUgTEVE
+yZROIE5BIEdSyZROLiIsInAiOiJMZVBlVCwgSSBERSBNZU1CQSBJTiBCQUQgV0FOLCBOQS1JTiBN
+RUsgSSBObyBERSBMRURvTiBOQSBHUm9OLiIsImUiOiJUaGUgbGVvcGFyZCByZW1lbWJlcnMgaGlz
+IGJhZCBkZWVkcywgdGhhdCdzIHdoeSBoZSBkb2Vzbid0IGxpZSBkb3duIG9uIHRoZSBncm91bmQu
+IiwibyI6Ik1lbmRlIiwidCI6InRydXN0IiwiYSI6MH0seyJrIjoiQSBTyZtMIFdBTiBIT0wgS0FX
+LCBBIE7JlCBQUsmURklUOiBOQSBJTiBLQUtBIEdPIE1FSyBBIEdPIFBSyZRGSVQ/IiwicCI6IkEg
+U2VMIFdBTiBIT0wgS0FXLCBBIE5vIFBSb0ZJVDogTkEgSU4gS0FLQSBHTyBNRUsgQSBHTyBQUm9G
+SVQ/IiwiZSI6Ik3Xm05JIE7XmyBERSBBS1MgSU4gS9ebTVBJTiBVU0FJIEkgS9ebTdebVC4gTW9u
+ZXkgZG9lc24ndCBhc2sgYXNrIGl0cyBmZWxsb3cgbW9uZXkgd2hlcmUgaXQgY29tZXMgZnJvbS4i
+LCJvIjoiS3JpbyIsInQiOiJtb25leSIsImEiOjF9LHsiayI6IsmUTCBLQULJlCBOQSBLQULJlC4i
+LCJwIjoib0wgS0FCbyBOQSBLQUJvLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7
+ImsiOiJBSCBEyZROIFPJm0wgOTkgR1JBTkk7IE7JlFRPIE1JIEdSQU5JIElOIFBSQUlTIEFIIE7J
+lCBHTyBTQUJJLiIsInAiOiJBSCBEb04gU2VMIDk5IEdSQU5JOyBOb1RPIE1JIEdSQU5JIElOIFBS
+QUlTIEFIIE5vIEdPIFNBQkkuIiwiZSI6IkkndmUgc29sZCA5OSBvbGQgd29tZW47IEkgY2FuJ3Qg
+ZmFpbCB0byBrbm93IHRoZSBwcmljZSBvZiBteSBncmFuZG1vdGhlci4iLCJvIjoiS3JpbyIsInQi
+OiJtb25leSxmYW1pbHkiLCJhIjoxfSx7ImsiOiJEQUlNQU4gTsmUIERFIEbJm04gTcmUTkksIE5B
+IFfJm0wgQsmUREkgREUgRsmbTiBNyZROSS4iLCJwIjoiREFJTUFOIE5vIERFIEZlTiBNb05JLCBO
+QSBXZUwgQm9ESSBERSBGZU4gTW9OSS4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0s
+eyJrIjoiVURBVCBMQVMgTUFSRUQgT0wgR1JBTkksIE5BLUlOIERFIELJm1ItQU0uIiwicCI6IlVE
+QVQgTEFTIE1BUkVEIE9MIEdSQU5JLCBOQS1JTiBERSBCZVItQU0uIiwiZSI6IlRoZSBvbmUgd2hv
+IGxhc3QgbWFycmllcyBhbiBvbGQgd29tYW4gaXMgdGhlIG9uZSB3aG8gd2lsbCBidXJ5IGhlci4i
+LCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJZVSBHTyBURUsgTkFUQUkgRlJBSSBTVE9O
+LiIsInAiOiJZVSBHTyBURUsgTkFUQUkgRlJBSSBTVE9OLiIsImUiOiIiLCJvIjoiS3JpbyIsInQi
+OiIiLCJhIjowfSx7ImsiOiJFIEtSQUJJVCBMyZtLIFBVTiBCQUsuIiwicCI6IkUgS1JBQklUIExl
+SyBQVU4gQkFLLiIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJKyZtOVFJJ
+IE7JlCBLQU0gQkFJIFRBS0lUSS4iLCJwIjoiSmVOVFJJIE5vIEtBTSBCQUkgVEFLSVRJLiIsImUi
+OiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBBTElHRVRBIFdBTiBJVCBGSVNI
+LCBJIERFIETJlFRJIERJIFdBVEEgRsmUUy4iLCJwIjoiV0UgQUxJR0VUQSBXQU4gSVQgRklTSCwg
+SSBERSBEb1RJIERJIFdBVEEgRm9TLiIsImUiOiJXaGVuIGEgY3JvY29kaWxlIHdhbnRzIHRvIGVh
+dCBmaXNoLCBpdCBmaXJzdCBtdWRkaWVzIHRoZSB3YXRlci4iLCJvIjoiS3JpbyIsInQiOiIiLCJh
+IjowfSx7ImsiOiJJRiBZVSBJVCBCSUYsIFlVIEdPIELJm0xULiBJRiBZVSBJVCBGSVNILCBZVSBH
+TyBCyZtMVC4gSUYgWVUgSVQgUMmUTktJLCBZVSBHTyBCyZtMVC4iLCJwIjoiSUYgWVUgSVQgQklG
+LCBZVSBHTyBCZUxULiBJRiBZVSBJVCBGSVNILCBZVSBHTyBCZUxULiBJRiBZVSBJVCBQb05LSSwg
+WVUgR08gQmVMVC4iLCJlIjoiIiwibyI6IlRlbW5lIiwidCI6IiIsImEiOjB9LHsiayI6Ik5BIFdB
+TiBXVU1BTiBLSU4gUFfJm0wgV0FUQVNBSSBST0QuIiwicCI6Ik5BIFdBTiBXVU1BTiBLSU4gUFdl
+TCBXQVRBU0FJIFJPRC4iLCJlIjoiSXQgb25seSB0YWtlcyBvbmUgd29tYW4gdG8gc3BvaWwgdGhl
+IHdhdGVyc2lkZSBwYXRoLiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IlDJlFNJTiBO
+yZQgREUgTEFOIFBBTiBZVSBNQVJFRCBXVU1BTi4iLCJwIjoiUG9TSU4gTm8gREUgTEFOIFBBTiBZ
+VSBNQVJFRCBXVU1BTi4iLCJlIjoiQSBtYW4gZG9lc24ndCBsZWFybiBvbiB5b3VyIHdpZmUuIiwi
+byI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiSUYgV1VNQU4gQklOIFRBTiBMyZtLIEZVRlUs
+IE1BTiBHTyBGSUwgQU0gQklGTyBJIE1BUkVEIEFNLiIsInAiOiJJRiBXVU1BTiBCSU4gVEFOIExl
+SyBGVUZVLCBNQU4gR08gRklMIEFNIEJJRk8gSSBNQVJFRCBBTS4iLCJlIjoiSWYgYSB3b21hbiB3
+ZXJlIGxpa2UgZnVmdSwgYSBtYW4gY291bGQgZmVlbCBoZXIgYmVmb3JlIGhlIG1hcnJpZWQgaGVy
+LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IklGIE3JlFRBLU1BTiBCSU4gVEFOIEzJ
+m0sgUMmUTktJLCBZVSBGyZQgTkFLIEFNIEbJlCBTSSBTRSBJIEZVTCBCSUZPIFlVIFBJSyBBTS4i
+LCJwIjoiSUYgTW9UQS1NQU4gQklOIFRBTiBMZUsgUG9OS0ksIFlVIEZvIE5BSyBBTSBGbyBTSSBT
+RSBJIEZVTCBCSUZPIFlVIFBJSyBBTS4iLCJlIjoiSWYgYSBodW1hbiBiZWluZyB3ZXJlIGxpa2Ug
+YSBwdW1wa2luLCB5b3UgY291bGQgdGh1bXAgaGltIHRvIHNlZSBpZiBoZSB3YXMgZnVsbCBiZWZv
+cmUgeW91IHBpY2tlZCBoaW0uIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiVEVNTkVN
+QU4gSU4gV0lUTsmbUyBOQSBQQSBLQU1BUkEiLCJwIjoiVEVNTkVNQU4gSU4gV0lUTmVTIE5BIFBB
+IEtBTUFSQSIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJOQSBMyZRWIE1F
+SyBUyZtOIFBJUFVMIElUIEZBWklOIEFLQVJBLiIsInAiOiJOQSBMb1YgTUVLIFRlTiBQSVBVTCBJ
+VCBGQVpJTiBBS0FSQS4iLCJlIjoiSXQncyBsb3ZlIHRoYXQgbWFrZXMgdGVuIHBlb3BsZSBlYXQg
+KHNoYXJlKSIsIm8iOiJLcmlvIiwidCI6ImdyZWVkIiwiYSI6MH0seyJrIjoiTklVIEzJlFYgTsmU
+IFNBQkkgQsmbTiBXRVMuIiwicCI6Ik5JVSBMb1YgTm8gU0FCSSBCZU4gV0VTLiIsImUiOiJOZXcg
+bG92ZSBkb2Vzbid0IG5vdGljZSBhIGNyb29rZWQgcmVhci4gXCJMb3ZlIGlzIGJsaW5kXCIuLi5h
+dCBmaXJzdC4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJOSVUgTMmUViBOyZQgREUg
+TMmbRiBLT0xBIE5BIEhPTC4iLCJwIjoiTklVIExvViBObyBERSBMZUYgS09MQSBOQSBIT0wuIiwi
+ZSI6Ik5ldyBsb3ZlIGRvZXNuJ3QgbGVhdmUgY29sYSBudXRzIGluIGEgaG9sZS4iLCJvIjoiS29u
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJLQUtBIE7JlCBHyZtUIEJPTiwgQsmUVCBXRSBZVSBNQVMg
+QU0sIFlVIEdPIFRJUFRPLiIsInAiOiJLQUtBIE5vIEdlVCBCT04sIEJvVCBXRSBZVSBNQVMgQU0s
+IFlVIEdPIFRJUFRPLiIsImUiOiJTaGl0IGRvZXNuJ3QgaGF2ZSBib25lcywgYnV0IHdoZW4geW91
+IHN0ZXAgb24gaXQgeW91J2xsIHRpcHRvZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjoxfSx7Imsi
+OiJMyZtQyZtUIE7JlCBHyZtUIFNIQVAgVElULCBCyZRUIE5BLUlOIEpBQk9OIFRSyZRORy4iLCJw
+IjoiTGVQZVQgTm8gR2VUIFNIQVAgVElULCBCb1QgTkEtSU4gSkFCT04gVFJvTkcuIiwiZSI6IlRo
+ZSBsZW9wYXJkIGRvZXNuJ3QgaGF2ZSBzaGFycCB0ZWV0aCwgYnV0IGl0cyBqYXcgaXMgc3Ryb25n
+LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlNORUsgTsmUIEfJm1QgQsmUTkRVTC4i
+LCJwIjoiU05FSyBObyBHZVQgQm9ORFVMLiIsImUiOiJBIHNuYWtlIGhhcyBubyBiYWdnYWdlLiIs
+Im8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlRVIFRSyZRCVUwsIFdBTiBHyZRELiIsInAi
+OiJUVSBUUm9CVUwsIFdBTiBHb0QuIiwiZSI6IlR3byB0cm91Ymxlcywgb25lIEdvZC4iLCJvIjoi
+S3JpbyIsInQiOiJ0cm91YmxlIiwiYSI6MH0seyJrIjoiV0VUSU4gR8mURCBEyZROIFBMQU5ULCBZ
+VSBOyZQgR8mbVCBGyZQgV0FUQS1SQU0uIiwicCI6IldFVElOIEdvRCBEb04gUExBTlQsIFlVIE5v
+IEdlVCBGbyBXQVRBLVJBTS4iLCJlIjoiV2hlbiBHb2QgaGFzIHBsYW50ZWQgc29tZXRoaW5nLCB5
+b3UgZG9uJ3QgaGF2ZSB0byB3YXRlciBpdC4iLCJvIjoiVGVtbmUiLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiVURBVCBERSBTRSBJIE7JlCBERSBJVCBLUkFXTywgTkEgSU4gTUFNQSBLVUssIE5BLUlOIE1F
+Sy4iLCJwIjoiVURBVCBERSBTRSBJIE5vIERFIElUIEtSQVdPLCBOQSBJTiBNQU1BIEtVSywgTkEt
+SU4gTUVLLiIsImUiOiJJZiBhIHBlcnNvbiByZWZ1c2VzIHRvIGVhdCBrcmF3byAoYnVybmVkIHJp
+Y2UpLCBpdCdzIGJlY2F1c2UgaGlzIG1vdGhlciBjb29rZWQgaXQuIiwibyI6IlRlbW5lIiwidCI6
+ImZhbWlseSIsImEiOjB9LHsiayI6IkdPVCBXRSBZVSBOTyBTRSBZVSBHyZtUIEbJlCBUT1QgQU0g
+KEjJm05HRyBBTSBOQSBZVSBTSE9MREEpLCBOyZQgV0VUIEzJmyBJIFLJlEIgUMmUVMmULVDJlFTJ
+lCAoTkEgSU4gQsmUREkpLiIsInAiOiJHT1QgV0UgWVUgTk8gU0UgWVUgR2VUIEZvIFRPVCBBTSAo
+SGVOR0cgQU0gTkEgWVUgU0hPTERBKSwgTm8gV0VUIExlIEkgUm9CIFBvVG8tUG9UbyAoTkEgSU4g
+Qm9ESSkuIiwiZSI6IklmIHlvdSBrbm93IHlvdSBoYXZlIHRvIGNhcnJ5IGEgZ29hdCwgZG9uJ3Qg
+d2FpdCBmb3IgaXQgdG8gcnViIGluIHRoZSBtdWQuIiwibyI6IlRlbW5lIiwidCI6InBhdGllbmNl
+IiwiYSI6MH0seyJrIjoiREkgVMmbTSBXRSBZVSBQQSBERSwgTkEgREkgVMmbTSBXRSBZVSBGyZQg
+U0hPIEJJRyBHQVdOLiBXRSBJIERBSSBOQVcsIFlVIEdPIEVCVUwgS8mUVCBBTSBNRUsgU0jJlFQg
+VFLJlFNJUy4iLCJwIjoiREkgVGVNIFdFIFlVIFBBIERFLCBOQSBESSBUZU0gV0UgWVUgRm8gU0hP
+IEJJRyBHQVdOLiBXRSBJIERBSSBOQVcsIFlVIEdPIEVCVUwgS29UIEFNIE1FSyBTSG9UIFRSb1NJ
+Uy4iLCJlIjoiIiwibyI6IlRlbW5lIiwidCI6IiIsImEiOjB9LHsiayI6IldFIFlVIFnJm1JJIFdB
+VEEgREUgSEFMQSwgU8mUTVRJTiBERSDJlE5EQS4iLCJwIjoiV0UgWVUgWWVSSSBXQVRBIERFIEhB
+TEEsIFNvTVRJTiBERSBvTkRBLiIsImUiOiJXaGVuIHlvdSBoZWFyIHdhdGVyIHJvYXJpbmcsIHNv
+bWV0aGluZyBpcyB1bmRlciBpdC4iLCJvIjoiVGVtbmUiLCJ0IjoiIiwiYSI6MH0seyJrIjoiWVUg
+R08gVEFZQSBQQU4gS0FTQURBIERJIFTJm00gV0UgWVUgREUgUExBTlQgQU0uIChXRSBZVSBERSBQ
+TEFOVCBLQVNBREEsIE5BIERJIFTJm00gV0UgWVUgR08gVEFZQSBGyZQgUFVMIEFNLikiLCJwIjoi
+WVUgR08gVEFZQSBQQU4gS0FTQURBIERJIFRlTSBXRSBZVSBERSBQTEFOVCBBTS4gKFdFIFlVIERF
+IFBMQU5UIEtBU0FEQSwgTkEgREkgVGVNIFdFIFlVIEdPIFRBWUEgRm8gUFVMIEFNLikiLCJlIjoi
+IiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiWVUgV0FOIChEyZROKSBJVCBESSBGyZRM
+IFdJVCBJTiBFRz8iLCJwIjoiWVUgV0FOIChEb04pIElUIERJIEZvTCBXSVQgSU4gRUc/IiwiZSI6
+IllvdSB3YW50IHRvIGVhdCB0aGUgY2hpY2tlbiBhbG9uZyB3aXRoIGl0cyBlZ2c/IEEgcmVmZXJl
+bmNlIHRvIGhhdmluZyBhIHJlbGF0aW9uc2hpcCB3aXRoIGJvdGggYSB3b21hbiBhbmQgaGVyIGRh
+dWdodGVyLikiLCJvIjoiS3JpbyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJMScmUTiBOyZQg
+R8mbVCBIyZROLCBCyZRUIEkgREUgS0VDSCBCSUYgRMmbTiBXRSBHyZtUIEjJlE4uIiwicCI6IkxJ
+b04gTm8gR2VUIEhvTiwgQm9UIEkgREUgS0VDSCBCSUYgRGVOIFdFIEdlVCBIb04uIiwiZSI6IlRo
+ZSBsaW9uIGhhcyBubyBob3JucywgYnV0IGl0IGNhdGNoZXMgYW5pbWFscyB3aGljaCBoYXZlIGhv
+cm5zLiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkZMQUkgV0UgREUgRkFTSElOIFBB
+TiBEyZtEIELJlERJLCBOQSBEyZtOIFRVIETJm04gR08gQsmbUkkuIiwicCI6IkZMQUkgV0UgREUg
+RkFTSElOIFBBTiBEZUQgQm9ESSwgTkEgRGVOIFRVIERlTiBHTyBCZVJJLiIsImUiOiJJZiBhIGZs
+eSBpbnNpc3RzIG9uIHJlbWFpbmluZyBvbiBhIGRlYWQgYm9keSwgdGhleSdsbCBidXJ5IGJvdGgg
+b2YgdGhlbSB0b2dldGhlci4gSWYgeW91IGpvaW4gYmFkIGNvbXBhbmlvbnMsIHRoZXkgd2lsbCBk
+cmFnIHlvdSBkb3duIHdpdGggdGhlbS4iLCJvIjoiS29ubyIsInQiOiJ1bml0eSIsImEiOjB9LHsi
+ayI6IkzJmyDJlExNQU4gUEFEVUwgSU4gWU9OIEtFTlUuIiwicCI6IkxlIG9MTUFOIFBBRFVMIElO
+IFlPTiBLRU5VLiIsImUiOiJMZXQgZXZlcnlvbmUgcGFkZGxlIGhpcyBvd24gY2Fub2UuIiwibyI6
+Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiTkEgV0FOLVfJlEQgS0lOIFBMSVQgS09MQS4iLCJw
+IjoiTkEgV0FOLVdvRCBLSU4gUExJVCBLT0xBLiIsImUiOiJVbml0eSAoYWdyZWVtZW50KSBjYW4g
+c3BsaXQgYSBjb2xhIG51dC4iLCJvIjoiS3JpbyIsInQiOiJ1bml0eSIsImEiOjB9LHsiayI6IldB
+VEEgTsmUIEdPIEbJlEfJm1QgSU4gT0xEIFJPRC4iLCJwIjoiV0FUQSBObyBHTyBGb0dlVCBJTiBP
+TEQgUk9ELiIsImUiOiJXYXRlciBuZXZlciBmb3JnZXRzIGl0cyBvbGQgYmVkLiIsIm8iOiJLb25v
+IiwidCI6ImNvbnNlcXVlbmNlIiwiYSI6MH0seyJrIjoiTsmUIERBSSBCSUZPIFlVIFTJm00uIiwi
+cCI6Ik5vIERBSSBCSUZPIFlVIFRlTS4iLCJlIjoiRG9uJ3QgZGllIGJlZm9yZSB5b3VyIHRpbWUu
+IiwibyI6Iktvbm8iLCJ0IjoicGF0aWVuY2UiLCJhIjowfSx7ImsiOiJOyZQgS8mUTCBEyZRHIFdF
+IFlVIEfJm1QgVElLIE5BIFlVIEhBTi4iLCJwIjoiTm8gS29MIERvRyBXRSBZVSBHZVQgVElLIE5B
+IFlVIEhBTi4iLCJlIjoiRG9uJ3QgY2FsbCBhIGRvZyB3aGVuIHlvdSBoYXZlIGEgc3RpY2sgaW4g
+eW91ciBoYW5kLiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkbJlCBQVVQgSEFOIMmU
+TkRBIELJlExTLCBOQSBGyZQgUsmbU1DJm1QsIELJlFQgSSBOyZQgTUlOIFNFIElGIFlVIFBVTCBZ
+VSBIQU4gREUsIEkgR08gS8mUVC4iLCJwIjoiRm8gUFVUIEhBTiBvTkRBIEJvTFMsIE5BIEZvIFJl
+U1BlVCwgQm9UIEkgTm8gTUlOIFNFIElGIFlVIFBVTCBZVSBIQU4gREUsIEkgR08gS29ULiIsImUi
+OiJUbyBwdXQgeW91ciBoYW5kIG92ZXIgeW91ciB0ZXN0aWNsZXMgKHdoZW4gd2FzaGluZykgaXMg
+Zm9yIHlvdXIgc2VsZiByZXNwZWN0LCBidXQgdGhhdCBkb2Vzbid0IG1lYW4gdGhhdCBpZiB5b3Ug
+dGFrZSB5b3VyIGhhbmQgYXdheSB0aGV5J2xsIGZhbGwgb2ZmLiIsIm8iOiJLb25vIiwidCI6IiIs
+ImEiOjF9LHsiayI6IldFIFlVIFdFUCBZVSBCQUtTQUkgUEFOIFRJSyDJm04gSE9MIERJIFRJSyBC
+ScmbTiBZVSwgSSBOyZQgTUlOIFNFIElGIFlVIE7JlCBIT0wgREkgVElLLCBESSBUSUsgR08gRsmU
+RMmUTi4iLCJwIjoiV0UgWVUgV0VQIFlVIEJBS1NBSSBQQU4gVElLIGVOIEhPTCBESSBUSUsgQkll
+TiBZVSwgSSBObyBNSU4gU0UgSUYgWVUgTm8gSE9MIERJIFRJSywgREkgVElLIEdPIEZvRG9OLiIs
+ImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjoxfSx7ImsiOiJURUsgRFJBSS1ZQUkgS8mUQkEg
+U0hFTS4iLCJwIjoiVEVLIERSQUktWUFJIEtvQkEgU0hFTS4iLCJlIjoiVHJ5aW5nIHRvIGJyYXpl
+biBpdCBvdXQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYgWVUgV0FOIFdFVCBG
+yZQgU0FOLCBTSUTJlE4gTklBIEZBWUEuIiwicCI6IklGIFlVIFdBTiBXRVQgRm8gU0FOLCBTSURv
+TiBOSUEgRkFZQS4iLCJlIjoiSWYgeW91IHdhbnQgdG8gYXdhaXQgdGhlIHN1bnJpc2UsIHNpdCBu
+ZWFyIHRoZSBmaXJlLiBJZiB5b3Ugd2FudCB0byBhY2hpZXZlIHNvbWV0aGluZywgeW91IGhhdmUg
+dG8gc3VmZmVyIGZpcnN0LiIsIm8iOiJLb25vIiwidCI6InBhdGllbmNlIiwiYSI6MH0seyJrIjoi
+VMmUTMmUTiBNQU4gS0lOIEZJTCBBTSwgQsmUVCBJIE7JlCBHTyBCSSBMyZtLIELJlExIRUQgUMmU
+U0lOLiIsInAiOiJUb0xvTiBNQU4gS0lOIEZJTCBBTSwgQm9UIEkgTm8gR08gQkkgTGVLIEJvTEhF
+RCBQb1NJTi4iLCJlIjoiQSBtYW4gd2l0aCBhIHNoYXZlZCBoZWFkIGNhbiBzdWZmZXIsIGJ1dCBp
+dCdzIG5vdCBsaWtlIGEgYmFsZCBwZXJzb24uIiwibyI6Iktvbm8iLCJ0IjoiZmFtaWx5IiwiYSI6
+MH0seyJrIjoiV0FLQULJlFQgQklGLCBOQS1JTiBLSU4gQlJJTkdHIFNXSVQgRlJVVC4iLCJwIjoi
+V0FLQUJvVCBCSUYsIE5BLUlOIEtJTiBCUklOR0cgU1dJVCBGUlVULiIsImUiOiJBbiBhbmltYWwg
+dGhhdCByb2FtcyBjYW4gYnJpbmcgZGVsaWNpb3VzIGZydWl0LiIsIm8iOiJLb25vIiwidCI6IiIs
+ImEiOjB9LHsiayI6IkbJlCBQVVQgWVUgSEFOIFBBTiBZVSBLyZRNUElOIElOIFPJlExEQSBOQSBE
+QU5TLCBOQSBHTEFESU7Jm1MsIELJlFQgSSBOyZQgTUlOIFNFIElGIFlVIE7JlCBQVVQgWVUgSEFO
+IFBBTiBJTiBTyZRMREEsIERJIERBTlMgTsmUIEdPIELJm1TJmy4iLCJwIjoiRm8gUFVUIFlVIEhB
+TiBQQU4gWVUgS29NUElOIElOIFNvTERBIE5BIERBTlMsIE5BIEdMQURJTmVTLCBCb1QgSSBObyBN
+SU4gU0UgSUYgWVUgTm8gUFVUIFlVIEhBTiBQQU4gSU4gU29MREEsIERJIERBTlMgTm8gR08gQmVU
+ZS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiQklHIE1BTiBTQUJJIFTJ
+m04gS09MQSBCyZRORFVMLiIsInAiOiJCSUcgTUFOIFNBQkkgVGVOIEtPTEEgQm9ORFVMLiIsImUi
+OiJBIGJpZyBtYW4ga25vd3MgYSB0ZW4tY29sYSBudXQgYnVuZGxlLiIsIm8iOiJLb25vIiwidCI6
+InByaWRlIiwiYSI6MH0seyJrIjoiQklHIE1BTiBTQUJJIERJIFLJm1MgV0UgR08gQsmbTMmbRlVM
+IEFNIElOU0FJIFDJlFQuIiwicCI6IkJJRyBNQU4gU0FCSSBESSBSZVMgV0UgR08gQmVMZUZVTCBB
+TSBJTlNBSSBQb1QuIiwiZSI6IkEgYmlnIG1hbiBrbm93cyB0aGUgcmljZSB0aGF0IHdpbGwgZmls
+bCBoaW0gdXAgd2hpbGUgaXQncyBzdGlsbCBpbnNpZGUgdGhlIHBvdC4iLCJvIjoiS29ubyIsInQi
+OiJwcmlkZSIsImEiOjB9LHsiayI6Ik7JlCBTyZtOIFNUT04gVVNBSSBNQU4gRMmUTiBIQUlEIElO
+IEtMRSBQyZRULiAoS29ubykgW1DJlFNJTiBOyZQgREUgRsmbTiBLTEUgUMmUVCBXSVQgU1RPTi4g
+KE1lbmRlKV0iLCJwIjoiTm8gU2VOIFNUT04gVVNBSSBNQU4gRG9OIEhBSUQgSU4gS0xFIFBvVC4g
+KEtvbm8pIFtQb1NJTiBObyBERSBGZU4gS0xFIFBvVCBXSVQgU1RPTi4gKE1lbmRlKV0iLCJlIjoi
+IiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiU1RPTiBXRSBERSBSyZRMIE7JlCBHTyBF
+QlVMIFBVTCBTVE9OIFdFIEZBU0hJTiBOQSBHUsmUTiwgQklLyZRTIE5BIERFIEkgTUlUIEFNLiIs
+InAiOiJTVE9OIFdFIERFIFJvTCBObyBHTyBFQlVMIFBVTCBTVE9OIFdFIEZBU0hJTiBOQSBHUm9O
+LCBCSUtvUyBOQSBERSBJIE1JVCBBTS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0s
+eyJrIjoiU05FTCBEyZtOLCBOQSBLT1JBTktPIEvJlE5UUkkgRMmbTiBLSU4gQkzJlEYgKFwiRsmU
+TVwiKSIsInAiOiJTTkVMIERlTiwgTkEgS09SQU5LTyBLb05UUkkgRGVOIEtJTiBCTG9GIChcIkZv
+TVwiKSIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJQSUtJTiBTRSwgXCJB
+IFNJIETJm04gREUgUEFTLCBCyZRUIFdJVCBDSMmbUiBNQVRBIE5BIETJm04gSEVEP1wiIiwicCI6
+IlBJS0lOIFNFLCBcIkEgU0kgRGVOIERFIFBBUywgQm9UIFdJVCBDSGVSIE1BVEEgTkEgRGVOIEhF
+RD9cIiIsImUiOiJUaGUgY2hpbGQgc2F5cywgXCJJIHNhdyBoaW0gcGFzcywgYnV0IHdpdGggYSB0
+b3JuIG1hdCBvbiBoaXMgaGVhZD9cIiAoQSByZWZlcmVuY2UgdG8gYW4gaW5kaXNjcmVldCBwZXJz
+b24gd2hvIGdpdmVzIG1vcmUgaW5mb3JtYXRpb24gdGhhbiBpcyByZXF1ZXN0ZWQuKSIsIm8iOiJL
+cmlvIiwidCI6ImZhbWlseSIsImEiOjB9LHsiayI6IlBJS0lOIERFIFBMQVcgUsmbUyBJRiBJIE1J
+VMmUUCBQTEVTIFdFIElOIE1BTUEgSU4gQk9JRlLJm04gRMmUTiBLTElBLiIsInAiOiJQSUtJTiBE
+RSBQTEFXIFJlUyBJRiBJIE1JVG9QIFBMRVMgV0UgSU4gTUFNQSBJTiBCT0lGUmVOIERvTiBLTElB
+LiIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjoxfSx7ImsiOiJZVSBHTyBEUsmbQiBNSSBC
+SUZPIFlVIEhPUywgQsmUVCBZVSBOyZQgR08gRFLJm0IgTUkgQklGTyBZVSBHUkVWLiIsInAiOiJZ
+VSBHTyBEUmVCIE1JIEJJRk8gWVUgSE9TLCBCb1QgWVUgTm8gR08gRFJlQiBNSSBCSUZPIFlVIEdS
+RVYuIiwiZSI6IllvdSBjYW4gZHJpdmUgbWUgYXdheSBmcm9tIHlvdXIgaG91c2UsIGJ1dCB5b3Ug
+d29uJ3QgYmUgYWJsZSB0byBkcml2ZSBtZSBhd2F5IGZyb20geW91ciBncmF2ZS4iLCJvIjoiS29u
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJUSU5HIFdFIE7JlCBHyZtUIEhFRCwgSSBOyZQgR8mbVCBU
+RUwsIE5BIEbJlCBOQUsgTUlEVUwuIiwicCI6IlRJTkcgV0UgTm8gR2VUIEhFRCwgSSBObyBHZVQg
+VEVMLCBOQSBGbyBOQUsgTUlEVUwuIiwiZSI6IklmIGEgdGhpbmcgZG9lc24ndCBoYXZlIGEgaGVh
+ZCBhbmQgaXQgZG9lc24ndCBoYXZlIGEgdGFpbCwga25vY2sgaXQgaW4gdGhlIG1pZGRsZS4iLCJv
+IjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJCSUYgV0UgRsmUIERBSSwgSSBOyZQgREUgWcmb
+UkkgV0lTSFVMLiIsInAiOiJCSUYgV0UgRm8gREFJLCBJIE5vIERFIFllUkkgV0lTSFVMLiIsImUi
+OiJBbiBhbmltYWwgd2hpY2ggaXMgZGVzdGluZWQgdG8gZGllIGRvZXNuJ3QgaGVhciBhIHdoaXN0
+bGUuIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYgRMmbTiBUyZtMIFBJS0lOIFNF
+IEtBS0EgREUgUEFOIEJBTkdHQSwgSSBTRSBJIE7JlCBSSUNIIFBBTiBESSBTSUQuIiwicCI6IklG
+IERlTiBUZUwgUElLSU4gU0UgS0FLQSBERSBQQU4gQkFOR0dBLCBJIFNFIEkgTm8gUklDSCBQQU4g
+REkgU0lELiIsImUiOiJJZiB0aGV5IHRlbGwgYSBjaGlsZCB0aGF0IHRoZXJlIGlzIHNoaXQgb24g
+YSBwYWxtIGtlcm5lbCwgaGUgc2F5cyBpdCBkb2Vzbid0IHJlYWNoIHRvIHRoZSBzZWVkLiIsIm8i
+OiJLb25vIiwidCI6ImZhbWlseSIsImEiOjF9LHsiayI6IklGIFBJS0lOIFNFIE5BIElOIE5FTSBC
+QU5BTkEgTElGLCBXRSBCUklaIEvJlE3JlFQsIFVOQSBMyZtGIEFNLiIsInAiOiJJRiBQSUtJTiBT
+RSBOQSBJTiBORU0gQkFOQU5BIExJRiwgV0UgQlJJWiBLb01vVCwgVU5BIExlRiBBTS4iLCJlIjoi
+SWYgYSBjaGlsZCBzYXlzIGhpcyBuYW1lIGlzIEJhbmFuYSBMZWFmLCB3aGVuIGEgd2luZCBjb21l
+cyB1cCwgZHJvcCBoaW0uIiwibyI6Iktvbm8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiV0Ug
+SMmUTkkgR08gSU5TQUkgWVUgRlVULCBJRiBZVSBMyZtGIEFNIERFLCBZVSBEyZROIEzJm0YgSMmU
+TkkgT0lMIERFOyBJRiBZVSBQVUwgQU0sIFlVIETJlE4gUFfJm0wgWVUgRlVULiIsInAiOiJXRSBI
+b05JIEdPIElOU0FJIFlVIEZVVCwgSUYgWVUgTGVGIEFNIERFLCBZVSBEb04gTGVGIEhvTkkgT0lM
+IERFOyBJRiBZVSBQVUwgQU0sIFlVIERvTiBQV2VMIFlVIEZVVC4iLCJlIjoiV2hlbiBhIGJlZSBn
+b2VzIGluc2lkZSB5b3VyIGZvb3QsIGlmIHlvdSBsZWF2ZSBpdCB0aGVyZSB5b3UndmUgbGVmdCBo
+b25leSB0aGVyZTsgaWYgeW91IHJlbW92ZSBpdCwgeW91J3ZlIHNwb2lsZWQgeW91ciBmb290LiIs
+Im8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkJJRk8gUElLSU4gUExFIFdJVEggQklHIFDJ
+lFQgTkEgRkFZQSwgUExFIFdJVCBZVSBCyZtMyZsuIiwicCI6IkJJRk8gUElLSU4gUExFIFdJVEgg
+QklHIFBvVCBOQSBGQVlBLCBQTEUgV0lUIFlVIEJlTGUuIiwiZSI6IkJlZm9yZSBhIGNoaWxkIHBs
+YXlzIHdpdGggdGhlIGJpZyBwb3Qgb24gdGhlIGZpcmUsIHBsYXkgd2l0aCB5b3VyIGJlbGx5Llwi
+IiwibyI6Iktvbm8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiUMmUU0lOIFdFIFNORUsgSU4g
+SEVEIE7JlCBERSBUVSwgTkEtSU4gREUgU0UgXCJTSEVLIEFNLlwiIiwicCI6IlBvU0lOIFdFIFNO
+RUsgSU4gSEVEIE5vIERFIFRVLCBOQS1JTiBERSBTRSBcIlNIRUsgQU0uXCIiLCJlIjoiVGhlIHBl
+cnNvbiB3aG8ncyBub3Qgc3RhbmRpbmcgbmVhciB0aGUgc25ha2UncyBoZWFkIGlzIHRoZSBvbmUg
+d2hvIHNheXMgXCJzaGFrZSBpdC5cIiIsIm8iOiJLb25vIiwidCI6ImZhbWlseSIsImEiOjB9LHsi
+ayI6Ik5BIEtSRVNNQU4gREUgVEVLIEJBRCBCVVNIIFlBTVMgTkEgSEFOR1JJIFNJWklOLiIsInAi
+OiJOQSBLUkVTTUFOIERFIFRFSyBCQUQgQlVTSCBZQU1TIE5BIEhBTkdSSSBTSVpJTi4iLCJlIjoi
+QSBtYWRtYW4gZ2F0aGVycyBiYWQgYnVzaCB5YW1zIGluIHRoZSBodW5ncnkgc2Vhc29uLiIsIm8i
+OiJLb25vIiwidCI6ImZhbWlseSx0cm91YmxlIiwiYSI6MH0seyJrIjoiSUYgUElLSU4gU0UsIFwi
+TkEgWUEgV0UgREUgTEUgRkFNIERJUyBZSUEsXCIgSUYgSSBOyZQgWcmbUkkgQU0gRlLJlE0gSU4g
+UEFQQSwgSSBHTyBEyZROIFnJm1JJIEFNIEZSyZRNIElOIE1BTUEuIiwicCI6IklGIFBJS0lOIFNF
+LCBcIk5BIFlBIFdFIERFIExFIEZBTSBESVMgWUlBLFwiIElGIEkgTm8gWWVSSSBBTSBGUm9NIElO
+IFBBUEEsIEkgR08gRG9OIFllUkkgQU0gRlJvTSBJTiBNQU1BLiIsImUiOiJJZiBhIGNoaWxkIHNh
+eXMgXCJUaGlzIGlzIHdoZXJlIHdlJ2xsIG1ha2UgYSBmYXJtIHRoaXMgeWVhcixcIiBpZiBoZSBk
+aWRuJ3QgaGVhciBpdCBmcm9tIGhpcyBmYXRoZXIgaGUgd2lsbCBoYXZlIGhlYXJkIGl0IGZyb20g
+aGlzIG1vdGhlci4iLCJvIjoiS29ubyIsInQiOiJ3b3JrLGZhbWlseSIsImEiOjB9LHsiayI6IklG
+IEJBTUJVIFdBTiBEQUksIEkgREUgUklDSCBLV0lLIEbJlCBLyZRUIChJIERFIFBVTCBGyZQgUkFG
+SUEpLiIsInAiOiJJRiBCQU1CVSBXQU4gREFJLCBJIERFIFJJQ0ggS1dJSyBGbyBLb1QgKEkgREUg
+UFVMIEZvIFJBRklBKS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYg
+V0FUQSBXQU4gRFJBSSwgSSBERSBGVUzJlFAgRsmUUy4iLCJwIjoiSUYgV0FUQSBXQU4gRFJBSSwg
+SSBERSBGVUxvUCBGb1MuIiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IklG
+IFlBSSBXQU4gQsmUUywgSSBERSBUyZRNyZtOVCBGyZRTLiIsInAiOiJJRiBZQUkgV0FOIEJvUywg
+SSBERSBUb01lTlQgRm9TLiIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJJ
+RiBEyZtOIFTJm0wgUElLSU4gRsmUIFBVVCBJTiBIQU4gTkEgSU4gQkFEIFNBSSwgSSBERSBQVVQg
+QU0gUEFOIElOIEJBS1NBSS4iLCJwIjoiSUYgRGVOIFRlTCBQSUtJTiBGbyBQVVQgSU4gSEFOIE5B
+IElOIEJBRCBTQUksIEkgREUgUFVUIEFNIFBBTiBJTiBCQUtTQUkuIiwiZSI6IiIsIm8iOiJLb25v
+IiwidCI6IiIsImEiOjF9LHsiayI6IlNBTiBLUkFCIE7JlCBOTyBTRSBJIEhBVCBGyZQgS0FLQSwg
+TkEtSU4gTUVLIMmUTFdFUyBJIERFIFLJlEwgREkgS0FLQSBOQSBCSUNILiIsInAiOiJTQU4gS1JB
+QiBObyBOTyBTRSBJIEhBVCBGbyBLQUtBLCBOQS1JTiBNRUsgb0xXRVMgSSBERSBSb0wgREkgS0FL
+QSBOQSBCSUNILiIsImUiOiJBIHNhbmQgY3JhYiBkb2Vzbid0IGtub3cgaG93IGhhcmQgaXQgaXMg
+dG8gc2hpdCwgYW5kIHRoYXQncyB3aHkgaXQgYWx3YXlzIHJvbGxzIGl0cyBzaGl0IG9uIHRoZSBi
+ZWFjaC4iLCJvIjoiVGVtbmUiLCJ0IjoiIiwiYSI6MX0seyJrIjoiRsmUTCBXRSBOyZQgWcmbUkkg
+XCJTU1NUXCIgR08gWcmbUkkgU1RPTi4iLCJwIjoiRm9MIFdFIE5vIFllUkkgXCJTU1NUXCIgR08g
+WWVSSSBTVE9OLiIsImUiOiJBIGNoaWNrZW4gd2hvIGRvZXNuJ3QgaGVhciBcInNzc3RcIiB3aWxs
+IGhlYXIgYSBzdG9uZS4iLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJCyZREIFdFIERF
+IFTJlEsgTsmUIERFIElUIFLJm1MuIiwicCI6IkJvRCBXRSBERSBUb0sgTm8gREUgSVQgUmVTLiIs
+ImUiOiJBIGJpcmQgdGhhdCB0YWxrcyBkb2Vzbid0IGVhdCByaWNlLiIsIm8iOiJLcmlvIiwidCI6
+Imdvc3NpcCIsImEiOjB9LHsiayI6IldBVEEgTsmUIERFIErJlE1QIEhPTC4iLCJwIjoiV0FUQSBO
+byBERSBKb01QIEhPTC4iLCJlIjoiV2F0ZXIgZG9lc24ndCBqdW1wIG92ZXIgYSBob2xlLiBJdCdz
+IG15IHR1cm4uIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiV0UgS0FXIFNFIEkgREUg
+UFfJm0wgUk9ELCBOQSBJTiBCQUtTQUkgSSBERSBQV8mbTC4iLCJwIjoiV0UgS0FXIFNFIEkgREUg
+UFdlTCBST0QsIE5BIElOIEJBS1NBSSBJIERFIFBXZUwuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6
+IiIsImEiOjF9LHsiayI6IlNBRlVMLVNBRlVMLCBOQS1JTiBERSBLRUNIIE3JlE5LSS4iLCJwIjoi
+U0FGVUwtU0FGVUwsIE5BLUlOIERFIEtFQ0ggTW9OS0kuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6
+IiIsImEiOjB9LHsiayI6IsmbTElGQU5UIEhFRCBOyZRUTyBQSUtJTiBMT0QuIiwicCI6ImVMSUZB
+TlQgSEVEIE5vVE8gUElLSU4gTE9ELiIsImUiOiJBbiBlbGVwaGFudCBoZWFkIGlzIG5vdCBhIGxv
+YWQgZm9yIGEgY2hpbGQuIiwibyI6IktyaW8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiS09M
+QSBLyZRNyZRUIE5BIE3JlFQsIEkgRsmURMmUTiBOQSBQyZRLSVQuIiwicCI6IktPTEEgS29Nb1Qg
+TkEgTW9ULCBJIEZvRG9OIE5BIFBvS0lULiIsImUiOiJUaGUgY29sYSBudXQgZmFsbHMgb3V0IG9m
+IHRoZSBtb3V0aCwgaXQgZHJvcHMgaW50byB0aGUgcG9ja2V0LiIsIm8iOiJLcmlvIiwidCI6Imdv
+c3NpcCIsImEiOjB9LHsiayI6IlDJlFNJTiBOyZQgR08gVEVLIFRPTiBTS8mbRCBCyZtMyZsgV1VN
+QU4sIEJJS8mUUyBJIETJlE4gyZRSyZtESSBHSSBBTSBJTiBNQUsuIiwicCI6IlBvU0lOIE5vIEdP
+IFRFSyBUT04gU0tlRCBCZUxlIFdVTUFOLCBCSUtvUyBJIERvTiBvUmVESSBHSSBBTSBJTiBNQUsu
+IiwiZSI6IllvdSBjYW4ndCBmcmlnaHRlbiBhIHByZWduYW50IHdvbWFuIHdpdGggYSBwZW5pcywg
+YmVjYXVzZSBpdCdzIGFscmVhZHkgbGVmdCBpdHMgbWFyayBvbiBoZXIuIiwibyI6IktyaW8iLCJ0
+IjoiIiwiYSI6MX0seyJrIjoiTcmUTktJIE7JlCBERSBUyZtMIElOIFBJS0lOLCBcIkhPTCBNSVwi
+IFdFIEkgV0FOIErJlE1QLiBbTcmUTktJIE7JlCBERSBUyZtMIElOIFBJS0lOLCBcIkhPTCBUQUlU
+LCBMVUsgRMmUTi5cIl0iLCJwIjoiTW9OS0kgTm8gREUgVGVMIElOIFBJS0lOLCBcIkhPTCBNSVwi
+IFdFIEkgV0FOIEpvTVAuIFtNb05LSSBObyBERSBUZUwgSU4gUElLSU4sIFwiSE9MIFRBSVQsIExV
+SyBEb04uXCJdIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlDJlFNJTiBO
+yZQgR08gUsmUTiwgSSBERSBLUkFDSCBJTiBXRVMuIiwicCI6IlBvU0lOIE5vIEdPIFJvTiwgSSBE
+RSBLUkFDSCBJTiBXRVMuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjF9LHsiayI6IkJJ
+RyBNQU4gQklHSU4gSVQgRklTSCBQQU4gREkgVEVMLCBXRVRJTiBQSUtJTiBHTyBHyZtUPyIsInAi
+OiJCSUcgTUFOIEJJR0lOIElUIEZJU0ggUEFOIERJIFRFTCwgV0VUSU4gUElLSU4gR08gR2VUPyIs
+ImUiOiJJZiBhbiBhZHVsdCBiZWdpbnMgZWF0aW5nIGEgZmlzaCBmcm9tIHRoZSB0YWlsIGVuZCwg
+d2hhdCB3aWxsIGJlIGxlZnQgZm9yIHRoZSBjaGlsZD8iLCJvIjoiS3JpbyIsInQiOiJmYW1pbHki
+LCJhIjowfSx7ImsiOiJLT05PIE1BTiBHUklESSBURSwgTsmUVE8gRsmUIElOIFdPS01BTi4iLCJw
+IjoiS09OTyBNQU4gR1JJREkgVEUsIE5vVE8gRm8gSU4gV09LTUFOLiIsImUiOiIiLCJvIjoiTWVu
+ZGUiLCJ0IjoiIiwiYSI6MH0seyJrIjoiVVNBSSBZVSBERSwgTkEgREUgWVUgU0FCSS4iLCJwIjoi
+VVNBSSBZVSBERSwgTkEgREUgWVUgU0FCSS4iLCJlIjoiIiwibyI6Ik1lbmRlIiwidCI6IiIsImEi
+OjB9LHsiayI6Ik7JlCBMVUsgVVNBSSBZVSBGyZREyZROLCBMVUsgVVNBSSBZVSBCyZRLIFlVIEZV
+VC4iLCJwIjoiTm8gTFVLIFVTQUkgWVUgRm9Eb04sIExVSyBVU0FJIFlVIEJvSyBZVSBGVVQuIiwi
+ZSI6IkRvbid0IGxvb2sgd2hlcmUgeW91IGZlbGwsIGxvb2sgd2hlcmUgeW91IHRyaXBwZWQuIiwi
+byI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYgWVUgTsmUIERBSSBZRVQsIFlVIE7JlCBE
+RSBZyZtSSSDJlEwgTklVUy4iLCJwIjoiSUYgWVUgTm8gREFJIFlFVCwgWVUgTm8gREUgWWVSSSBv
+TCBOSVVTLiIsImUiOiJJZiB5b3UncmUgbm90IGRlYWQgeWV0IHlvdSBoYXZlbid0IGhlYXJkIGFs
+bCB0aGUgbmV3cy4iLCJvIjoiS29ubyIsInQiOiJnb3NzaXAiLCJhIjowfSx7ImsiOiJOQSBTTkVL
+IFdFIERJUyBGyZQgVMmbTCBBRFUuIChJIERFIFTJm0wgQURVIEzJm0sgU05FSy4pIiwicCI6Ik5B
+IFNORUsgV0UgRElTIEZvIFRlTCBBRFUuIChJIERFIFRlTCBBRFUgTGVLIFNORUsuKSIsImUiOiJU
+aGlzIGlzIGhvdyBhIHNuYWtlIGdyZWV0cyAoSGUgZ3JlZXRzIGxpa2UgYSBzbmFrZS4pIiwibyI6
+IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiSUYgUElKSU4gU1VQIE7JlFRPIEJJRyBNQU4gSU4g
+VEFCVSwgTsmUIEzJm0YgU0lEyZROIEzJmyBJIFRST1dFLiIsInAiOiJJRiBQSUpJTiBTVVAgTm9U
+TyBCSUcgTUFOIElOIFRBQlUsIE5vIExlRiBTSURvTiBMZSBJIFRST1dFLiIsImUiOiJJZiBwaWdl
+b24gc291cCBpc24ndCBhIGJpZyBtYW4ncyB0YWJvbywgZG9uJ3Qgc2l0IGFyb3VuZCBhbmQgbGV0
+IGl0IHNwaWxsLiIsIm8iOiJLb25vIiwidCI6InByaWRlIiwiYSI6MH0seyJrIjoiSMmUSyBJTiBC
+yZRESSBOyZQgQklHIFBBTiBBTSwgUEFTIElOIEbJm0RBIElOIFZPSVMuIiwicCI6IkhvSyBJTiBC
+b0RJIE5vIEJJRyBQQU4gQU0sIFBBUyBJTiBGZURBIElOIFZPSVMuIiwiZSI6IlRoZSBoYXdrJ3Mg
+Ym9keSBpc24ndCBiaWcsIGp1c3QgdGhlIHNvdW5kIG9mIGl0cyB3aW5ncy4iLCJvIjoiS29ubyIs
+InQiOiIiLCJhIjowfSx7ImsiOiJTSUtNQU4gU0UsIFwiQSBOyZQgV0FOVC4uLkLJlFQgQSBOyZQg
+U0kgQU0/IVwiIiwicCI6IlNJS01BTiBTRSwgXCJBIE5vIFdBTlQuLi5Cb1QgQSBObyBTSSBBTT8h
+XCIiLCJlIjoiVGhlIHNpY2sgbWFuIHNheXMsIFwiSSBkb24ndCB3YW50IGFueS4uLmJ1dCBJIGRv
+bid0IHNlZSBpdD8hXCIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJXRSBQSUtJTiBC
+VVRVLCBSRU4gS8mUVDsgSUYgQklHIE1BTiBCVVRVIE5BVywgTsmUVE8gRFJBSSBTSVpJTiBHTyBL
+QU0/IiwicCI6IldFIFBJS0lOIEJVVFUsIFJFTiBLb1Q7IElGIEJJRyBNQU4gQlVUVSBOQVcsIE5v
+VE8gRFJBSSBTSVpJTiBHTyBLQU0/IiwiZSI6IldoZW4gYSBjaGlsZCBiZW5kcyBkb3duLCB0aGUg
+cmFpbiBzdG9wczsgaWYgYW4gYWR1bHQgYmVuZHMgZG93biB0aGVuLCB3b24ndCBkcnkgc2Vhc29u
+IGNvbWU/IiwibyI6Iktvbm8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiU1dJVCBEQU5TLCBO
+QS1JTiBERSBQVUwgQklHIE1BTiBOQS1EyZQuIiwicCI6IlNXSVQgREFOUywgTkEtSU4gREUgUFVM
+IEJJRyBNQU4gTkEtRG8uIiwiZSI6IkFuIGVuam95YWJsZSBkYW5jZSBicmluZyBhIGJpZyBtYW4g
+b3V0IG9mIGRvb3JzLiIsIm8iOiJLb25vIiwidCI6InByaWRlIiwiYSI6MH0seyJrIjoiWVUgU0kg
+S0xBV0QgRMmbTiBERSBLQU0sIFlVIE3Jm01CQSBTRSBEyZQgRMmUTiBLTElOLiIsInAiOiJZVSBT
+SSBLTEFXRCBEZU4gREUgS0FNLCBZVSBNZU1CQSBTRSBEbyBEb04gS0xJTi4iLCJlIjoiWW91IHNl
+ZSBjbG91ZHMgY29taW5nLCB5b3UgY29uY2x1ZGUgaXQncyBkYXlicmVhay4gRG9uJ3QgYmUgZGVj
+ZWl2ZWQgYnkgYXBwZWFyYW5jZXMuIiwibyI6Ik1lbmRlIiwidCI6InRydXN0IiwiYSI6MH0seyJr
+IjoiV0UgWVUgRFUgRkFZQSBCQUQsIE5BIFlVU8mbRiBZVSBERSBEVS4iLCJwIjoiV0UgWVUgRFUg
+RkFZQSBCQUQsIE5BIFlVU2VGIFlVIERFIERVLiIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJh
+IjowfSx7ImsiOiJXRSBZVSBLQUtBIE5BIFlVIEhFRFNBSSwgTkEgWVUgRlVUU0FJIE5BVyBZVSBO
+yZQgR08gS0FLQT8iLCJwIjoiV0UgWVUgS0FLQSBOQSBZVSBIRURTQUksIE5BIFlVIEZVVFNBSSBO
+QVcgWVUgTm8gR08gS0FLQT8iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoi
+V0UgWVUgS0FLQSBOQSBESSBCRUQgSU4gSEVEU0FJLCBOQSBZVVPJm0YgR08gU03Jm0wgQU0uIiwi
+cCI6IldFIFlVIEtBS0EgTkEgREkgQkVEIElOIEhFRFNBSSwgTkEgWVVTZUYgR08gU01lTCBBTS4i
+LCJlIjoiV2hlbiB5b3Ugc2hpdCBhdCB0aGUgaGVhZCBvZiB5b3VyIGJlZCwgeW91IGFyZSB0aGUg
+b25lIHdobyB3aWxsIHNtZWxsIGl0LiIsIm8iOiJLb25vIiwidCI6ImNvbnNlcXVlbmNlIiwiYSI6
+MX0seyJrIjoiUElLSU4gU0jJm1QgTsmUIERFIERVIFBBTiBCSUcgTUFOLCBCyZRUIEkgTsmUIE1J
+TiBTRSBJTiBDSMmUUCBOyZQgR08gRFUgTkEgQklHIE1BTiBJTiBNyZRULiIsInAiOiJQSUtJTiBT
+SGVUIE5vIERFIERVIFBBTiBCSUcgTUFOLCBCb1QgSSBObyBNSU4gU0UgSU4gQ0hvUCBObyBHTyBE
+VSBOQSBCSUcgTUFOIElOIE1vVC4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiTkEgRlLJlEcgSU4gSEVUUsmbRE7Jm1MgTUVLIEtBVEZJU0ggRMmbTiBGVUzJlFAgQkFOREEu
+IiwicCI6Ik5BIEZSb0cgSU4gSEVUUmVETmVTIE1FSyBLQVRGSVNIIERlTiBGVUxvUCBCQU5EQS4i
+LCJlIjoiSXQncyBhIGhhdGUgZm9yIGZyb2dzIHRoYXQgbWFrZXMgY2F0ZmlzaCBmaWxsIGEgYmFz
+a2V0LiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6Ik7JlCBMyZtGIEbJlCBGQUxBIEtB
+VywgWVUgS0VDSCBLQUsuIiwicCI6Ik5vIExlRiBGbyBGQUxBIEtBVywgWVUgS0VDSCBLQUsuIiwi
+ZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkzJmyBZVSBURSBMyZtLIEhBTkdS
+SS4iLCJwIjoiTGUgWVUgVEUgTGVLIEhBTkdSSS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiTkEgWVUgR8mbVCBZVSBGyZRMLCBCyZRUIFlVIEbJlEwgR8mbVCBJTiBFRy4i
+LCJwIjoiTkEgWVUgR2VUIFlVIEZvTCwgQm9UIFlVIEZvTCBHZVQgSU4gRUcuIiwiZSI6IllvdSBv
+d24geW91ciBjaGlja2VuLCBidXQgeW91ciBjaGlja2VuIG93bnMgaXRzIGVnZy4iLCJvIjoiS3Jp
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJOyZQgTMmbRiBZVSBUT04gRsmUIElOIERBSSBXQU4sIEkg
+R08gREUgU8mbRiBGyZQgUElTLiIsInAiOiJObyBMZUYgWVUgVE9OIEZvIElOIERBSSBXQU4sIEkg
+R08gREUgU2VGIEZvIFBJUy4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoi
+REFJIFRPTiBHTyBUyZRLIEbJlCBTRSBJIE7JlCBHTyBLSUssIELJlFQgSSBOyZQgR08gU0UgSSBO
+yZQgR08gUElTLiIsInAiOiJEQUkgVE9OIEdPIFRvSyBGbyBTRSBJIE5vIEdPIEtJSywgQm9UIEkg
+Tm8gR08gU0UgSSBObyBHTyBQSVMuIiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjF9LHsi
+ayI6IkvJlFRJTi1UUkkgQklHLCBCyZRUIFDJlFNJTiBOyZQgR08gRUJVTCBEVSDJm05JIELJm1TJ
+myBUSU5HIFdJVCBJTiBMSUYuIiwicCI6IktvVElOLVRSSSBCSUcsIEJvVCBQb1NJTiBObyBHTyBF
+QlVMIERVIGVOSSBCZVRlIFRJTkcgV0lUIElOIExJRi4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiREkgVElLIFdFIFlVIE1JVCBJTlNBSSBLRU5VLCBOQS1JTiBZVSBHTyBU
+RUsgUEFEVUwgV0lULiIsInAiOiJESSBUSUsgV0UgWVUgTUlUIElOU0FJIEtFTlUsIE5BLUlOIFlV
+IEdPIFRFSyBQQURVTCBXSVQuIiwiZSI6IlRoZSBzdGljayB5b3UgbWVldCBpbnNpZGUgYSBjYW5v
+ZSBpcyB0aGUgb25lIHlvdSB1c2UgdG8gcGFkZGxlIHdpdGguIiwibyI6IktyaW8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiWVUgRMmUTiBJVCBESSBNVU4sIFdFVElOIERJIFNUQSBHyZtUIEbJlCBEVSBZ
+VT8gW1lVIETJlE4gSVQgREkgTVVOLCBJIE7JlCBCyZtMyZtGVUwgWVUuIiwicCI6IllVIERvTiBJ
+VCBESSBNVU4sIFdFVElOIERJIFNUQSBHZVQgRm8gRFUgWVU/IFtZVSBEb04gSVQgREkgTVVOLCBJ
+IE5vIEJlTGVGVUwgWVUuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6IkEg
+REkgU1RBIEdPIELJm0zJm0ZVTCBZVSBOQVc/XSIsInAiOiJBIERJIFNUQSBHTyBCZUxlRlVMIFlV
+IE5BVz9dIiwiZSI6IllvdSd2ZSBlYXRlbiB0aGUgbW9vbiwgd2hhdCBpcyB0aGUgc3RhciBnb2lu
+ZyB0byBkbyBmb3IgeW91PyIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IlwiS0FNIMmU
+UCwgR08gRMmUTixcIiBOyZQgR08gRklUIMmUREEgUMmUU0lOIElOIFfJm0YuIiwicCI6IlwiS0FN
+IG9QLCBHTyBEb04sXCIgTm8gR08gRklUIG9EQSBQb1NJTiBJTiBXZUYuIiwiZSI6IlwiQ29tZSB1
+cCwgZ28gZG93bixcIiBpcyBub3QgYXBwcm9wcmlhdGUgd2l0aCBhbm90aGVyIG1hbidzIHdpZmUu
+IiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiS0FLQSwgWVUgUFVUIFNNyZRMIE5JQS1S
+QU0sIEkgQsmbVMmbIFlVIEfJm1QgRkFJTiBQTEVTIEbJlCBTSUTJlE4uIiwicCI6IktBS0EsIFlV
+IFBVVCBTTW9MIE5JQS1SQU0sIEkgQmVUZSBZVSBHZVQgRkFJTiBQTEVTIEZvIFNJRG9OLiIsImUi
+OiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjoxfSx7ImsiOiJZVSBCSVQgS1JFU01BTiBURSBUVU1B
+UkE7IElGIE5BIElOIEtSRVMgSSBERSBQQU4sIE5BLUlOIEkgR08gREUgUEFOLiIsInAiOiJZVSBC
+SVQgS1JFU01BTiBURSBUVU1BUkE7IElGIE5BIElOIEtSRVMgSSBERSBQQU4sIE5BLUlOIEkgR08g
+REUgUEFOLiIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJTTcmUTCBCyZRE
+IEZJTCBTRSBOQSBJTiBNQU1BIEkgREUgU8mbTDsgQklIT0wsIE5BIElOU8mbRiBJIERFIFPJm0wu
+IiwicCI6IlNNb0wgQm9EIEZJTCBTRSBOQSBJTiBNQU1BIEkgREUgU2VMOyBCSUhPTCwgTkEgSU5T
+ZUYgSSBERSBTZUwuIiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IklGIFlV
+IE7JlCBUUsmUTkcsIFlVIFLJm1AsIE5BIFlVIFdBTiBTQUkgR08gUsmUVElOLiIsInAiOiJJRiBZ
+VSBObyBUUm9ORywgWVUgUmVQLCBOQSBZVSBXQU4gU0FJIEdPIFJvVElOLiIsImUiOiIiLCJvIjoi
+S29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJNyZRSRS1NQU4gTsmUQkEgREVOQUkgRsmUIElUIEdJ
+TkkgS09OLCBCyZRUIFlVIEbJlCBHSSBBTSBXSVQgUsmbU1DJm1QuIiwicCI6Ik1vUkUtTUFOIE5v
+QkEgREVOQUkgRm8gSVQgR0lOSSBLT04sIEJvVCBZVSBGbyBHSSBBTSBXSVQgUmVTUGVULiIsImUi
+OiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJQQSBEyZROIFNQyZtOIFRJREUsIElG
+IEkgREUuIiwicCI6IlBBIERvTiBTUGVOIFRJREUsIElGIEkgREUuIiwiZSI6IiIsIm8iOiJLb25v
+IiwidCI6IiIsImEiOjB9LHsiayI6IlDJlFNJTiBOyZQgREUgQsmUTiBQSUtJTiBCSUvJlFMgWVUg
+VE9OIEJJRy4iLCJwIjoiUG9TSU4gTm8gREUgQm9OIFBJS0lOIEJJS29TIFlVIFRPTiBCSUcuIiwi
+ZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjF9LHsiayI6IktBSyBJTiBUT04gTsmUIEJJRyAo
+V1VNQU4gRsmUTCBJTiBCT01CTyBOyZQgQklHKSwgQsmUVCBOQS1JTiBERSBCyZROIELJlEtVIFBJ
+S0lOIETJm04uIiwicCI6IktBSyBJTiBUT04gTm8gQklHIChXVU1BTiBGb0wgSU4gQk9NQk8gTm8g
+QklHKSwgQm9UIE5BLUlOIERFIEJvTiBCb0tVIFBJS0lOIERlTi4iLCJlIjoiIiwibyI6Iktvbm8i
+LCJ0IjoiIiwiYSI6MX0seyJrIjoiQVJBVEEgV0UgV0FOIEbJlCBCyZtMyZtGVUwgUkVOSSBTSVpJ
+TiwgSU4gQsmUREkgTsmUIEbJlCBEUkFJLiIsInAiOiJBUkFUQSBXRSBXQU4gRm8gQmVMZUZVTCBS
+RU5JIFNJWklOLCBJTiBCb0RJIE5vIEZvIERSQUkuIiwiZSI6IiIsIm8iOiJNZW5kZSIsInQiOiIi
+LCJhIjowfSx7ImsiOiJCSUYgV0UgSSBERSBTT0ssIE5BLUlOIEfJm1QgRkFUIELJlERJLiIsInAi
+OiJCSUYgV0UgSSBERSBTT0ssIE5BLUlOIEdlVCBGQVQgQm9ESS4iLCJlIjoiIiwibyI6Iktvbm8i
+LCJ0IjoiIiwiYSI6MH0seyJrIjoiTkEgU8mUUklIQVQgQk9NQk8gREUgQsmUTiBCQVNUQUQgUElL
+SU4uIiwicCI6Ik5BIFNvUklIQVQgQk9NQk8gREUgQm9OIEJBU1RBRCBQSUtJTi4iLCJlIjoiIiwi
+byI6IktyaW8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiVFJFTkpBIE7JlCBTQUJJIEJBRCBST0QuIiwi
+cCI6IlRSRU5KQSBObyBTQUJJIEJBRCBST0QuIiwiZSI6IkEgc3RyYW5nZXIgZG9lc24ndCBrbm93
+IGEgYmFkIHJvYWQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiUElLSU4gU0UgXCJU
+QS1UQSxcIiBCyZRUIFBJS0lOIE7JlCBHTyBTRSwgXCJNSSBNQU1BIElOIE1FVCBJTiBCQUtTQUku
+XCIiLCJwIjoiUElLSU4gU0UgXCJUQS1UQSxcIiBCb1QgUElLSU4gTm8gR08gU0UsIFwiTUkgTUFN
+QSBJTiBNRVQgSU4gQkFLU0FJLlwiIiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjF9LHsi
+ayI6IlBJS0lOIFNFIFwiVEEtVEEsXCIgQsmUVCBQSUtJTiBOyZQgR08gU0UgXCJNSSBNQU1BIE7J
+lCBHTyBTTElQIFRVIFBBIERJUyBOyZtULlwiIiwicCI6IlBJS0lOIFNFIFwiVEEtVEEsXCIgQm9U
+IFBJS0lOIE5vIEdPIFNFIFwiTUkgTUFNQSBObyBHTyBTTElQIFRVIFBBIERJUyBOZVQuXCIiLCJl
+IjoiQSBjaGlsZCBzYXlzIFwidGEtdGFcIiBib3QgYSBjaGlsZCB3aWxsIG5vdCBzYXkgXCJNeSBt
+b3RoZXIgd29uJ3Qgc2xlZXAgd2l0aCBkYWQgdG9uaWdodC5cIiIsIm8iOiJLb25vIiwidCI6ImZh
+bWlseSIsImEiOjB9LHsiayI6IldFIFBJS0lOIFNFIEkgV0FOVCBJTiBIyZtSSVRFSiAoRkFNQlVM
+IFBSyZRQQVRJKSwgTkEgRsmUIEdJIEFNIEvJlEvJlC4iLCJwIjoiV0UgUElLSU4gU0UgSSBXQU5U
+IElOIEhlUklURUogKEZBTUJVTCBQUm9QQVRJKSwgTkEgRm8gR0kgQU0gS29Lby4iLCJlIjoiIiwi
+byI6Ik1lbmRlIiwidCI6IiIsImEiOjB9LHsiayI6IldFIFBJS0lOIFNFIEkgV0FOVCBXSUNIIFBS
+yZRQQVRJLCBHSSBBTSBLyZRLyZQuIiwicCI6IldFIFBJS0lOIFNFIEkgV0FOVCBXSUNIIFBSb1BB
+VEksIEdJIEFNIEtvS28uIiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjF9LHsiayI6IldV
+TUFOIFdFIE7JlCBHyZtUIE1BTiwgTkEtSU4gTkEgUkFSSUdJQUwgTkEgVMmUTi4iLCJwIjoiV1VN
+QU4gV0UgTm8gR2VUIE1BTiwgTkEtSU4gTkEgUkFSSUdJQUwgTkEgVG9OLiIsImUiOiIiLCJvIjoi
+S3JpbyIsInQiOiIiLCJhIjoxfSx7ImsiOiJJRiBZVSBOyZQgUklDSCBZRVQgRsmUIE1FSyBEyZtO
+IFNJIFlVLCBJTMmbSyBTyZtGIFlVIEdPIMmUUCBQQU4gSEFJIEhBSSBISUwsIETJm04gTsmUIEdP
+IFNJIFlVLiIsInAiOiJJRiBZVSBObyBSSUNIIFlFVCBGbyBNRUsgRGVOIFNJIFlVLCBJTGVLIFNl
+RiBZVSBHTyBvUCBQQU4gSEFJIEhBSSBISUwsIERlTiBObyBHTyBTSSBZVS4iLCJlIjoiSWYgeW91
+IGhhdmVuJ3QgcmVhY2hlZCB0aGUgcG9pbnQgeWV0IGZvciBwZW9wbGUgdG8gc2VlIHlvdSwgZXZl
+biBpZiB5b3UgZ28gdXAgb24gYSBoaWdoIGhpbGwgdGhleSBzdGlsbCB3b24ndCBzZWUgeW91LiIs
+Im8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IkRJIFLJm1MgV0UgWVUgREUgR0kgVFJFTkpB
+LCBOQSBZVSBIT1MgSSBERSBJVCBBTS4iLCJwIjoiREkgUmVTIFdFIFlVIERFIEdJIFRSRU5KQSwg
+TkEgWVUgSE9TIEkgREUgSVQgQU0uIiwiZSI6IldoZW4geW91IGdpdmUgYSBndWVzdCByaWNlLCBo
+ZSBlYXRzIGl0IGluIHlvdXIgaG91c2UuIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoi
+UMmUU0lOIE7JlCBGyZQgUFfJm0wgT0wgUEFESSBGyZQgTklVIFBBREkuIiwicCI6IlBvU0lOIE5v
+IEZvIFBXZUwgT0wgUEFESSBGbyBOSVUgUEFESS4iLCJlIjoiQSBwZXJzb24gc2hvdWxkbid0IGFi
+YW5kb24gb2xkIGZyaWVuZHNoaXBzIGZvciBuZXcgZnJpZW5kc2hpcHMuIiwibyI6IktyaW8iLCJ0
+IjoiZmFtaWx5LHVuaXR5IiwiYSI6MH0seyJrIjoiUMmUU0lOIFdFIE7JlCBCTEFOVCBEQUksIElG
+IEkgREFJLCBJIEdPIEhBVCBGyZQgV0VLLiIsInAiOiJQb1NJTiBXRSBObyBCTEFOVCBEQUksIElG
+IEkgREFJLCBJIEdPIEhBVCBGbyBXRUsuIiwiZSI6IklmIGEgcGVyc29uIGlzbid0IHVzZWQgdG8g
+ZHlpbmcsIG9uY2UgaGUgZGllcyBpdCB3aWxsIGJlIGhhcmQgdG8gd2FrZSBoaW0uIiwibyI6Iktv
+bm8iLCJ0IjoiZmFtaWx5IiwiYSI6MH0seyJrIjoiV0UgWVUgRkFMQSBEyZRHLCBJIEvJm1IgWVUg
+R08gTkEgRMmUVEkgQsmUS1MuIiwicCI6IldFIFlVIEZBTEEgRG9HLCBJIEtlUiBZVSBHTyBOQSBE
+b1RJIEJvS1MuIiwiZSI6IklmIHlvdSBmb2xsb3cgYSBkb2csIGl0IHdpbGwgbGVhZCB5b3UgdG8g
+dGhlIHJ1YmJpc2ggaGVhcC4iLCJvIjoiS29ubyIsInQiOiJjb25zZXF1ZW5jZSIsImEiOjB9LHsi
+ayI6IklGIEtSRVNNQU4gVEVLIFlVIEtMT1MsIFlVIE7JlCBGyZQgUsmUTiBBRlRBLVJBTSBZVSBO
+RUvJm0QgV0FOLiBJRiBZVSBEVSBBTSwgRMmbTiBHTyBURUsgVU5BIFRVIEFTIEtSRVNNQU4gRMmb
+Ti4iLCJwIjoiSUYgS1JFU01BTiBURUsgWVUgS0xPUywgWVUgTm8gRm8gUm9OIEFGVEEtUkFNIFlV
+IE5FS2VEIFdBTi4gSUYgWVUgRFUgQU0sIERlTiBHTyBURUsgVU5BIFRVIEFTIEtSRVNNQU4gRGVO
+LiIsImUiOiJJZiBhIG1hZG1hbiB0YWtlcyB5b3VyIGNsb3RoZXMgeW91IHNob3VsZG4ndCBydW4g
+YWZ0ZXIgaGltIG5ha2VkLiBJZiB5b3UgZG8sIHBlb3BsZSB3aWxsIHRoaW5rIHRoYXQgYm90aCBv
+ZiB5b3UgYXJlIGNyYXp5LiIsIm8iOiJLb25vIiwidCI6InRyb3VibGUiLCJhIjoxfSx7ImsiOiJX
+RSBEQUkgRElBIFNJIFVEQVQgRsmUIFRPVCBBTSwgSSBCyZtOIElOIEhFRC4iLCJwIjoiV0UgREFJ
+IERJQSBTSSBVREFUIEZvIFRPVCBBTSwgSSBCZU4gSU4gSEVELiIsImUiOiIiLCJvIjoiS29ubyIs
+InQiOiIiLCJhIjowfSx7ImsiOiJLVU1CUkEgRsmUTCBOyZQgREUgSsmUTVAgRkFZQS4iLCJwIjoi
+S1VNQlJBIEZvTCBObyBERSBKb01QIEZBWUEuIiwiZSI6IkEgbW90aGVyIGhlbiBkb2Vzbid0IGp1
+bXAgb3ZlciB0aGUgZmlyZS4iLCJvIjoiS3JpbyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJC
+SUctRlVUIE1BTiBOyZQgREUgSk/Jm04gUEFOIFNNyZRMLUZVVCBEQU5Tw6LigqzigJ1EyZtOIEdP
+IEzJm0YgQU0gTkEgWVUgSEFOLiIsInAiOiJCSUctRlVUIE1BTiBObyBERSBKT2VOIFBBTiBTTW9M
+LUZVVCBEQU5TYeKCrOKAnURlTiBHTyBMZUYgQU0gTkEgWVUgSEFOLiIsImUiOiIiLCJvIjoiS3Jp
+byIsInQiOiIiLCJhIjowfSx7ImsiOiJQSUtJTiBXRSBMyZtLIEbJlCBTyZtUIFRSQVAsIEkgRsmU
+IFPJm1QgQU0gTkEgSU4gTUFNQSBJTiBXSVJJLVdJUkk6IEJJRk8gRMmUIEtMSU4gWVUgR08gTUlU
+IFlVIFBBUEEgREUgRsmbVC1GyZtUIElOU0FJLiIsInAiOiJQSUtJTiBXRSBMZUsgRm8gU2VUIFRS
+QVAsIEkgRm8gU2VUIEFNIE5BIElOIE1BTUEgSU4gV0lSSS1XSVJJOiBCSUZPIERvIEtMSU4gWVUg
+R08gTUlUIFlVIFBBUEEgREUgRmVULUZlVCBJTlNBSS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0Ijoi
+IiwiYSI6MH0seyJrIjoiQSBERSBQTEFXIFlVIEZVTkRFLCBZVSBHTyBQVVQgVElLIE5BIE1JIEJB
+S1NBST8iLCJwIjoiQSBERSBQTEFXIFlVIEZVTkRFLCBZVSBHTyBQVVQgVElLIE5BIE1JIEJBS1NB
+ST8iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiTkEgU08gRsmUIERVIFDJ
+lFNJTiBXRSBERSBCUsmUU0ggWVUgU1dBTVA6IFdFIEkgQlVUVSwgWVUgRFLJlCBJTiBCyZRMUyBX
+SVQgRkFLPyIsInAiOiJOQSBTTyBGbyBEVSBQb1NJTiBXRSBERSBCUm9TSCBZVSBTV0FNUDogV0Ug
+SSBCVVRVLCBZVSBEUm8gSU4gQm9MUyBXSVQgRkFLPyIsImUiOiJJcyB0aGF0IGFueSB3YXkgdG8g
+dHJlYXQgYSBwZXJzb24gd2hvIGJydXNoZXMgeW91ciBzd2FtcDogV2hlbiBoZSBiZW5kcyBvdmVy
+LCB5b3Ugc25hZyBoaXMgYmFsbHMgd2l0aCBhIGZvcmtlZCBzdGljaz8iLCJvIjoiS29ubyIsInQi
+OiJwYXRpZW5jZSxmYW1pbHkiLCJhIjoxfSx7ImsiOiJQyZRTSU4gV0UgREUgSVQgyZtHVVNJLCBZ
+VSBOyZQgRsmUIFNNyZtMIElOIE3JlFQuIiwicCI6IlBvU0lOIFdFIERFIElUIGVHVVNJLCBZVSBO
+byBGbyBTTWVMIElOIE1vVC4iLCJlIjoiSWYgYSBwZXJzb24gaXMgYmVhdGluZyBlZ3VzaSwgeW91
+IGRvbid0IGhhdmUgdG8gc21lbGwgaGVyIGJyZWF0aC4gSXQgc3RhbmRzIHRvIHJlYXNvbiBzaGUg
+d2lsbCBoYXZlIHRhc3RlZCBpdC4iLCJvIjoiS29ubyIsInQiOiJmYW1pbHkiLCJhIjowfSx7Imsi
+OiJPS1VSVSBEyZRHLCBOQS1JTiBERSBCUklORyBMyZtQyZtUIEtBTSBOQSBUyZROLiIsInAiOiJP
+S1VSVSBEb0csIE5BLUlOIERFIEJSSU5HIExlUGVUIEtBTSBOQSBUb04uIiwiZSI6IiIsIm8iOiJL
+cmlvIiwidCI6IiIsImEiOjF9LHsiayI6IkvJlE5EyZQgTsmUIERFIEZBU0hJTiBOQSBTVMmUTVAg
+RsmUIE5BVElOLCBJIE3JlFMgR8mbVCBIT0wgyZROREEtUkFNLiIsInAiOiJLb05EbyBObyBERSBG
+QVNISU4gTkEgU1RvTVAgRm8gTkFUSU4sIEkgTW9TIEdlVCBIT0wgb05EQS1SQU0uIiwiZSI6IiIs
+Im8iOiJNZW5kZSIsInQiOiIiLCJhIjowfSx7ImsiOiJQSUtJTiBOyZQgR08gS8mUTkbJm1MgU0Ug
+TkEtSU4gS0lMIElOIERBREkgSU4gVE9OOiBJTiBNQU1BIEdPIEtXSVogSU4gVFJPVC4iLCJwIjoi
+UElLSU4gTm8gR08gS29ORmVTIFNFIE5BLUlOIEtJTCBJTiBEQURJIElOIFRPTjogSU4gTUFNQSBH
+TyBLV0laIElOIFRST1QuIiwiZSI6IihNZW5kZSkgQSBjaGlsZCB3b24ndCBjb25mZXNzIHRoYXQg
+aGUgbWFkZSBoaXMgZmF0aGVyIGltcG90ZW50ICh0aHJvdWdoIHdpdGNoY3JhZnQpOiBoaXMgbW90
+aGVyIHdpbGwgc3RyYW5nbGUgaGltLiIsIm8iOiJLcmlvIiwidCI6ImZhbWlseSx0cm91YmxlIiwi
+YSI6MX0seyJrIjoiSUYgWVUgV0FOIFRJTkFQIE5BIFBMRVMgTMmbIEkgU0hFSywgWVUgRsmUIEdP
+IE5BIETJlFRJIELJlEtTLiIsInAiOiJJRiBZVSBXQU4gVElOQVAgTkEgUExFUyBMZSBJIFNIRUss
+IFlVIEZvIEdPIE5BIERvVEkgQm9LUy4iLCJlIjoiSWYgeW91IHdhbnQgdG8gc3RhbmQgb24gYSBw
+bGFjZSBhbmQgaGF2ZSBpdCBzaGFrZSwgeW91IHNob3VsZCBnbyB0byB0aGUgcnViYmlzaCBoZWFw
+LiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjowfSx7ImsiOiJQSUtJTiBXRSBOyZQgU0kgSEFXIFTJ
+lFAgREUgSkFNLCBESSBNQU4gV0UgSU4gTUFNQSBEyZROIEzJm0YsIE5BLUlOIEkgR08gUFVUIEZB
+WUEgTkEgSU4gQklBQklBLiIsInAiOiJQSUtJTiBXRSBObyBTSSBIQVcgVG9QIERFIEpBTSwgREkg
+TUFOIFdFIElOIE1BTUEgRG9OIExlRiwgTkEtSU4gSSBHTyBQVVQgRkFZQSBOQSBJTiBCSUFCSUEu
+IiwiZSI6IiIsIm8iOiJLb25vIiwidCI6IiIsImEiOjB9LHsiayI6IklGIFBJS0lOIEfJm1QgVFUg
+QklHIFDJlFQgTkEgRkFZQSwgSSBGyZQgQkxPIERJIFRVIFRVR8mbREEuIELJlFQgSUYgSSBCTE8g
+REUgV0FOLCBJIEbJlEfJm1QgREkgyZREQSwgREkgV0FOIEdPIMmUVCwgSSBHTyBIQVQgRsmUIEtF
+Q0ggQkFLLiIsInAiOiJJRiBQSUtJTiBHZVQgVFUgQklHIFBvVCBOQSBGQVlBLCBJIEZvIEJMTyBE
+SSBUVSBUVUdlREEuIEJvVCBJRiBJIEJMTyBERSBXQU4sIEkgRm9HZVQgREkgb0RBLCBESSBXQU4g
+R08gb1QsIEkgR08gSEFUIEZvIEtFQ0ggQkFLLiIsImUiOiJJZiBhIGNoaWxkIGhhcyB0d28gYmln
+IHBvdHMgb24gdGhlIGZpcmUsIGhlIHNob3VsZCBibG93IG9uIHRoZSB0d28gdG9nZXRoZXIuIEJ1
+dCBpZiBoZSBibG93cyBvbiB0aGUgb25lIGFuZCBmb3JnZXRzIHRoZSBvdGhlciwgaXQgd2lsbCBn
+byBvdXQgYW5kIGl0IHdpbGwgYmUgaGFyZCB0byByZWtpbmRsZS4gQWR2aWNlIHRvIGEgbWFuIHRv
+IHRyZWF0IHR3byBnaXJsZnJpZW5kcyBlcXVhbGx5LiIsIm8iOiJLb25vIiwidCI6ImZhbWlseSx1
+bml0eSIsImEiOjB9LHsiayI6IklGIE1BTiBCSUcgTMmbSyBJTiBUT04sIE5BIERJIFRPTiBGyZRT
+IEdPIERBSS4iLCJwIjoiSUYgTUFOIEJJRyBMZUsgSU4gVE9OLCBOQSBESSBUT04gRm9TIEdPIERB
+SS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiTkEgUExFLVBMRSBLSUwg
+QsmURC4gSXQncyBwbGF5aW5nIGFyb3VuZCB0aGF0IGtpbGxzIHRoZSBiaXJkLiIsInAiOiJOQSBQ
+TEUtUExFIEtJTCBCb0QuIEl0J3MgcGxheWluZyBhcm91bmQgdGhhdCBraWxscyB0aGUgYmlyZC4i
+LCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiTkEgUExFLVBMRSBNRUsgRMmU
+RyBQQVMgQU0gR0kgSU4gTUFNQS4iLCJwIjoiTkEgUExFLVBMRSBNRUsgRG9HIFBBUyBBTSBHSSBJ
+TiBNQU1BLiIsImUiOiIiLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJLQVcgT0wgVEUs
+IElOIExJQkEgTsmUIERFIE9MLiIsInAiOiJLQVcgT0wgVEUsIElOIExJQkEgTm8gREUgT0wuIiwi
+ZSI6Ik5vIG1hdHRlciBob3cgb2xkIGEgY293IGdldHMsIGl0cyBsaXZlciBkb2Vzbid0IGdldCBv
+bGQuIFRoZSBsaXZlciBpcyBiZWxpZXZlZCB0byBiZSB0aGUgc2VhdCBvZiB0aGUgcGFzc2lvbnMu
+IFRodXMsIGEgcmVmZXJlbmNlIHRvIGFuIG9sZCBwZXJzb24gd2l0aCBhIHN0cm9uZyBzZXggZHJp
+dmUuIiwibyI6Ik1lbmRlIiwidCI6ImZhbWlseSIsImEiOjF9LHsiayI6IkRJIEdMQURJTsmbUyBX
+RSBERSBQQU4gREkgSMmUSywgSSBOyZQgREUgUEFOIERJIEbJlEwuIiwicCI6IkRJIEdMQURJTmVT
+IFdFIERFIFBBTiBESSBIb0ssIEkgTm8gREUgUEFOIERJIEZvTC4iLCJlIjoiVGhlIGhhcHBpbmVz
+cyBvZiB0aGUgaGF3ayBpc24ndCB0aGUgaGFwcGluZXNzIG9mIHRoZSBjaGlja2VuLiIsIm8iOiJL
+cmlvIiwidCI6IiIsImEiOjB9LHsiayI6IlBJS0lOIFNBQkkgUsmUTiwgQsmUVCBJIE7JlCBTQUJJ
+IEhBSUQuIiwicCI6IlBJS0lOIFNBQkkgUm9OLCBCb1QgSSBObyBTQUJJIEhBSUQuIiwiZSI6IkEg
+Y2hpbGQga25vd3MgaG93IHRvIHJ1biwgYnV0IGhlIGRvZXNuJ3Qga25vdyBob3cgdG8gaGlkZS4i
+LCJvIjoiS3JpbyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJZVSBHTyBDSEFNIEbJlCBQyZRT
+SU4sIELJlFQgWVUgTsmUIEdPIFNXQUxBIEbJlC1SQU0uIiwicCI6IllVIEdPIENIQU0gRm8gUG9T
+SU4sIEJvVCBZVSBObyBHTyBTV0FMQSBGby1SQU0uIiwiZSI6IllvdSBjYW4gY2hldyBmb3IgYSBw
+ZXJzb24sIGJ1dCB5b3UgY2FuJ3Qgc3dhbGxvdyBmb3IgaGltLiIsIm8iOiJLcmlvIiwidCI6ImZh
+bWlseSIsImEiOjB9LHsiayI6IllVQkEgTsmUIFNBQkkgQsmbUklOLCBCyZRUIEkgU0FCSSBGyZRU
+SSBERVMuIiwicCI6IllVQkEgTm8gU0FCSSBCZVJJTiwgQm9UIEkgU0FCSSBGb1RJIERFUy4iLCJl
+IjoiVGhlIHZ1bHR1cmUgZG9lc24ndCBhdHRlbmQgdGhlIGZ1bmVyYWwsIGJ1dCBpdCBhdHRlbmRz
+IHRoZSBmb3J0eSBkYXlzIGNlcmVtb255LiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6
+IllVIE7JlCBHTyBUSUNIIEtVTUJSQSBIQVcgRsmUIEbJlEsuIiwicCI6IllVIE5vIEdPIFRJQ0gg
+S1VNQlJBIEhBVyBGbyBGb0suIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjF9LHsiayI6
+IkTJm04gU0UgRkFEQSBEyZROIELJlE4sIFlVIFNFIFdFIElOIEJJQUJJQS4iLCJwIjoiRGVOIFNF
+IEZBREEgRG9OIEJvTiwgWVUgU0UgV0UgSU4gQklBQklBLiIsImUiOiIiLCJvIjoiTWVuZGUiLCJ0
+IjoiIiwiYSI6MH0seyJrIjoiQkxBSyBHT1QgV0UgWVUgTsmUIEVCVUwgS0VDSCBTQU5UyZtNLCBZ
+VSBOyZQgR08gRUJVTCBLRUNIIEFNIE5BIE7Jm1QuIiwicCI6IkJMQUsgR09UIFdFIFlVIE5vIEVC
+VUwgS0VDSCBTQU5UZU0sIFlVIE5vIEdPIEVCVUwgS0VDSCBBTSBOQSBOZVQuIiwiZSI6IklmIHlv
+dSBjYW4ndCBjYXRjaCBhIGJsYWNrIGdvYXQgZHVyaW5nIHRoZSBkYXksIHlvdSBjZXJ0YWlubHkg
+Y2FuJ3QgY2F0Y2ggaXQgYXQgbmlnaHQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoi
+SUYgUElLSU4gU0UgTkEgSU4gTkVNIEJJRyBTVE9OLCBLyZRMIEFNIEFJyZtOLiIsInAiOiJJRiBQ
+SUtJTiBTRSBOQSBJTiBORU0gQklHIFNUT04sIEtvTCBBTSBBSWVOLiIsImUiOiJJZiBhIGNoaWxk
+IHNheXMgaGlzIG5hbWUgaXMgQmlnIFN0b25lLCBjYWxsIGhpbSBJcm9uLiIsIm8iOiJLb25vIiwi
+dCI6ImZhbWlseSIsImEiOjB9LHsiayI6IldFIETJm04gUE9JTlRIQU4gUEFOIEdSQU5JIElOIEZS
+yZtOIEJJU07Jm1MsIEkgU0UgVMmbTkRBIERFIEtSQUsuIiwicCI6IldFIERlTiBQT0lOVEhBTiBQ
+QU4gR1JBTkkgSU4gRlJlTiBCSVNOZVMsIEkgU0UgVGVOREEgREUgS1JBSy4iLCJlIjoiV2hlbiB0
+aGV5IHN0YXJ0IHRhbGtpbmcgYWJvdXQgYW4gb2xkIHdvbWFuJ3MgYm95ZnJpZW5kcywgc2hlIHNh
+eXMgc2hlIGhlYXJzIHRodW5kZXIuIENoYW5naW5nIHRoZSBzdWJqZWN0LiIsIm8iOiJLb25vIiwi
+dCI6Imdvc3NpcCx1bml0eSIsImEiOjF9LHsiayI6Ik1BTiBGQUlOIFNPVEUsIE7JlFRPIE1BTiBH
+TyBNQVJFRCBBTS4iLCJwIjoiTUFOIEZBSU4gU09URSwgTm9UTyBNQU4gR08gTUFSRUQgQU0uIiwi
+ZSI6Ik5vIG1hdHRlciBob3cgZ29vZC1sb29raW5nIGEgbWFuIGlzLCBpdCdzIG5vdCBhIG1hbiB3
+aG8gd2lsbCBtYXJyeSBoaW0uIEEgbWFuIG1heSBtYXJyeSBmb3IgYmVhdXR5LCBidXQgd29tZW4g
+bWFycnkgZm9yIG1vbmV5LiIsIm8iOiJLb25vIiwidCI6Im1vbmV5IiwiYSI6MH0seyJrIjoiRlVU
+LCBXRVRJTiBBIElULCBBIE7JlCBHTyBHSSBZVT8iLCJwIjoiRlVULCBXRVRJTiBBIElULCBBIE5v
+IEdPIEdJIFlVPyIsImUiOiIiLCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJBUkFUQSBJ
+TiBUT04gTsmUIEJJRywgQsmUVCBOQS1JTiBERSBCyZROIELJlEtVIFBJS0lOIETJm04uIiwicCI6
+IkFSQVRBIElOIFRPTiBObyBCSUcsIEJvVCBOQS1JTiBERSBCb04gQm9LVSBQSUtJTiBEZU4uIiwi
+ZSI6IiIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjoxfSx7ImsiOiJbUFJBWUlORyBNQU5USVNdIERF
+IEpPSyBXSVQgRsmUTCwgQsmUVCBJIE7JlCBERSBKT0sgV0lUIETJlEtTLiIsInAiOiJbUFJBWUlO
+RyBNQU5USVNdIERFIEpPSyBXSVQgRm9MLCBCb1QgSSBObyBERSBKT0sgV0lUIERvS1MuIiwiZSI6
+IkEgcHJheWluZyBtYW50aXMgd2lsbCBqb2tlIHdpdGggYSBjaGlja2VuLCBidXQgaXQgd29uJ3Qg
+am9rZSB3aXRoIGEgZHVjay4iLCJvIjoiS29ubyIsInQiOiIiLCJhIjowfSx7ImsiOiJQyZRTSU4g
+V0UgREUgTFVLIEbJm1QsIEkgTsmUIE5PIFNFIEbJm1QgVFJBTkdHQS4iLCJwIjoiUG9TSU4gV0Ug
+REUgTFVLIEZlVCwgSSBObyBOTyBTRSBGZVQgVFJBTkdHQS4iLCJlIjoiQSBwZXJzb24gd2hvJ3Mg
+d2F0Y2hpbmcgdGhlIGZpZ2h0IGRvZXNuJ3Qga25vdyB0aGF0IHRoZSBmaWdodCBpcyBoYXJkLiIs
+Im8iOiJLcmlvIiwidCI6ImZhbWlseSx0cm91YmxlIiwiYSI6MH0seyJrIjoiUMmUU0lOIFdFIE7J
+lCBERSBUT1QgTE9EIE5PIE7JlCBTRSBMT0QgSEVCSS4iLCJwIjoiUG9TSU4gV0UgTm8gREUgVE9U
+IExPRCBOTyBObyBTRSBMT0QgSEVCSS4iLCJlIjoiQSBwZXJzb24gd2hvJ3Mgbm90IGNhcnJ5aW5n
+IHRoZSBsb2FkIGRvZXNuJ3Qga25vdyB0aGF0IHRoZSBsb2FkIGlzIGhlYXZ5LiIsIm8iOiJLcmlv
+IiwidCI6ImZhbWlseSIsImEiOjB9LHsiayI6IlDJlFNJTiBXRSBOyZQgR8mbVCBCyZRTSU4gTsmU
+IE5PIFNFIELJlFNJTiBIRUJJLiIsInAiOiJQb1NJTiBXRSBObyBHZVQgQm9TSU4gTm8gTk8gU0Ug
+Qm9TSU4gSEVCSS4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiyZtTS0VQ
+IELJlEQgTsmUIERFIEzJm0YgRkFJTiBLQUtBLiIsInAiOiJlU0tFUCBCb0QgTm8gREUgTGVGIEZB
+SU4gS0FLQS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MX0seyJrIjoiSUYgWVUgREUg
+R08gTkEgSElMIEbJlCBQVUwgU0FSQSBGyZQgRMmbTiBEyZtCVUwgRMmbTiwgWVUgTUlUyZRQIETJ
+m04gTkEgUk9ELCBZVSBHTyBHTyBFR0VOPyIsInAiOiJJRiBZVSBERSBHTyBOQSBISUwgRm8gUFVM
+IFNBUkEgRm8gRGVOIERlQlVMIERlTiwgWVUgTUlUb1AgRGVOIE5BIFJPRCwgWVUgR08gR08gRUdF
+Tj8iLCJlIjoiSWYgeW91IGFyZSBnb2luZyB0byB0aGUgaGlsbCB0byBtYWtlIGEgc2FjcmlmaWNl
+IGZvciB0aGUgZGV2aWxzIHRoZXJlIGFuZCB5b3UgbWVldCB0aGVtIG9uIHRoZSB3YXksIHdpbGwg
+eW91IHN0aWxsIGdvPyIsIm8iOiJNZW5kZSIsInQiOiIiLCJhIjowfSx7ImsiOiJJRiBXSSBCyZRE
+SSBERSBEyZRUSSwgSSBHTyBCSUdJTiBQQU4gV0kgRlVULiIsInAiOiJJRiBXSSBCb0RJIERFIERv
+VEksIEkgR08gQklHSU4gUEFOIFdJIEZVVC4iLCJlIjoiSWYgdGhlIGJvZHkgZ2V0cyBkaXJ0eSwg
+aXQgYmVnaW5zIHdpdGggdGhlIGZlZXQuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoi
+V09LIFdFIFlVIERFIERVLCBOQS1JTiBZVSBERSBURUsgUEUgRsmULiIsInAiOiJXT0sgV0UgWVUg
+REUgRFUsIE5BLUlOIFlVIERFIFRFSyBQRSBGby4iLCJlIjoiSXQncyB0aGUgd29yayB5b3UgZG8g
+dGhhdCB5b3UgZ2V0IHBhaWQgZm9yLiIsIm8iOiJLcmlvIiwidCI6IndvcmsiLCJhIjowfSx7Imsi
+OiJXRSBCyZREIERFIFBBUyDJlFAgTkEgU0tBSSAoRkxBSSBOQSBTS0FJKSwgU8mbTlNNQU4gREUg
+S8mUTlQgREkgRUcgTkEgSU4gQsmbTMmbLiIsInAiOiJXRSBCb0QgREUgUEFTIG9QIE5BIFNLQUkg
+KEZMQUkgTkEgU0tBSSksIFNlTlNNQU4gREUgS29OVCBESSBFRyBOQSBJTiBCZUxlLiIsImUiOiJX
+aGVuIGEgYmlyZCBmbGllcyBvdmVyaGVhZCwgYW4gaW50ZWxsaWdlbnQgbWFuIGNhbiBjb3VudCB0
+aGUgZWdncyBpbiBpdHMgYmVsbHkuIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiUMmU
+U0lOIE7JlCBGyZQgSEFJRCBTyZRNVElOIMmUTkRBIFlVIEFNUElUIFdFIFlVIERFIEJJVC4iLCJw
+IjoiUG9TSU4gTm8gRm8gSEFJRCBTb01USU4gb05EQSBZVSBBTVBJVCBXRSBZVSBERSBCSVQuIiwi
+ZSI6IllvdSBzaG91bGRuJ3QgaGlkZSBzb21ldGhpbmcgdW5kZXIgeW91ciBhcm1waXQgd2hpbGUg
+eW91IGFyZSBiZWF0aW5nIChzb21ldGhpbmcgaW4gYSBtb3J0YXIpLiIsIm8iOiJLb25vIiwidCI6
+IiIsImEiOjF9LHsiayI6Ik1FTkRFIE1BTiBHUklESSBURSwgRsmUIERJIFdJVkEgU8mbRj8gW01F
+TkRFIE1BTiBHUklESSBURSwgQsmUVCBJIFNBQkkgV09LLl0iLCJwIjoiTUVOREUgTUFOIEdSSURJ
+IFRFLCBGbyBESSBXSVZBIFNlRj8gW01FTkRFIE1BTiBHUklESSBURSwgQm9UIEkgU0FCSSBXT0su
+XSIsImUiOiJNzrVSzrVTSU4gV0UgWVUgREUgUFVUIE5BIFlVIEvXm01QSU4gSU4gU9ebRlVULCBO
+QS1JTiBEzrVOIEdPIFBVVCBOQSBZVSBZT04uIChLb25vKSIsIm8iOiJLb25vIiwidCI6IiIsImEi
+OjB9LHsiayI6IldFIETJlFRJIFdBTiBGyZREyZROIFBBTiBZyZRORyBHSUFMIElOIFlBSSwgRsmU
+IExFRMmUTiBGTEFUIExVSyDJlFAsIE5BLUlOIEkgS0lOIMmbTkpVRS4iLCJwIjoiV0UgRG9USSBX
+QU4gRm9Eb04gUEFOIFlvTkcgR0lBTCBJTiBZQUksIEZvIExFRG9OIEZMQVQgTFVLIG9QLCBOQS1J
+TiBJIEtJTiBlTkpVRS4iLCJlIjoiIiwibyI6Iktvbm8iLCJ0IjoiIiwiYSI6MH0seyJrIjoiV0Ug
+WVUgU0kgSE9VU1dBSUYgREUgVEVLIFBJS0lOIE5BIElOIFlFUywgTkEgSU4gSEFCSVQuIiwicCI6
+IldFIFlVIFNJIEhPVVNXQUlGIERFIFRFSyBQSUtJTiBOQSBJTiBZRVMsIE5BIElOIEhBQklULiIs
+ImUiOiJXaGVuIHlvdSBzZWUgYSBob3VzZXdpZmUgdGFrZSBhIGNoaWxkIGJ5IGl0cyBlYXJzLCBp
+dCdzIGhlciBoYWJpdC4iLCJvIjoiS29ubyIsInQiOiJmYW1pbHkiLCJhIjowfSx7ImsiOiJNQU4g
+V0UgREUgQ0hBTSBHUkFOQVQgTkEgVFJJVCwgSSBHTyBTV0FMQSBERSBIQUYgTkEgSE9TUElUVUwu
+IiwicCI6Ik1BTiBXRSBERSBDSEFNIEdSQU5BVCBOQSBUUklULCBJIEdPIFNXQUxBIERFIEhBRiBO
+QSBIT1NQSVRVTC4iLCJlIjoiQSBtYW4gd2hvIGNoZXdzIHBlYW51dHMgb24gdGhlIHN0cmVldCB3
+aWxsIHN3YWxsb3cgdGhlIGhhbGYgaW4gdGhlIGhvc3BpdGFsLiIsIm8iOiJLcmlvIiwidCI6IiIs
+ImEiOjB9LHsiayI6IlRJTksgV0VUSU4gWVUgREUgVMmUSywgTsmUIFTJlEsgV0VUSU4gWVUgREUg
+VElOSy4iLCJwIjoiVElOSyBXRVRJTiBZVSBERSBUb0ssIE5vIFRvSyBXRVRJTiBZVSBERSBUSU5L
+LiIsImUiOiJUaGluayB3aGF0IHlvdSBzYXksIGRvbid0IHNheSB3aGF0IHlvdSB0aGluay4iLCJv
+IjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJBR0LJlEzJlCBCyZtMyZtGVUwsIEkgRklUWUFJ
+IFlVQkEuIiwicCI6IkFHQm9MbyBCZUxlRlVMLCBJIEZJVFlBSSBZVUJBLiIsImUiOiIiLCJvIjoi
+S3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJHyZREIE7JlCBERSBHSSBZVSBMT0QgV0UgWVUgTsmU
+IEdPIEVCVUwgVE9ULiIsInAiOiJHb0QgTm8gREUgR0kgWVUgTE9EIFdFIFlVIE5vIEdPIEVCVUwg
+VE9ULiIsImUiOiJHb2Qgd29uJ3QgZ2l2ZSB5b3UgYSBsb2FkIHlvdSBjYW4ndCBjYXJyeS4iLCJv
+IjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJZVSBHSSBLQVcsIFlVIEhPTCBESSBST1AuIiwi
+cCI6IllVIEdJIEtBVywgWVUgSE9MIERJIFJPUC4iLCJlIjoiWW91IGdpdmUgYXdheSBhIGNvdXAs
+IHlvdSBrZWVwIGhvbGRpbmcgdGhlIHJvcGUuIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJr
+IjoiTkEgRsmUTCBERSBQVUwgTkEgRsmUTCBNyZRULiIsInAiOiJOQSBGb0wgREUgUFVMIE5BIEZv
+TCBNb1QuIiwiZSI6Ik9uZSBjaGlja2VuIHRha2VzIGZyb20gYW5vdGhlciBjaGlja2VuJ3MgbW91
+dGguIiwibyI6IktyaW8iLCJ0IjoiZ29zc2lwIiwiYSI6MH0seyJrIjoiU03JlEwgQklGIFdFIERF
+IExVSyBJTlNBSSBHyZROIElOIE3JlFQsIETJm04gR08gVEVTVCBJTiBTVVAgV0lUIFNQVU4uIiwi
+cCI6IlNNb0wgQklGIFdFIERFIExVSyBJTlNBSSBHb04gSU4gTW9ULCBEZU4gR08gVEVTVCBJTiBT
+VVAgV0lUIFNQVU4uIiwiZSI6IkRvbid0IHRlbXB0IGZhdGUuIiwibyI6IktyaW8iLCJ0IjoiIiwi
+YSI6MH0seyJrIjoiQkFCVSBXyZRXyZQgU09URSwgSSBNQVJFRCBUVSBNyZROS0kgSU4gU0lTVEEu
+IiwicCI6IkJBQlUgV29XbyBTT1RFLCBJIE1BUkVEIFRVIE1vTktJIElOIFNJU1RBLiIsImUiOiIi
+LCJvIjoiS3JpbyIsInQiOiIiLCJhIjowfSx7ImsiOiJUyZRLIEhBRiwgTMmbRiBIQUYuIiwicCI6
+IlRvSyBIQUYsIExlRiBIQUYuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsiayI6
+IldBTiBHUkVOIE1BTiBUyZRLIE5PyZQgREUgT0wgV0FUQS4iLCJwIjoiV0FOIEdSRU4gTUFOIFRv
+SyBOT28gREUgT0wgV0FUQS4iLCJlIjoiIiwibyI6IktyaW8iLCJ0IjoiIiwiYSI6MH0seyJrIjoi
+V0FOIFRFTSBLQUtBIE7JlCBERSBQTElUIEJBS1NBSS4iLCJwIjoiV0FOIFRFTSBLQUtBIE5vIERF
+IFBMSVQgQkFLU0FJLiIsImUiOiIiLCJvIjoiVGVtbmUiLCJ0IjoiIiwiYSI6MX0seyJrIjoiTkEg
+R0xBREkgTUVLIETJm04gS0lMIELJm0zJmyBXVU1BTiBHT1QuIiwicCI6Ik5BIEdMQURJIE1FSyBE
+ZU4gS0lMIEJlTGUgV1VNQU4gR09ULiIsImUiOiIiLCJvIjoiVGVtbmUiLCJ0IjoiIiwiYSI6MH0s
+eyJrIjoiV0UgWVUgTsmUIEfJm1QgRMmURywgWVUgVEVLIEdPVCBHTyBIyZROVElOLiIsInAiOiJX
+RSBZVSBObyBHZVQgRG9HLCBZVSBURUsgR09UIEdPIEhvTlRJTi4iLCJlIjoiIiwibyI6IktyaW8i
+LCJ0IjoiIiwiYSI6MH0seyJrIjoiQ0hJRiBERSBNRUsgTMmUIFdFIElOIEhBVCBQTElaLiIsInAi
+OiJDSElGIERFIE1FSyBMbyBXRSBJTiBIQVQgUExJWi4iLCJlIjoiIiwibyI6IlRlbW5lIiwidCI6
+IiIsImEiOjB9LHsiayI6Ik5BIEvJlExORU0gREUgQlJJTkdHIFBBTEFWQS4iLCJwIjoiTkEgS29M
+TkVNIERFIEJSSU5HRyBQQUxBVkEuIiwiZSI6IiIsIm8iOiJLcmlvIiwidCI6IiIsImEiOjB9LHsi
+ayI6IllVIE7JlCBGyZQgTMmbRiBESSBGSVNIIE5BIFlVIEhBTiBGyZQgREkgRklTSCBXRSBUyZRD
+SCBZVSBGVVQuIiwicCI6IllVIE5vIEZvIExlRiBESSBGSVNIIE5BIFlVIEhBTiBGbyBESSBGSVNI
+IFdFIFRvQ0ggWVUgRlVULiIsImUiOiJEb24ndCBkcm9wIHRoZSBmaXNoIHlvdSBoYXZlIGluIHlv
+dXIgaGFuZCBmb3IgdGhlIGZpc2ggdGhhdCB0b3VjaGVzIHlvdXIgZm9vdC4gQSBiaXJkIGluIHRo
+ZSBoYW5kIGlzIHdvcnRoIHR3byBpbiB0aGUgYnVzaC4iLCJvIjoiS29ubyIsInQiOiIiLCJhIjow
+fV0=""").decode("utf-8")
+
+
+# ===========================================================================
+# The old people's words.
+# 392 proverbs Charlie collected - Krio, Kono, Mende, Temne, Sherbro - with
+# what they mean and when they are said. She keeps them, gives one when he
+# asks, finds the right one for a situation, and teaches the Krio behind
+# them. 60 of them are blunt enough that she keeps them back unless he asks
+# for those on purpose.
+# ===========================================================================
+
+_PROV_SET = {"done": False}
+
+_PROV_WORDS = (
+    ("na", "it is / is", "Na Mista Spaida"),
+    ("de", "is -ing, or 'there'", "i de it di banana"),
+    ("dɛn", "they, them, and the plural mark", "dɛn waka, dɛn waka"),
+    ("we", "when, who, that", "we dɛn go te-e"),
+    ("wetin", "what", "wetin a de it"),
+    ("usai", "where", "usai banana de"),
+    ("udat", "who", "udat di kiap fit"),
+    ("nɔmɔ", "only, just", "i smɔl nɔmɔ"),
+    ("kin", "does it as a habit", "san kin kɔmɔt"),
+    ("dɔn", "already, finished", "i dɔn bɛlɛful"),
+    ("go", "will", "i go waka"),
+    ("nɔ", "not", "i nɔ ebul si am"),
+    ("fɔ", "for, to, must", "fɔ go blɔf"),
+    ("pan", "on, about", "i grap pan am"),
+    ("pas", "more than, past", "i gɛt sɛns pas ɛlifant"),
+    ("sote / te", "until, so much that", "dɛn go te-e"),
+    ("lɛk", "like", "lɛk we san kin kɔmɔt"),
+    ("bɔt", "but", "bɔt i nɔ ebul si"),
+    ("sɛf", "even, self", "insɛf i drɔ am"),
+    ("una", "you, more than one", "dɛn go tek una tu"),
+    ("ebul", "able to", "i nɔ ebul si di banana"),
+    ("tinap", "stand up", "i jɔs tinap fain"),
+    ("sidɔn", "sit down", "kam sidɔn"),
+    ("kɔmɔt", "come out, leave", "kɔmɔt biɛn mi"),
+    ("bɛlɛful", "full, satisfied", "i dɔn bɛlɛful"),
+)
+
+
+def _prov_ready():
+    """Made on first use, so there is no lock fight with a running server."""
+    if _PROV_SET["done"]:
+        return
+    db.execute("CREATE TABLE IF NOT EXISTS proverbs ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, krio TEXT, plain TEXT, "
+               "english TEXT, origin TEXT, themes TEXT, adult INTEGER "
+               "DEFAULT 0, said_on TEXT, times INTEGER DEFAULT 0)")
+    _PROV_SET["done"] = True
+    try:
+        have = db.query("SELECT COUNT(*) c FROM proverbs")
+        if have and int(have[0]["c"]) > 0:
+            return
+    except Exception:
+        return
+    import json as _json
+    try:
+        rows = _json.loads(_PROV_DATA)
+    except Exception as e:
+        print("PROVERBS: could not read the list -", repr(e), flush=True)
+        return
+    n = 0
+    for r in rows:
+        try:
+            db.execute("INSERT INTO proverbs (krio, plain, english, origin, "
+                       "themes, adult) VALUES (?,?,?,?,?,?)",
+                       (r.get("k"), r.get("p"), r.get("e"), r.get("o"),
+                        r.get("t"), r.get("a", 0)))
+            n += 1
+        except Exception:
+            pass
+    print("PROVERBS: %d written down" % n, flush=True)
+
+
+def _prov_say(r, teach=False):
+    """One proverb, laid out so it can be read and used."""
+    out = str(r.get("krio") or r.get("plain") or "").strip()
+    if r.get("english"):
+        out += "\n\n" + str(r["english"]).strip()
+    tail = []
+    if r.get("origin") and r["origin"] != "Krio":
+        tail.append(str(r["origin"]))
+    if tail:
+        out += "\n\n(" + ", ".join(tail) + ")"
+    if teach and r.get("plain") and r["plain"] != r.get("krio"):
+        out += "\n\nPlain spelling: " + str(r["plain"])
+    return out
+
+
+def _prov_pick(about=None, adult=False):
+    """The one that fits, or one he has not had lately."""
+    _prov_ready()
+    where = "" if adult else " WHERE COALESCE(adult,0) = 0"
+    if about:
+        like = "%" + about.strip().lower() + "%"
+        rows = db.query(
+            "SELECT * FROM proverbs" + (where or " WHERE 1=1") +
+            " AND (LOWER(english) LIKE ? OR LOWER(themes) LIKE ? "
+            "OR LOWER(plain) LIKE ?) ORDER BY COALESCE(times,0), "
+            "COALESCE(said_on,'') LIMIT 3", (like, like, like)) or []
+        if rows:
+            return rows
+    rows = db.query("SELECT * FROM proverbs" + where +
+                    " ORDER BY COALESCE(times,0), COALESCE(said_on,''), "
+                    "RANDOM() LIMIT 1") or []
+    return rows
+
+
+def _prov_used(r):
+    from datetime import datetime as _dt
+    try:
+        db.execute("UPDATE proverbs SET times = COALESCE(times,0) + 1, "
+                   "said_on = ? WHERE id = ?",
+                   (_dt.now().strftime("%Y-%m-%d"), r["id"]))
+    except Exception:
+        pass
+
+
+def _prov_lesson():
+    """A few words at a time, taken from the stories he gave me."""
+    _prov_ready()
+    import random
+    words = random.sample(_PROV_WORDS, 5)
+    out = "Five Krio words fɔ tide:\n"
+    for w, mean, eg in words:
+        out += "\n- **%s** - %s   (%s)" % (w, mean, eg)
+    rows = _prov_pick()
+    if rows:
+        _prov_used(rows[0])
+        out += "\n\nEn wan proverb fɔ practice:\n\n" + _prov_say(rows[0])
+    return out
+
+
+def _prov_brief():
+    """One for the morning, if it is ever wanted there."""
+    rows = _prov_pick()
+    if not rows:
+        return ""
+    _prov_used(rows[0])
+    return "Di old people se:\n\n" + _prov_say(rows[0])
+
+
+def _proverb_from_chat(text):
+    """Proverbs and Krio. Returns None when he meant something else."""
+    import re
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    if not re.search(r"\b(proverb|proverbs|saying|sayings|parable|old people|"
+                     r"krio|parabul)\b", low):
+        return None
+    _prov_ready()
+
+    # teach me krio
+    if re.search(r"\b(teach|learn|lan|lesson|word|words)\b", low) and \
+            re.search(r"\bkrio\b", low):
+        return _prov_lesson()
+
+    if not re.search(r"\b(proverb|proverbs|saying|sayings|parable|old people|"
+                     r"parabul)\b", low):
+        return None
+
+    adult = bool(re.search(r"\b(rude|blunt|dirty|rough|adult|no filter)\b",
+                           low))
+
+    about = None
+    m = re.search(r"\b(?:about|on|for|pan)\s+([a-z' ]{3,30})", low)
+    if m:
+        about = re.sub(r"\b(a|an|the|me|us|one|proverb|saying)\b", " ",
+                       m.group(1)).strip()
+        about = about or None
+
+    rows = _prov_pick(about=about, adult=adult)
+    if not rows:
+        return ("A no get proverb pan dat one yet, bo. Try anoda word - "
+                "money, patience, family, trouble, work.")
+    if about and len(rows) > 1:
+        out = "Pan %s, a get dɛn ya:\n" % about
+        for r in rows[:3]:
+            _prov_used(r)
+            out += "\n\n" + _prov_say(r)
+        return out
+    _prov_used(rows[0])
+    head = ("Pan %s:\n\n" % about) if about else ""
+    return head + _prov_say(rows[0], teach=True)
+
+
+@app.get("/api/proverbs")
+@require_password
+def proverbs_list():
+    try:
+        _prov_ready()
+        q = (request.args.get("q") or "").strip().lower()
+        adult = str(request.args.get("adult", "0")) in ("1", "true", "yes")
+        where = "WHERE 1=1" if adult else "WHERE COALESCE(adult,0) = 0"
+        args = ()
+        if q:
+            where += (" AND (LOWER(english) LIKE ? OR LOWER(plain) LIKE ? "
+                      "OR LOWER(themes) LIKE ?)")
+            args = ("%" + q + "%",) * 3
+        rows = db.query("SELECT * FROM proverbs " + where +
+                        " ORDER BY origin, id LIMIT 500", args) or []
+        return {"status": "success", "count": len(rows),
+                "proverbs": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+
+# ===========================================================================
+# "I took the pre malaria yesterday" has to be written down.
+#
+# She said "a don note am" and nothing was saved, so the count kept running
+# from 30 September and the next dose would have been wrong. Now it writes
+# the row, says the date it wrote, and says when the next one falls due -
+# so a real save can be told apart from a polite sentence.
+# ===========================================================================
+
+_MED_TAKE = (r"\b(a |i )?(don |jus |just |already )?(took|take|taken|tek|"
+             r"swallow|drink|drank|finish)\b")
+
+_MED_ALL = (r"\b(meds?|medicines?|medication|pills?|tablets?|drugs?|dose)\b")
+
+
+def _med_rows():
+    try:
+        return db.query("SELECT * FROM medications WHERE stopped_on IS NULL "
+                        "ORDER BY name") or []
+    except Exception as e:
+        print("MEDS: could not read them -", repr(e), flush=True)
+        return []
+
+
+def _med_clean(s):
+    import re
+    return [w for w in re.sub(r"[^a-z0-9 ]", " ", (s or "").lower()).split()
+            if w not in ("the", "my", "a", "an", "di", "mi", "tablet",
+                         "tablets", "tabs", "pill", "pills", "medicine",
+                         "medication", "meds", "dose", "of", "for")]
+
+
+def _med_find(text):
+    """Which medicine he means, typed how he types it."""
+    import difflib
+    words = _med_clean(text)
+    if not words:
+        return None
+    joined = " ".join(words)
+    best, score = None, 0.0
+    for m in _med_rows():
+        for nm in (m.get("name"), m.get("generic_name"), m.get("what_for")):
+            nmw = _med_clean(nm)
+            if not nmw:
+                continue
+            full = " ".join(nmw)
+            s = 0.0
+            if full and full in joined:
+                s = 1.0
+            else:
+                for a in words:
+                    for b in nmw:
+                        if len(a) > 3 and len(b) > 3:
+                            s = max(s, difflib.SequenceMatcher(None, a, b)
+                                    .ratio())
+            if s > score:
+                best, score = m, s
+    if best and score >= 0.78:
+        return best
+    return None
+
+
+def _med_slot(mid):
+    """Whatever this app already calls a slot for this medicine."""
+    try:
+        r = db.query("SELECT slot, COUNT(*) c FROM medication_log "
+                     "WHERE medication_id = ? GROUP BY slot "
+                     "ORDER BY c DESC LIMIT 1", (mid,))
+        if r and r[0]["slot"]:
+            return r[0]["slot"]
+    except Exception:
+        pass
+    return "today"
+
+
+def _med_when(text):
+    """The day he means. Today unless he says otherwise."""
+    import re
+    from datetime import datetime as _dt, timedelta as _td
+    low = (text or "").lower()
+    now = _dt.now()
+    if re.search(r"\byesterday\b|\byestaday\b", low):
+        return (now - _td(days=1)).strftime("%Y-%m-%d")
+    m = re.search(r"\b(\d{1,2})\s*days?\s*(ago|back)\b", low)
+    if m:
+        return (now - _td(days=int(m.group(1)))).strftime("%Y-%m-%d")
+    if re.search(r"\blast night\b|\bdis morning\b|\bthis morning\b|\btide\b|"
+                 r"\btoday\b", low):
+        return now.strftime("%Y-%m-%d")
+    try:
+        d = _pap_date(low)          # the date reader from the papers work
+        if d:
+            return d
+    except Exception:
+        pass
+    return now.strftime("%Y-%m-%d")
+
+
+def _med_next(m, taken_on):
+    """When the one after that falls due."""
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        base = _dt.strptime(taken_on, "%Y-%m-%d")
+    except Exception:
+        return ""
+    lo = m.get("every_days")
+    hi = m.get("every_days_max") or lo
+    if not lo:
+        return ""
+    a = (base + _td(days=int(lo))).strftime("%d %b")
+    if hi and int(hi) != int(lo):
+        b = (base + _td(days=int(hi))).strftime("%d %b")
+        return "Di next one between %s and %s." % (a, b)
+    return "Di next one %s." % a
+
+
+def _med_write(m, day):
+    """One row, and never two for the same day."""
+    from datetime import datetime as _dt
+    slot = _med_slot(m["id"])
+    try:
+        have = db.query("SELECT id FROM medication_log WHERE medication_id = ?"
+                        " AND taken_on = ? AND slot = ?",
+                        (m["id"], day, slot))
+        if have:
+            return False
+        db.execute("INSERT INTO medication_log (medication_id, slot, taken_on,"
+                   " taken_at) VALUES (?, ?, ?, ?)",
+                   (m["id"], slot, day,
+                    _dt.now().strftime("%Y-%m-%d %H:%M:%S")))
+        return True
+    except Exception as e:
+        print("MEDS: could not write it down -", repr(e), flush=True)
+        return None
+
+
+def _med_due_say(m):
+    """How it stands for one medicine."""
+    from datetime import datetime as _dt
+    rows = db.query("SELECT taken_on FROM medication_log WHERE "
+                    "medication_id = ? ORDER BY taken_on DESC LIMIT 1",
+                    (m["id"],)) or []
+    if not rows or not rows[0].get("taken_on"):
+        return "%s - a no get any day write down for am yet." % m["name"]
+    last = rows[0]["taken_on"]
+    try:
+        gap = (_dt.now() - _dt.strptime(last, "%Y-%m-%d")).days
+    except Exception:
+        gap = None
+    out = "%s - last one %s" % (m["name"], last)
+    if gap is not None:
+        out += " (%d day%s back)" % (gap, "" if gap == 1 else "s")
+    nxt = _med_next(m, last)
+    if nxt:
+        out += ". " + nxt
+    return out
+
+
+def _med_from_chat(text):
+    """Taking a dose, and when the next one is due. Questions never write."""
+    import re
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    if not (re.search(_MED_ALL, low) or _med_find(low)):
+        return None
+
+    asking = bool(re.match(r"^(and\s+)?(when|what|which|how|do i|did i|am i|"
+                           r"is|are|wetin|usai|tell me|show)\b", low)
+                  or low.rstrip().endswith("?"))
+
+    # --- when is it due -------------------------------------------------
+    if asking and re.search(r"\b(due|next|when|left|remain)\b", low):
+        m = _med_find(low)
+        if m:
+            return _med_due_say(m)
+        rows = [x for x in _med_rows()
+                if (x.get("schedule_kind") or "") == "interval"]
+        if rows:
+            return "\n\n".join("- " + _med_due_say(x) for x in rows)
+        return None
+    if asking:
+        return None
+
+    if not re.search(_MED_TAKE, low):
+        return None
+
+    day = _med_when(low)
+    m = _med_find(low)
+
+    if m:
+        ok = _med_write(m, day)
+        if ok is None:
+            return ("A try fɔ write am down bɔt e no save. Tell mi again, "
+                    "bo.")
+        if ok is False:
+            return "%s already write down fɔ %s. %s" % (
+                m["name"], day, _med_next(m, day))
+        out = "Write down: %s taken %s." % (m["name"], day)
+        nxt = _med_next(m, day)
+        if nxt:
+            out += " " + nxt
+        return out
+
+    # "I took my pills" - everything that runs to a daily pattern
+    if re.search(_MED_ALL, low):
+        meds = [x for x in _med_rows()
+                if (x.get("schedule_kind") or "") != "interval"
+                and "as needed" not in (x.get("frequency") or "").lower()]
+        if not meds:
+            return None
+        wrote = [x["name"] for x in meds if _med_write(x, day)]
+        if not wrote:
+            return "Dɛn already write down fɔ %s, bo." % day
+        return ("Write down fɔ %s: %s. Di ones wey get dem own day - say di "
+                "name and a go write am too." % (day, ", ".join(wrote)))
+    return None
+
+
+@app.get("/api/medications/due")
+@require_password
+def medications_due():
+    try:
+        rows = [x for x in _med_rows()
+                if (x.get("schedule_kind") or "") == "interval"]
+        return {"status": "success",
+                "says": "\n".join(_med_due_say(x) for x in rows),
+                "medications": [dict(x) for x in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/medications/<int:mid>/taken")
+@require_password
+def medications_taken(mid):
+    try:
+        d = request.get_json() or {}
+        rows = db.query("SELECT * FROM medications WHERE id = ?", (mid,))
+        if not rows:
+            return {"error": "no such medicine"}, 404
+        from datetime import datetime as _dt
+        day = d.get("on") or _dt.now().strftime("%Y-%m-%d")
+        ok = _med_write(rows[0], day)
+        return {"status": "success", "written": bool(ok), "on": day,
+                "next": _med_next(rows[0], day)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+# english | krio | how it sounds | topic | check | other ways to say it
+_KRIO_PHRASES = (
+    # ---- greetings -------------------------------------------------------
+    ("Welcome", "Kabɔ", "", "greetings", 0, "Wɛlkɔm"),
+    ("Hello (any time)", "Kushɛ", "koo-sheh", "greetings", 0,
+     "Kushɛ-o / Kabɔ / Adu"),
+    ("Good morning", "Gud mɔnin", "", "greetings", 0, "Aw di mɔnin?"),
+    ("Good afternoon", "Gud aftanun", "", "greetings", 0, ""),
+    ("Good evening", "Gud ivnin", "", "greetings", 0, ""),
+    ("Good night", "Gud nɛt", "", "greetings", 0, ""),
+    ("How are you?", "Aw yu du?", "", "greetings", 0,
+     "Aw di bɔdi? / Aw di go de go?"),
+    ("How is your family?", "Aw di fambul?", "", "greetings", 0, ""),
+
+    # ---- answering back --------------------------------------------------
+    ("I am well, and you?", "A wɛl, aw yusɛf?", "", "replies", 0,
+     "Misɛf a wɛl. Aw yu du?"),
+    ("I am fine", "A fayn fayn", "", "replies", 0,
+     "Di bɔdi fayn / Di bɔdi nɔ bad"),
+    ("No complaints, thank God", "Kasi nɔ de pan Gɔd", "", "replies", 0, ""),
+    ("Yes", "Yɛs", "yehs", "replies", 0, ""),
+    ("No", "Nɔ", "nor", "replies", 0, ""),
+    ("Maybe", "Sɔntɛm", "son-tem", "replies", 0, ""),
+    ("I don't know", "A nɔ no", "", "replies", 0, "A nɔ sabi"),
+    ("Reply to thank you", "O", "", "replies", 0, ""),
+
+    # ---- meeting people --------------------------------------------------
+    ("What is your name?", "Wetin na yu nem?", "weh-teen na yu nehm",
+     "meeting", 0, "We yu nem?"),
+    ("My name is ___", "A nem ___", "", "meeting", 0, "Mi nem na ___"),
+    ("Where are you from?", "Usai yu kɔmɔt?", "oo-sigh yu koh-moht",
+     "meeting", 0, ""),
+    ("I am from ___", "A kɔmɔt ___", "", "meeting", 0, ""),
+    ("Pleased to meet you", "A gladi fɔ mit yu", "ah glah-dee foh meet yoo",
+     "meeting", 0, ""),
+
+    # ---- going -----------------------------------------------------------
+    ("Goodbye (I am going)", "A de go", "ah day goh", "farewells", 0,
+     "Wi de go (we are going) / Gudbay / Bye bye"),
+    ("We will see each other again", "Wi go si bak", "", "farewells", 0, ""),
+    ("Take care / so long", "Mekes ya", "", "farewells", 0,
+     "O mekes o (the reply)"),
+    ("Good luck!", "Gud lɔk", "", "farewells", 0, "Mek bɛtɛ fala yu"),
+    ("Have a nice day", "A ɔp yu de go fayn", "", "farewells", 0, ""),
+    ("Have a good journey", "Una gɛt gud trip!", "", "farewells", 0, ""),
+    ("Enjoy your meal", "Ɛnjɔy yu it!", "", "farewells", 0, ""),
+    ("Cheers / good health", "Bɔk ɔp!", "", "farewells", 0, "Gud wɛlbɔdi!"),
+
+    # ---- courtesy --------------------------------------------------------
+    ("Please (asking a favour)", "Duya", "doo-yah", "politeness", 0,
+     "Bo duya"),
+    ("Thank you", "Tɛnki", "tehn-kee", "politeness", 0, ""),
+    ("Sorry / I beg your pardon", "A bayg padin", "ah bayg pahr-din",
+     "politeness", 0, "A bayg o padin"),
+    ("Excuse me (getting attention)", "Bo duya", "bo doo-yah", "politeness",
+     0, ""),
+    ("Excuse me (let me pass)", "Kɔmɔt na rod", "koh-moht nah rohd",
+     "politeness", 0, ""),
+    ("Congratulations!", "Wi de kɔle yu!", "", "politeness", 0, ""),
+
+    # ---- following a conversation ---------------------------------------
+    ("Do you understand?", "Yu ɔndastand?", "", "understanding", 0, ""),
+    ("I understand", "A ɔndastand", "", "understanding", 0, ""),
+    ("I don't understand", "A nɔ ɔndastand", "ah nor on-da-stand",
+     "understanding", 0, ""),
+    ("Please speak more slowly", "Duya tɔk mɔ sloslo", "", "understanding",
+     0, ""),
+    ("Please say that again", "Duya una tɔk dat bak", "", "understanding",
+     0, ""),
+    ("Please write it down", "Duya rayt am dɔŋ", "", "understanding", 0, ""),
+
+    # ---- about language --------------------------------------------------
+    ("Do you speak English?", "Yu sabi tɔk Inglish?", "", "language", 0,
+     "Yu de tɔk Inglish?"),
+    ("Do you speak Krio?", "Yu de tɔk Krio?", "", "language", 0, ""),
+    ("I speak a little", "A tɔk smɔl smɔl", "", "language", 0,
+     "A tɔk am smɔl smɔl"),
+    ("No, but I am learning", "Nɔ, ba a de lan", "", "language", 0, ""),
+    ("Do you speak any language besides Krio?",
+     "Yu de tɔk ɔda langwej pas Krio?", "", "language", 0, ""),
+    ("Speak to me in Krio", "Tɔk to mi fɔ Krio", "", "language", 0, ""),
+    ("How do you say ___ in Krio?", "Aw yu se ___ in Krio?", "", "language",
+     0, ""),
+    ("One language is never enough", "Wan langwej nɔ go du", "", "language",
+     0, ""),
+
+    # ---- out and about ---------------------------------------------------
+    ("How much is this?", "Ɔmɔs fɔ am?", "oh-mohs foh am", "shopping", 0, ""),
+    ("How much to go to ___?", "Na ɔmɔs fɔ go ___?", "", "shopping", 0, ""),
+    ("Take me to ___, please", "Duya, kɛr mi go ___", "", "shopping", 0, ""),
+    ("I want to go to ___", "A wan fɔ go ___", "ah wahn foh goh", "shopping",
+     0, ""),
+    ("Where is the toilet?", "Usai di toilet de?", "oo-sigh di toilet day",
+     "shopping", 0, "Usai na di toilet?"),
+    ("Do you have a room?", "Yu gɛt rum?", "", "shopping", 0, ""),
+    ("Does the room have ___?", "Di rum gɛt ___?", "", "shopping", 0, ""),
+    ("This gentleman will pay for everything", "Dis jentlman go pe fɔ ɔltin",
+     "", "shopping", 0, ""),
+    ("This lady will pay for everything", "Dis uman go pe fɔ ɔltin", "",
+     "shopping", 0, ""),
+
+    # ---- trouble ---------------------------------------------------------
+    ("Help!", "Ɛp!", "ehp", "trouble", 0, "Ɛp mi! / Una kam o!"),
+    ("Fire!", "Faya!", "fa-ya", "trouble", 0, ""),
+    ("Stop!", "Lɛf!", "lehf", "trouble", 0, ""),
+    ("Call the police!", "Kɔl di polis dɛn!", "", "trouble", 0, ""),
+    ("Go away!", "Kɔmɔt!", "koh-moht", "trouble", 0, ""),
+    ("Leave me alone!", "Lɛf mi!", "lehf mee", "trouble", 0,
+     "Lɛf mi saful!"),
+    ("Don't touch me!", "Nɔ tɔch mi!", "", "trouble", 0, ""),
+    ("Stop! Thief!", "Tifman!", "teef-man", "trouble", 0, ""),
+    ("It is an emergency", "Na urgent tin", "", "trouble", 0, ""),
+    ("I am lost", "A nɔ sabi usai a de", "", "trouble", 0, ""),
+    ("I lost my bag", "A dɔn lɔs mi bag", "", "trouble", 0, ""),
+    ("I lost my wallet", "A dɔn lɔs mi wallet", "", "trouble", 0, ""),
+    ("I am not feeling well", "A nɔ de fil wɛl", "", "trouble", 0, ""),
+    ("I have hurt myself", "A dɔn hɔt misɛf", "", "trouble", 0, ""),
+    ("Get well soon", "Gɛt wɛlbɔdi kwik kwik wan", "", "trouble", 0, ""),
+    ("Can I use your phone?", "Gi mi yu fon", "gi-mi fon", "trouble", 0, ""),
+
+    # ---- feelings --------------------------------------------------------
+    ("I miss you", "A mis yu", "", "feelings", 0, ""),
+    ("I love you", "A lɛk yu", "", "feelings", 0,
+     "A lɛk yu badbad wan / A lɔv yu / Mi at tek yu"),
+    ("Would you like to dance with me?", "Yu wan dans wit mi?", "",
+     "feelings", 0, "Yu go lɛk fɔ dans wit mi?"),
+    ("Do you come here often?", "Yu kin kam ya bɔku tɛm?", "", "feelings",
+     0, ""),
+
+    # ---- the year --------------------------------------------------------
+    ("Happy Christmas", "Api Krismes", "", "celebrations", 0, ""),
+    ("Happy New Year", "Api nyu ia", "", "celebrations", 0, ""),
+    ("Happy Easter", "Gladi Ista", "", "celebrations", 0, ""),
+    ("Happy birthday", "Api batde", "", "celebrations", 0, ""),
+
+    # ---- everyday --------------------------------------------------------
+    ("Car", "Mɔtoka", "moh-toh-ka", "everyday", 0, ""),
+    ("Taxi", "Taksi", "", "everyday", 0, ""),
+    ("Market", "Makit", "", "everyday", 0, ""),
+    ("Child", "Pikin", "pee-kin", "everyday", 0, ""),
+    ("Friend", "Padi", "pa-di", "everyday", 0, ""),
+    ("Food, or to eat", "Chɔp", "chop", "everyday", 0, ""),
+    ("today", "tide", "tee-day", "everyday", 0, ""),
+    ("tomorrow", "tumara", "too-ma-ra", "everyday", 0, ""),
+    ("yesterday", "Tradae", "", "everyday", 1, ""),
+
+    # ---- asking ----------------------------------------------------------
+    ("what?", "Wetin?", "weh-teen", "asking", 0, ""),
+    ("where?", "Usai?", "oo-sigh", "asking", 0, ""),
+    ("who?", "Udat?", "oo-dat", "asking", 0, ""),
+    ("how much?", "Ɔmɔs?", "oh-mohs", "asking", 0, ""),
+    ("when?", "Wetin?", "", "asking", 1, ""),
+
+    # ---- counting --------------------------------------------------------
+    ("one", "wan", "", "numbers", 0, ""),
+    ("two", "tu", "", "numbers", 0, ""),
+    ("three", "tri", "", "numbers", 0, ""),
+    ("four", "fo", "", "numbers", 0, ""),
+    ("five", "fayv", "", "numbers", 0, ""),
+    ("six", "siks", "", "numbers", 0, ""),
+    ("seven", "sɛvun", "", "numbers", 0, ""),
+    ("eight", "ɛyt", "", "numbers", 0, ""),
+    ("nine", "nayn", "", "numbers", 0, ""),
+    ("ten", "tɛn", "", "numbers", 0, ""),
+    ("eleven", "ilɛvun", "", "numbers", 0, ""),
+
+    # ---- the words that hold sentences together -------------------------
+    ("it is / is", "na", "", "words", 0, "Na Mista Spaida"),
+    ("is -ing, or 'there'", "de", "", "words", 0, "i de it di banana"),
+    ("they, them, and the plural mark", "dɛn", "", "words", 0,
+     "dɛn waka, dɛn waka"),
+    ("when, who, that", "we", "", "words", 0, "we dɛn go te-e"),
+    ("only, just", "nɔmɔ", "", "words", 0, "i smɔl nɔmɔ"),
+    ("does it as a habit", "kin", "", "words", 0, "san kin kɔmɔt"),
+    ("already, finished", "dɔn", "", "words", 0, "i dɔn bɛlɛful"),
+    ("will", "go", "", "words", 0, "i go waka"),
+    ("not", "nɔ", "", "words", 0, "i nɔ ebul si am"),
+    ("for, to, must", "fɔ", "", "words", 0, "fɔ go blɔf"),
+    ("on, about", "pan", "", "words", 0, "i grap pan am"),
+    ("more than, past", "pas", "", "words", 0, "i gɛt sɛns pas ɛlifant"),
+    ("until, so much that", "sote", "", "words", 0, "dɛn go te-e"),
+    ("like", "lɛk", "", "words", 0, "lɛk we san kin kɔmɔt"),
+    ("but", "bɔt", "", "words", 0, "bɔt i nɔ ebul si"),
+    ("even, self", "sɛf", "", "words", 0, "insɛf i drɔ am"),
+    ("you (more than one)", "una", "", "words", 0, "dɛn go tek una tu"),
+    ("able to", "ebul", "", "words", 0, "i nɔ ebul si di banana"),
+    ("stand up", "tinap", "", "words", 0, "i jɔs tinap fain"),
+    ("sit down", "sidɔn", "", "words", 0, "kam sidɔn"),
+    ("come out, leave", "kɔmɔt", "", "words", 0, "kɔmɔt biɛn mi"),
+    ("full, satisfied", "bɛlɛful", "", "words", 0, "i dɔn bɛlɛful"),
+    ("know, know how to", "sabi", "", "words", 0, "yu sabi tɔk Krio?"),
+    ("plenty, a lot", "bɔku", "", "words", 0, "bɔku tɛm"),
+    ("small, a little", "smɔl", "", "words", 0, "A tɔk smɔl smɔl"),
+)
+
+
+
+# ===========================================================================
+# Krio, as something she teaches while they talk.
+#
+# Three jobs:
+#   * a lesson when he asks for one, a topic at a time
+#   * translation either way - "how do you say thank you in Krio"
+#   * and the one that matters daily: any Krio word he does not know, he
+#     can ask about mid-conversation and she explains it. She only answers
+#     when she actually recognises the word, so an ordinary English
+#     question is never mistaken for a Krio one.
+# ===========================================================================
+
+_KRIO_SET = {"done": False}
+
+_KRIO_TOPICS = ("greetings", "replies", "meeting", "farewells", "politeness",
+                "understanding", "language", "shopping", "trouble",
+                "feelings", "celebrations", "everyday", "asking", "numbers",
+                "words")
+
+
+def _krio_ready():
+    if _KRIO_SET["done"]:
+        return
+    db.execute("CREATE TABLE IF NOT EXISTS krio_phrases ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, english TEXT, "
+               "krio TEXT, sounds TEXT, topic TEXT, variants TEXT, "
+               "check_it INTEGER DEFAULT 0, times INTEGER DEFAULT 0, "
+               "said_on TEXT)")
+    _KRIO_SET["done"] = True
+    try:
+        have = db.query("SELECT COUNT(*) c FROM krio_phrases")
+        if have and int(have[0]["c"]) > 0:
+            return
+    except Exception:
+        return
+    n = 0
+    for en, kr, snd, top, chk, alt in _KRIO_PHRASES:
+        try:
+            db.execute("INSERT INTO krio_phrases (english, krio, sounds, "
+                       "topic, variants, check_it) VALUES (?,?,?,?,?,?)",
+                       (en, kr, snd, top, alt, chk))
+            n += 1
+        except Exception:
+            pass
+    print("KRIO: %d phrases written down" % n, flush=True)
+
+
+def _krio_line(r, full=False):
+    out = "**%s** - %s" % (r.get("krio"), r.get("english"))
+    if r.get("sounds"):
+        out += "  (%s)" % r["sounds"]
+    if full and r.get("variants"):
+        out += "\n   Yu kin se am so too: " + str(r["variants"])
+    if r.get("check_it"):
+        out += "   [needs checking]"
+    return out
+
+
+def _krio_mark(r):
+    from datetime import datetime as _dt
+    try:
+        db.execute("UPDATE krio_phrases SET times = COALESCE(times,0) + 1, "
+                   "said_on = ? WHERE id = ?",
+                   (_dt.now().strftime("%Y-%m-%d"), r["id"]))
+    except Exception:
+        pass
+
+
+def _krio_topic(topic, n=12, teachable=True):
+    _krio_ready()
+    sql = "SELECT * FROM krio_phrases WHERE topic = ?"
+    if teachable:
+        sql += " AND COALESCE(check_it,0) = 0"
+    return db.query(sql + " ORDER BY id LIMIT ?", (topic, n)) or []
+
+
+def _krio_fold(s):
+    """ɛ and ɔ are hard to type, so matching ignores them."""
+    return ((s or "").lower().replace("ɛ", "e").replace("ɔ", "o")
+            .replace("ŋ", "n").strip())
+
+
+def _krio_look(word):
+    """Anything that looks like this word, however he spelt it."""
+    _krio_ready()
+    w = _krio_fold((word or "").strip().strip("?.!,'\""))
+    if len(w) < 2:
+        return []
+    rows = db.query("SELECT * FROM krio_phrases") or []
+    exact, inside = [], []
+    for r in rows:
+        k = _krio_fold(r.get("krio"))
+        v = _krio_fold(r.get("variants"))
+        e = _krio_fold(r.get("english"))
+        if k == w or e == w:
+            exact.append(r)
+        elif w in k or w in v or (len(w) > 3 and w in e):
+            inside.append(r)
+    out = exact + inside
+    out.sort(key=lambda r: (r.get("check_it") or 0))
+    return out[:4]
+
+
+def _krio_in_proverb(word):
+    w = (word or "").strip().lower()
+    if len(w) < 3:
+        return None
+    try:
+        rows = db.query("SELECT * FROM proverbs WHERE COALESCE(adult,0) = 0 "
+                        "AND (LOWER(krio) LIKE ? OR LOWER(plain) LIKE ?) "
+                        "LIMIT 1", ("%" + w + "%", "%" + w + "%"))
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+
+def _krio_explain(text):
+    """He met a word and does not know it. Only answers when she knows it."""
+    import re
+    low = (text or "").strip().lower()
+    m = re.search(r"(?:wetin na|wetin|what does|what do|what is|whats|"
+                  r"what's|meaning of|explain|how fɔ use)\s+"
+                  r"[\"']?([a-zɔɛŋ' -]{2,30}?)[\"']?\s*"
+                  r"(?:mean|means|min|stand for|in krio|na krio)?\s*[?.!]*$",
+                  low)
+    if not m:
+        return None
+    want = m.group(1).strip()
+    want = re.sub(r"^(di|da|dat|the|this|that|a|an|word|phrase)\s+", "", want)
+    if not want:
+        return None
+
+    rows = _krio_look(want)
+    if not rows:
+        # maybe it is one word out of a proverb
+        p = _krio_in_proverb(want)
+        if p:
+            return ("'%s' na from dis one:\n\n%s\n\n%s"
+                    % (want, p.get("krio"), p.get("english") or ""))
+        return None
+
+    out = []
+    for r in rows[:2]:
+        _krio_mark(r)
+        out.append(_krio_line(r, full=True))
+    return "\n\n".join(out)
+
+
+def _krio_how(text):
+    """How do you say ___ in Krio."""
+    import re
+    low = (text or "").strip().lower()
+    m = re.search(r"(?:how (?:do|du) (?:yu|you|i|we) say|how fɔ say|"
+                  r"aw yu se|wetin na)\s+[\"']?(.{2,40}?)[\"']?\s*"
+                  r"(?:in|na|pan)\s*krio\b", low)
+    if not m:
+        return None
+    _krio_ready()
+    want = m.group(1).strip(" ?.!'\"")
+    rows = db.query("SELECT * FROM krio_phrases WHERE LOWER(english) LIKE ? "
+                    "ORDER BY COALESCE(check_it,0), LENGTH(english), id "
+                    "LIMIT 4", ("%" + want + "%",)) or []
+    if not rows:
+        return ("A no get '%s' pan mi list yet, bo. If yu find di Krio, "
+                "tell mi en a go keep am." % want)
+    out = []
+    for r in rows:
+        _krio_mark(r)
+        out.append(_krio_line(r, full=True))
+    return "\n\n".join(out)
+
+
+def _krio_lesson(topic=None):
+    """A topic at a time, finished with a proverb."""
+    _krio_ready()
+    import random
+    if not topic:
+        done = db.query("SELECT topic, COUNT(*) n FROM krio_phrases "
+                        "WHERE COALESCE(check_it,0) = 0 AND "
+                        "COALESCE(times,0) = 0 GROUP BY topic "
+                        "ORDER BY n DESC") or []
+        topic = (done[0]["topic"] if done
+                 else random.choice(list(_KRIO_TOPICS)))
+    rows = _krio_topic(topic, 6)
+    if not rows:
+        return None
+    out = "Krio fɔ tide - %s:\n" % topic
+    for r in rows:
+        out += "\n- " + _krio_line(r)
+        _krio_mark(r)
+    try:
+        p = _prov_pick()
+        if p:
+            _prov_used(p[0])
+            out += "\n\nEn wan proverb:\n\n" + _prov_say(p[0])
+    except Exception:
+        pass
+    out += "\n\nAsk mi wetin any word mean en a go tell yu."
+    return out
+
+
+def _krio_tip():
+    """One phrase, for the morning word, if it is ever wanted there."""
+    _krio_ready()
+    rows = db.query("SELECT * FROM krio_phrases WHERE COALESCE(check_it,0)=0 "
+                    "ORDER BY COALESCE(times,0), COALESCE(said_on,''), "
+                    "RANDOM() LIMIT 1") or []
+    if not rows:
+        return ""
+    _krio_mark(rows[0])
+    return "Krio fɔ tide: " + _krio_line(rows[0])
+
+
+def _krio_from_chat(text):
+    """Teaching Krio. Stands back for proverbs, and for anything she does
+    not actually recognise."""
+    import re
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    if re.search(r"\b(proverb|proverbs|saying|parable)\b", low):
+        return None
+
+    out = _krio_how(text)
+    if out:
+        return out
+
+    out = _krio_explain(text)
+    if out:
+        return out
+
+    if not re.search(r"\bkrio\b", low):
+        return None
+
+    for topic in _KRIO_TOPICS:
+        if re.search(r"\b" + topic.split()[0] + r"\b", low):
+            rows = _krio_topic(topic, 14)
+            if rows:
+                for r in rows:
+                    _krio_mark(r)
+                return ("Krio - %s:\n\n" % topic +
+                        "\n\n".join(_krio_line(r, full=True) for r in rows))
+
+    if re.search(r"\b(teach|learn|lan|lesson|practice|practise|study|word|"
+                 r"words|phrase|phrases|speak|tɔk|help me)\b", low):
+        return _krio_lesson()
+    return None
+
+
+@app.get("/api/krio")
+@require_password
+def krio_list():
+    try:
+        _krio_ready()
+        topic = (request.args.get("topic") or "").strip().lower()
+        q = (request.args.get("q") or "").strip().lower()
+        if topic:
+            rows = db.query("SELECT * FROM krio_phrases WHERE topic = ? "
+                            "ORDER BY id", (topic,)) or []
+        elif q:
+            rows = db.query("SELECT * FROM krio_phrases WHERE LOWER(english) "
+                            "LIKE ? OR LOWER(krio) LIKE ? OR LOWER(variants) "
+                            "LIKE ? ORDER BY topic, id",
+                            ("%" + q + "%",) * 3) or []
+        else:
+            rows = db.query("SELECT * FROM krio_phrases ORDER BY topic, id") \
+                or []
+        return {"status": "success", "count": len(rows),
+                "topics": list(_KRIO_TOPICS),
+                "phrases": [dict(r) for r in rows]}
     except Exception as e:
         return {"error": str(e)}, 400
 
