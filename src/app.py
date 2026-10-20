@@ -39073,5 +39073,198 @@ def _charlie_asking(text):
     return False
 
 
+
+
+# ===========================================================================
+# DEPLOY BOOTSTRAP
+#
+# Two jobs, both only for getting a fresh server into a working state:
+#
+#   1. Write credentials.json and token.pickle from base64 env vars, if
+#      they are missing. They are gitignored - correctly - so the server
+#      has neither, and Google Calendar logs "not found" and gives up.
+#
+#   2. A ONE-TIME database restore endpoint, so the 9.5MB database can
+#      be uploaded to the volume once. A fresh deploy starts empty
+#      because *.db is gitignored: the tables self-create, the data does
+#      not.
+#
+# The endpoint is dangerous by nature - it replaces the database - so it
+# is built to be inert by default and to disarm itself:
+#
+#   - It does nothing unless AMI_RESTORE_TOKEN is set and is at least 24
+#     characters. No variable, no endpoint.
+#   - The token is NOT the app password. AMI_PASSWORD is compiled into
+#     the frontend bundle and readable by anyone who loads the page, so
+#     it protects nothing here.
+#   - It refuses once the database has real data, unless force=1 is also
+#     passed. So after the one restore it stops working on its own.
+#   - It validates the upload before touching anything: SQLite magic
+#     bytes, opens it, runs a quick integrity check, and requires the
+#     tables it expects to be present.
+#   - It writes to a temporary file beside the database and only then
+#     does an atomic replace, so a failed upload cannot leave a
+#     half-written database.
+#
+# Delete this whole block once the data is across.
+# ===========================================================================
+
+def _ami_boot_files():
+    """credentials.json and token.pickle from base64 env vars."""
+    import base64 as _b64
+    here = os.path.dirname(os.path.abspath(__file__))
+    for var, name in (("GOOGLE_CREDENTIALS_B64", "credentials.json"),
+                      ("GOOGLE_TOKEN_B64", "token.pickle")):
+        raw = os.environ.get(var)
+        if not raw:
+            continue
+        path = os.path.join(here, name)
+        if os.path.exists(path):
+            continue
+        try:
+            data = _b64.b64decode(raw.strip())
+            with open(path, "wb") as fh:
+                fh.write(data)
+            print("bootstrap: wrote %s (%d bytes) from %s"
+                  % (name, len(data), var), flush=True)
+        except Exception as e:
+            print("bootstrap: could not write %s - %r" % (name, e),
+                  flush=True)
+
+
+try:
+    _ami_boot_files()
+except Exception as _bfe:
+    print("bootstrap: file step skipped - %r" % _bfe, flush=True)
+
+
+_AMI_RESTORE_WANT = ("personal_settings", "conversations", "ledger_entries")
+
+
+def _ami_restore_ok():
+    tok = os.environ.get("AMI_RESTORE_TOKEN") or ""
+    return len(tok.strip()) >= 24
+
+
+def _ami_db_path():
+    p = os.environ.get("AMI_DB_PATH")
+    if p:
+        return p if os.path.isabs(p) else os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), p)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "data", "ami_memory.db")
+
+
+def _ami_db_tables(path):
+    import sqlite3 as _s
+    try:
+        c = _s.connect(path)
+        rows = c.execute("SELECT name FROM sqlite_master WHERE "
+                         "type='table'").fetchall()
+        c.close()
+        return {r[0] for r in rows}
+    except Exception:
+        return set()
+
+
+@app.route("/api/_restore/status", methods=["GET"])
+def ami_restore_status():
+    import secrets as _sec
+    if not _ami_restore_ok():
+        return {"error": "restore is not enabled"}, 404
+    given = request.headers.get("X-Ami-Restore-Token", "")
+    if not _sec.compare_digest(given,
+                               os.environ.get("AMI_RESTORE_TOKEN", "")):
+        return {"error": "bad token"}, 403
+    p = _ami_db_path()
+    t = _ami_db_tables(p)
+    return {"status": "success", "db_path": p,
+            "exists": os.path.isfile(p),
+            "size_bytes": os.path.getsize(p) if os.path.isfile(p) else 0,
+            "tables": len(t),
+            "looks_empty": not (t & set(_AMI_RESTORE_WANT)),
+            "missing_expected": sorted(set(_AMI_RESTORE_WANT) - t)}
+
+
+@app.route("/api/_restore/upload", methods=["POST"])
+def ami_restore_upload():
+    import sqlite3 as _s
+    import secrets as _sec
+    import tempfile as _tf
+    if not _ami_restore_ok():
+        return {"error": "restore is not enabled"}, 404
+    given = request.headers.get("X-Ami-Restore-Token", "")
+    if not _sec.compare_digest(given,
+                               os.environ.get("AMI_RESTORE_TOKEN", "")):
+        print("restore: rejected a request with a bad token", flush=True)
+        return {"error": "bad token"}, 403
+
+    target = _ami_db_path()
+    here = _ami_db_tables(target)
+    force = str(request.args.get("force", "")).strip() in ("1", "true")
+    if (here & set(_AMI_RESTORE_WANT)) and not force:
+        return {"error": "the database already has data - refusing. Pass "
+                         "force=1 only if you mean to overwrite it.",
+                "tables": len(here)}, 409
+
+    blob = request.get_data(cache=False) or b""
+    if len(blob) < 4096:
+        return {"error": "that is too small to be the database (%d bytes)"
+                         % len(blob)}, 400
+    if len(blob) > 300 * 1024 * 1024:
+        return {"error": "too large"}, 413
+    if not blob.startswith(b"SQLite format 3\x00"):
+        return {"error": "that is not a SQLite database file"}, 400
+
+    os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+    fd, tmp = _tf.mkstemp(suffix=".incoming",
+                          dir=os.path.dirname(target) or ".")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(blob)
+        got = _ami_db_tables(tmp)
+        if not got:
+            raise ValueError("could not read any tables out of it")
+        missing = sorted(set(_AMI_RESTORE_WANT) - got)
+        if missing:
+            raise ValueError("it is missing the tables I expected: %s"
+                             % ", ".join(missing))
+        c = _s.connect(tmp)
+        chk = c.execute("PRAGMA quick_check").fetchone()[0]
+        counts = {}
+        for t in ("law_sections", "law_sources", "conversations",
+                  "ledger_entries", "charlie_people", "vehicles"):
+            if t in got:
+                try:
+                    counts[t] = c.execute(
+                        "SELECT COUNT(*) FROM %s" % t).fetchone()[0]
+                except Exception:
+                    pass
+        c.close()
+        if str(chk).lower() != "ok":
+            raise ValueError("integrity check said: %s" % chk)
+    except Exception as e:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        return {"error": "rejected: %s" % e}, 400
+
+    backup = None
+    if os.path.isfile(target):
+        backup = target + ".replaced"
+        try:
+            os.replace(target, backup)
+        except Exception:
+            backup = None
+    os.replace(tmp, target)
+    print("restore: database replaced, %d bytes, tables=%d"
+          % (len(blob), len(got)), flush=True)
+    return {"status": "success", "bytes": len(blob), "tables": len(got),
+            "counts": counts,
+            "previous_kept_at": backup,
+            "next": "remove AMI_RESTORE_TOKEN from Railway, then delete "
+                    "the DEPLOY BOOTSTRAP block from app.py"}
+
 if __name__ == '__main__':
     app.run(debug=True, port=8000, use_reloader=False)
