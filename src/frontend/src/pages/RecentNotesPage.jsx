@@ -7,7 +7,7 @@ const RecentNotesPage = () => {
   const [displayedCount, setDisplayedCount] = useState(10);
   const [selectedNote, setSelectedNote] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || API + '';
+  const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
   const PASSWORD = AMI_PASSWORD;
 
   useEffect(() => {

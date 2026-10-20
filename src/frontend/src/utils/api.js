@@ -1,7 +1,7 @@
 import axios from 'axios';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
-const API_URL = import.meta.env.VITE_API_URL || API + '';
+const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const API_PASSWORD = import.meta.env.VITE_API_PASSWORD || AMI_PASSWORD;
 
 let storedPassword = null;

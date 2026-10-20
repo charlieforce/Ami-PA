@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { startVoiceInput } from '../../services/VoiceService';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 import '../NoteFormStyles.css';
 

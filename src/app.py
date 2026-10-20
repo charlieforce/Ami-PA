@@ -884,6 +884,18 @@ def schedule_morning_briefing():
     result = search_news_simple()
     if result.get("status") == "success":
         briefing_text = format_news_briefing_for_ami(result.get("results", {}))
+        try:
+            _ud = _up_due_soon(3)
+            if _ud:
+                briefing_text += chr(10) + chr(10) + 'UPKEEP - due inside 3 days:' + chr(10)
+                for _a in _ud[:8]:
+                    _dl = _a.get('days_left')
+                    if _dl is None:
+                        continue
+                    _w = ('%d days overdue' % -_dl) if _dl < 0 else ('due today' if _dl == 0 else 'due in %d days' % _dl)
+                    briefing_text += '- ' + str(_a.get('name')) + ' ' + _w + chr(10)
+        except Exception as _ue:
+            print('UPKEEP briefing:', repr(_ue), flush=True)
         # _pap_brief() in the morning - insurance, licence, inspection,
         # only while they are close or already late
         try:
@@ -3810,7 +3822,7 @@ def orchestrated_chat():
                            'add a todo', 'new task', 'put on my list', 'schedule', "don't let me forget",
                            'dont let me forget', 'make a note to', 'i need to remember']
         # A question is never a creation. "do I have any reminders?" is asking, not telling.
-        _is_question = (_cl.strip().endswith('?') or
+        _is_question = ((_charlie_asking(_cl) or _cl.strip().endswith('?')) or
                         _cl.strip().startswith(('do i', 'did i', 'what', 'when', 'where',
                                                 'any ', 'is there', 'are there', 'how many',
                                                 'show me', 'tell me', 'list ')))
@@ -3969,7 +3981,7 @@ def orchestrated_chat():
         # REMINDER COMMANDS - Check FIRST before anything else!
         reminder_keywords = ['remind me', 'set reminder', 'set a reminder']
         _ql = query.lower().strip()
-        _asking = (_ql.endswith('?') or
+        _asking = ((_charlie_asking(_ql) or _ql.endswith('?')) or
                    _ql.startswith(('do i', 'did i', 'what', 'when', 'where', 'any ',
                                    'is there', 'are there', 'how many', 'show me',
                                    'tell me', 'list ')))
@@ -4019,7 +4031,7 @@ def orchestrated_chat():
         # REMINDER COMMANDS - Create reminders!
         reminder_keywords = ['remind me', 'set reminder', 'set a reminder']
         _ql = query.lower().strip()
-        _asking = (_ql.endswith('?') or
+        _asking = ((_charlie_asking(_ql) or _ql.endswith('?')) or
                    _ql.startswith(('do i', 'did i', 'what', 'when', 'where', 'any ',
                                    'is there', 'are there', 'how many', 'show me',
                                    'tell me', 'list ')))
@@ -4244,7 +4256,7 @@ Which one yu want tackle right now? Let's go! 🔥"""
         response_text = synthesize_response(query, engines, engine_data)
         try:
             _saved_anything = bool(_made_something) or bool(locals().get('_log_note')) \
-                              or 'PRICE SAVED' in context or 'YOU JUST' in context
+                              or 'PRICE SAVED' in '' or 'YOU JUST' in ''
             response_text = _claims_without_doing(response_text, _saved_anything)
         except Exception as _cb:
             print("backstop skipped: " + str(_cb)[:60])
@@ -4904,7 +4916,7 @@ def synthesize_response(query, engines, engine_data):
     # questions rarely carry anything personal to save - skip the extra Gemini call for them
     _ql = (query or '').strip().lower()
     _first = _ql.split(' ')[0] if _ql else ''
-    _is_question = _ql.endswith('?') or _first in (
+    _is_question = (_charlie_asking(_ql) or _ql.endswith('?')) or _first in (
         'what', "what's", 'whats', 'when', 'where', 'who', 'why', 'how', 'is', 'are', 'do', 'does',
         'did', 'can', 'could', 'should', 'would', 'will', 'tell', 'explain', 'show', 'give')
     _learned = None if _is_question else extract_durable_facts(query)
@@ -5999,6 +6011,20 @@ FIRST MESSAGE OF THE SESSION:
         print("BLOCKS: " + " | ".join(sorted(_sz, key=lambda x: -int(x.split()[0]))[:14]))
     except Exception as _e:
         print("block sizing failed: " + str(_e)[:50])
+    # the clock and the voice - both read at prompt time
+    try:
+        _nw = _charlie_now()
+        _tc_add = ('\n\nRIGHT NOW, WHERE CHARLIE IS: ' + _nw.strftime('%A %d %B %Y, %H:%M') + '. Work the time of day out from that clock, never guess it. Anything earlier today has already happened; anything later has not. A match or an event from yesterday is NOT tonight.'
+                   + '\n\nHOW TO SOUND: Sierra Leone Krio, the Freetown kind, not Nigerian pidgin. Write de, not dey. we, not wey. dɛn, not dem. lɛ wi, not make we. i de go, not e dey go. abeg and wahala are fine, young people in Freetown use them. Keep the Krio light and mixed with English, the way Charlie likes it.\n\nWHEN HE ASKS WHAT A WORD MEANS: give the meaning in plain English. He is learning Krio, so an explanation he has to decode is not an explanation. The Krio word stays Krio, the meaning comes in English, then one or two short examples.')
+    except Exception as _tce:
+        print('CLOCK/VOICE failed:', repr(_tce), flush=True)
+        _tc_add = ''
+    try:
+        _tc_old = time_context
+    except Exception:
+        # not a local here - take the module one if there is one
+        _tc_old = globals().get('time_context') or ''
+    time_context = (_tc_old or '') + _tc_add
     prompt = f"{context}{engine_text}\n\n{birthday_context}\n\n{time_context}\n\n{curriculum_content}\n\nRECENT MEMORY:\n{memory}\n\n{tone_guide}\n{response_length}\n\nCharlie: {query}\n\nRespond as Ami - be yourself!"
     try:
         print('PROMPT SIZE: ' + str(len(prompt)) + ' chars'
@@ -7284,10 +7310,7 @@ def generate_description():
         return {'error': 'Title required'}, 400
     
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY', ''))
         
-        model = genai.GenerativeModel(AMI_MODEL)
         prompt = f"Write a brief, clear task description (2-3 sentences) for a task titled: '{title}'. Be concise and actionable."
         
         import google.genai as _gg
@@ -8671,14 +8694,11 @@ def check_grammar():
         return {"error": "No text provided"}, 400
     
     try:
-        import google.generativeai as genai
         
         api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
         if not api_key:
             return {"corrected": text}, 200
         
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-3.7-flash')
         
         prompt = f"""Fix ALL spelling and grammar errors in this text. Return ONLY the corrected text, nothing else. Do not add or remove content, just fix errors:
 
@@ -14773,7 +14793,7 @@ def _act_on_existing(query):
         action = 'reopen'
     else:
         return None
-    if '?' in low:
+    if (_charlie_asking(low) or '?' in low):
         return None
 
     # the one she just made?
@@ -15137,9 +15157,30 @@ def _ledger_say(pid, name):
 
 def _ledger_from_chat_inner(query):
     """Money between him and someone. Returns a reply, or None."""
+    # the laws wiki: a legal question, or a belief to keep
+    _r = _law_from_chat(query)
+    if _r:
+        return _r
+    # lessons learned: save one, or read them back
+    _r = _lesson_from_chat(query)
+    if _r:
+        return _r
+    # upkeep: a service logged, what they found, or what is due
+    _r = _upkeep_from_chat(query)
+    if _r:
+        return _r
+    # a plan into real tasks - before anything else reads it as money
+    try:
+        _pl = _plan_to_tasks(query)
+        if _pl:
+            return _pl
+    except Exception as _ple:
+        import traceback as _tbpl
+        print('PLAN TASKS FAILED:', repr(_ple), flush=True)
+        _tbpl.print_exc()
     # Krio teaching - reads only, so it can go first
     try:
-        _kr = _krio_from_chat(query)
+        _kr = _krio_chat2(query)
         if _kr:
             return _kr
     except Exception as _kre:
@@ -15194,7 +15235,7 @@ def _ledger_from_chat_inner(query):
     _asking = bool(_rl.match(r"^(and\s+)?(how|what|what's|whats|when|who|where|why|"
                              r"show|list|tell|give me|break|can yu|can you|"
                              r"do i|did i|am i|is there|any)\b", low)
-                   or low.rstrip().endswith('?'))
+                   or (_charlie_asking(low) or low.rstrip().endswith('?')))
 
     # the itemised answer, when he wants to see it line by line
     if _asking:
@@ -22245,15 +22286,12 @@ def mark_item_pushed(note_id):
 def analyze_note_api():
     """Analyze note and extract tasks/reminders/todos"""
     try:
-        import google.generativeai as genai
         import json
         
         data = request.json
         note_content = data.get('content', '')
         note_title = data.get('title', '')
         
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-        model = genai.GenerativeModel(AMI_MODEL)
         
         from datetime import datetime as _d
         _today = _d.now()
@@ -22602,11 +22640,6 @@ def _install_gemini_timer(cls):
     cls.generate_content = timed
 
 try:
-    import google.generativeai as _g_old
-    _install_gemini_timer(_g_old.GenerativeModel)
-except Exception:
-    pass
-try:
     from google.genai import models as _g_new
     _install_gemini_timer(_g_new.Models)
 except Exception:
@@ -22820,7 +22853,7 @@ def _buy_from_chat(text):
     if (_r.match(r"^(and\s+)?(how|what|what's|whats|when|who|where|why|which|"
                  r"show|list|tell|give me|break|do i|did i|am i|is there|any|"
                  r"can you|can yu)\b", low)
-            or low.rstrip().endswith("?")):
+            or (_charlie_asking(low) or low.rstrip().endswith("?"))):
         return None
 
     trig = _r.search(
@@ -23160,10 +23193,7 @@ def _vehicle_from_chat(text):
         return None
     _veh_ready()
 
-    asking = bool(re.match(r"^(and\s+)?(how|what|what's|whats|which|when|who|"
-                           r"where|why|do i|did i|am i|is there|any|list|show|"
-                           r"tell me|give me|can you|can yu)\b", low)
-                  or low.rstrip().endswith("?"))
+    asking = _charlie_asking(low)
 
     # --- what do I drive -------------------------------------------------
     if re.search(r"\b(what|which)\b.{0,20}\b(do i (drive|have|own)|cars?|"
@@ -24014,10 +24044,7 @@ def _pap_from_chat(text):
         return None
     _pap_ready()
 
-    asking = bool(re.match(r"^(and\s+)?(how|what|what's|whats|which|when|who|"
-                           r"where|why|do i|did i|am i|is|are|any|list|show|"
-                           r"tell me|can you|can yu)\b", low)
-                  or low.rstrip().endswith("?"))
+    asking = _charlie_asking(low)
 
     kind = None
     for word in sorted(_PAP_KINDS, key=len, reverse=True):
@@ -26286,9 +26313,7 @@ def _med_from_chat(text):
     if not (re.search(_MED_ALL, low) or _med_find(low)):
         return None
 
-    asking = bool(re.match(r"^(and\s+)?(when|what|which|how|do i|did i|am i|"
-                           r"is|are|wetin|usai|tell me|show)\b", low)
-                  or low.rstrip().endswith("?"))
+    asking = _charlie_asking(low)
 
     # --- when is it due -------------------------------------------------
     if asking and re.search(r"\b(due|next|when|left|remain)\b", low):
@@ -26699,6 +26724,72 @@ def _krio_in_proverb(word):
         return None
 
 
+def _kd_examples(word, n=2):
+    """Always something to see it used in. The word's own entry first, then
+    any other entry that uses it, then a proverb. Nothing invented - if the
+    book has no sentence for it, she says so."""
+    w = _krio_fold((word or "").strip())
+    if len(w) < 2:
+        return []
+    out = []
+    seen = set()
+
+    def add(txt, where):
+        t = (txt or "").strip()
+        if not t or t.lower() in seen:
+            return
+        seen.add(t.lower())
+        out.append((t, where))
+
+    try:
+        for r in (db.query("SELECT example FROM krio_book WHERE krio = ? AND "
+                           "example IS NOT NULL AND example != '' LIMIT 3",
+                           (w,)) or []):
+            add(r.get("example"), "")
+    except Exception:
+        pass
+    if len(out) < n:
+        try:
+            for r in (db.query(
+                    "SELECT krio, example FROM krio_book WHERE example LIKE ? "
+                    "AND example != '' LIMIT 4", ("%" + w + "%",)) or []):
+                add(r.get("example"), "")
+        except Exception:
+            pass
+    if len(out) < n:
+        try:
+            for r in (db.query(
+                    "SELECT krio, english FROM krio_phrases WHERE "
+                    "LOWER(krio) LIKE ? OR LOWER(variants) LIKE ? LIMIT 2",
+                    ("%" + w + "%", "%" + w + "%")) or []):
+                add("%s - %s" % (r.get("krio"), r.get("english")),
+                    "from yu list")
+        except Exception:
+            pass
+    if len(out) < n:
+        p = None
+        try:
+            p = _krio_in_proverb(w)
+        except Exception:
+            p = None
+        if p:
+            add("%s  (%s)" % (p.get("krio"), (p.get("english") or "")[:70]),
+                "a proverb")
+    return out[:n]
+
+
+def _kd_with_examples(hits, want):
+    body = "\n\n".join(_kd_say(r, short=True) for r in hits[:3])
+    egs = _kd_examples(want)
+    if egs:
+        body += "\n\nLɛk dis:"
+        for t, where in egs:
+            body += "\n- " + t + (("   _(%s)_" % where) if where else "")
+    else:
+        body += "\n\n(Di book no get any sentence fɔ dis one.)"
+    return body
+
+
 def _krio_explain(text):
     """He met a word and does not know it. Only answers when she knows it."""
     import re
@@ -26725,7 +26816,7 @@ def _krio_explain(text):
         except Exception:
             spot = []
         if spot:
-            return ("\n\n".join(_kd_say(r) for r in spot[:3])
+            return (_kd_with_examples(spot, want)
                     + "\n\n_(from di dictionary - A Dictionary of Sierra "
                       "Leone Krio)_")
     if rows:
@@ -26742,9 +26833,9 @@ def _krio_explain(text):
         print("KRIO DICT: lookup failed -", repr(e), flush=True)
         hits = []
     if hits:
-        body = "\n\n".join(_kd_say(r) for r in hits[:3])
-        return body + "\n\n_(from di dictionary - A Dictionary of Sierra " \
-                      "Leone Krio)_"
+        return (_kd_with_examples(hits, want)
+                + "\n\n_(from di dictionary - A Dictionary of Sierra "
+                  "Leone Krio)_")
 
     # last, it may be one word out of a proverb
     p = _krio_in_proverb(want)
@@ -36262,6 +36353,2725 @@ def krio_dictionary():
                 "source": _KD_SOURCE, "words": [dict(r) for r in rows]}
     except Exception as e:
         return {"error": str(e)}, 400
+
+
+
+# ===========================================================================
+# How she gets better: by being used.
+#
+# Three things, none of them magic.
+#
+#   1. Your own words come first. The krio_dictionary table you built in
+#      September - with usage_context and cultural_note - is now the first
+#      place she looks, ahead of the book. Anything you confirm lands
+#      there, so the best store is the one that grows.
+#   2. What she cannot answer is written down. Every word she is asked
+#      about and does not have goes on a wanted list, with how many times
+#      you asked. That list is what to teach her next, decided by what you
+#      actually ran into, not by guessing.
+#   3. You can correct her. "No, it means X" writes your version into your
+#      own table, and your version wins from then on.
+# ===========================================================================
+
+_KL_SET = {"done": False}
+_KL_LAST = {"word": None, "gloss": None, "src": None, "when": 0.0}
+
+
+def _kl_ready():
+    if _KL_SET["done"]:
+        return
+    db.execute("CREATE TABLE IF NOT EXISTS krio_wanted ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT, "
+               "times INTEGER DEFAULT 1, said TEXT, first_on TEXT, "
+               "last_on TEXT, settled INTEGER DEFAULT 0)")
+    _KL_SET["done"] = True
+
+
+def _kl_mine(word):
+    """Your own table - curated, with the notes. Always first."""
+    w = _krio_fold((word or "").strip(" ?.!,'\""))
+    if len(w) < 2:
+        return []
+    try:
+        rows = db.query("SELECT * FROM krio_dictionary") or []
+    except Exception:
+        return []
+    exact = [r for r in rows if _krio_fold(r.get("word")) == w]
+    near = [r for r in rows
+            if r not in exact and w in _krio_fold(r.get("word"))]
+    return (exact + near)[:3]
+
+
+def _kl_say_mine(r):
+    out = "**%s** - %s" % (r.get("word"), r.get("english_meaning") or "")
+    if r.get("usage_context"):
+        out += "\n   Wen fɔ use am: " + str(r["usage_context"])
+    if r.get("example_sentence"):
+        out += "\n   Lɛk dis: " + str(r["example_sentence"])
+    if r.get("cultural_note"):
+        out += "\n   " + str(r["cultural_note"])
+    return out
+
+
+def _kl_want(word, said):
+    """A word she could not answer. The list of these is the syllabus."""
+    from datetime import datetime as _dt
+    _kl_ready()
+    w = (word or "").strip().lower()
+    if not (2 <= len(w) <= 30):
+        return
+    today = _dt.now().strftime("%Y-%m-%d")
+    try:
+        got = db.query("SELECT id, times FROM krio_wanted WHERE word = ?",
+                       (w,))
+        if got:
+            db.execute("UPDATE krio_wanted SET times = COALESCE(times,0) + 1,"
+                       " last_on = ? WHERE id = ?", (today, got[0]["id"]))
+        else:
+            db.execute("INSERT INTO krio_wanted (word, times, said, first_on,"
+                       " last_on) VALUES (?, 1, ?, ?, ?)",
+                       (w, (said or "")[:160], today, today))
+    except Exception as e:
+        print("KRIO LEARN: could not note the word -", repr(e), flush=True)
+
+
+def _kl_keep(word, meaning, example="", note="", how="confirmed in chat"):
+    """Into your own table, where the good ones live."""
+    from datetime import datetime as _dt
+    now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    w = (word or "").strip()
+    if not w or not meaning:
+        return False
+    try:
+        got = db.query("SELECT id FROM krio_dictionary WHERE LOWER(word) = ?",
+                       (w.lower(),))
+        if got:
+            db.execute("UPDATE krio_dictionary SET english_meaning = ?, "
+                       "usage_context = ?, example_sentence = "
+                       "COALESCE(NULLIF(?,''), example_sentence), "
+                       "cultural_note = COALESCE(NULLIF(?,''), "
+                       "cultural_note), updated_at = ? WHERE id = ?",
+                       (meaning, how, example, note, now, got[0]["id"]))
+        else:
+            db.execute("INSERT INTO krio_dictionary (word, english_meaning, "
+                       "usage_context, example_sentence, cultural_note, "
+                       "frequency, category, created_at, updated_at) "
+                       "VALUES (?,?,?,?,?,?,?,?,?)",
+                       (w, meaning, how, example, note, "", "learned",
+                        now, now))
+        try:
+            db.execute("UPDATE krio_wanted SET settled = 1 WHERE word = ?",
+                       (w.lower(),))
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print("KRIO LEARN: could not keep it -", repr(e), flush=True)
+        return False
+
+
+def _kl_asked_word(text):
+    """The word he asked about, out of his sentence."""
+    import re
+    low = (text or "").strip().lower()
+    m = re.search(r"(?:wetin na|what does|what do|what is|whats|what's|"
+                  r"meaning of|explain)\s+[\"']?([a-zɔɛŋ' -]{2,30}?)[\"']?"
+                  r"\s*(?:mean|means|min)?\s*[?.!]*$", low)
+    if m:
+        w = re.sub(r"^(di|da|dat|the|this|that|a|an|word)\s+", "",
+                   m.group(1).strip())
+        return w or None
+    return None
+
+
+def _krio_learn_from_chat(text):
+    """Confirming, correcting, and what she still does not know."""
+    import re
+    import time
+    low = (text or "").strip().lower()
+    if not low:
+        return None
+    _kl_ready()
+
+    # what she cannot answer yet
+    if re.search(r"\b(what|which|wetin)\b.{0,30}\b(words?|krio)\b.{0,24}"
+                 r"\b(yu|you)\b.{0,14}\b(no|nɔ|not|don'?t|dont|never)\b"
+                 r".{0,8}\b(know|sabi|get|hav|have)\b", low) \
+            or re.search(r"\bwanted (words?|list)\b|\bwetin yu no sabi\b|"
+                         r"\bwords? (yu|you) (no|not|don'?t|dont) (know|sabi)"
+                         r"\b|\bwhat (yu|you) (no|not|don'?t|dont) (know|"
+                         r"sabi)\b|\bmissing words?\b", low):
+        rows = db.query("SELECT word, times, last_on FROM krio_wanted WHERE "
+                        "COALESCE(settled,0) = 0 ORDER BY times DESC, "
+                        "last_on DESC LIMIT 20") or []
+        if not rows:
+            return "A get everything yu don ask mi so far, bo."
+        out = "Dɛn word ya a no sabi yet:\n"
+        for r in rows:
+            out += "\n- **%s**" % r["word"]
+            if (r.get("times") or 0) > 1:
+                out += "  (yu ask %d times)" % r["times"]
+        out += "\n\nIf yu find di meaning, tell mi: *<word> mean <wetin>*."
+        return out
+
+    # correcting her, or teaching her outright
+    #
+    # The guard here used to be nothing but "does it end in a question
+    # mark", and that is not what a question looks like. Charlie asked:
+    #
+    #     but does this mean I can ask a friend to run to my house and
+    #     get my license
+    #
+    # No question mark, so she stored it: the word "but does this" now
+    # meaning "i can ask a friend to run to my house and get my
+    # license", filed as "yu tell mi" - the highest trust there is,
+    # because what he says outranks her own dictionary. He was asking a
+    # question and she wrote it down as a fact about Krio.
+    #
+    # So: an opening interrogative makes it a question whatever the
+    # punctuation, a leading but/so/and is stripped before that test,
+    # and the word being taught may not BE a function word. A Krio word
+    # he is teaching looks like "jigida" or "tete", never "does this".
+    _ASKY = (r"^(?:but|so|and|ok|okay|hmm|well|also)?\s*"
+             r"(?:does|do|did|can|could|should|would|is|are|was|were|"
+             r"will|wud|what|why|how|when|where|who|which|whether|am|"
+             r"have|has|must|may|shall|if|wetin|udat|usay|ustɛm|aw|"
+             r"abi|enti)\b")
+    _FUNC = {"this", "that", "it", "these", "those", "there", "here",
+             "i", "you", "yu", "we", "wi", "they", "dɛn", "he", "she",
+             "does", "do", "did", "is", "are", "was", "were", "can",
+             "could", "should", "would", "will", "the", "a", "an",
+             "my", "your", "his", "her", "our", "their", "dis", "dat",
+             "what", "why", "how", "who", "if", "and", "but", "so",
+             "mean", "means", "min", "na", "to", "of", "for", "fɔ"}
+    m = re.search(r"^(?:no+,?\s*|nɔto\s*|not\s+|wrong[,.]?\s*)?"
+                  r"[\"']?([a-zɔɛŋ' -]{2,30}?)[\"']?\s*"
+                  r"(?:mean|means|min|na)\s+(.{2,120})$", low)
+    if m and not re.search(r"\?$", low) and not re.search(_ASKY, low) \
+            and not ({w for w in m.group(1).split()} & _FUNC):
+        word = m.group(1).strip()
+        meaning = m.group(2).strip(" .!'\"")
+        if word and meaning and len(word.split()) <= 4:
+            if _kl_keep(word, meaning, how="yu tell mi"):
+                return ("A don keep am: **%s** - %s. Dis na from yu, so na "
+                        "dis one a go use from now." % (word, meaning))
+            return "A try fɔ keep am bɔt e no save, bo."
+
+    # that one was right - promote whatever she last said
+    if re.search(r"^(yes|yɛs|dat'?s right|correct|e correct|na so|exactly|"
+                 r"right|good|dat na am)\b", low):
+        last = _KL_LAST
+        if (last.get("word") and last.get("gloss")
+                and (time.time() - float(last.get("when") or 0)) < 1800):
+            if _kl_keep(last["word"], last["gloss"],
+                        how="yu say e correct (%s)" % (last.get("src") or "")):
+                return ("Good - a don move **%s** go inside yu own list, so "
+                        "e go come first next time." % last["word"])
+    return None
+
+
+def _krio_chat2(text):
+    """Your words first, then everything else, and she writes down what she
+    could not answer."""
+    import time
+    try:
+        out = _krio_learn_from_chat(text)
+        if out:
+            return out
+    except Exception as e:
+        import traceback as _tbl
+        print("KRIO LEARN FAILED:", repr(e), flush=True)
+        _tbl.print_exc()
+
+    want = None
+    try:
+        want = _kl_asked_word(text)
+    except Exception:
+        want = None
+
+    if want:
+        try:
+            mine = _kl_mine(want)
+        except Exception:
+            mine = []
+        if mine:
+            _KL_LAST.update({"word": mine[0].get("word"),
+                             "gloss": mine[0].get("english_meaning"),
+                             "src": "yu own words", "when": time.time()})
+            return ("\n\n".join(_kl_say_mine(r) for r in mine)
+                    + "\n\n_(from yu own words)_")
+
+    out = _krio_from_chat(text)
+
+    if want:
+        if out:
+            import re as _r
+            g = _r.search(r"\*\*[^*]+\*\*\s*(?:\([^)]*\))?\s*-\s*([^\n]+)",
+                          out)
+            _KL_LAST.update({"word": want,
+                             "gloss": (g.group(1).strip() if g else None),
+                             "src": ("di dictionary" if "dictionary" in out
+                                     else "yu list"),
+                             "when": time.time()})
+        else:
+            try:
+                _kl_want(want, text)
+            except Exception:
+                pass
+    return out
+
+
+@app.get("/api/krio/wanted")
+@require_password
+def krio_wanted():
+    try:
+        _kl_ready()
+        rows = db.query("SELECT * FROM krio_wanted ORDER BY "
+                        "COALESCE(settled,0), times DESC, last_on DESC") or []
+        return {"status": "success", "count": len(rows),
+                "wanted": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+# ===========================================================================
+# A plan, turned into real tasks.
+#
+# She wrote nine good tasks for the grant finder and then said she had no
+# hands. She does: create_task writes to the tasks table, and whatever she
+# last said is sitting in conversations.ami_response. So "add them to the
+# board" reads her own plan back and writes each line as a task.
+#
+# Nothing is invented - every task is a line she or he actually wrote.
+# ===========================================================================
+
+_PT_ASK = (r"\b(add|put|create|make|lock|save|enter)\b.{0,40}?"
+           r"\b(task|tasks|todo|todos|to-do|board|task board)\b")
+
+_PT_THEM = (r"\b(them|dem|those|these|dat|it|di plan|the plan|above|wetin yu "
+            r"se|what you said|dis one|di one dem)\b")
+
+_PT_SKIP = (r"^(phase|week|step|part|stage)\b|^[-*•\s]*$|^\**\s*\**$|"
+            r"^(see if|make yu|if yu|tell mi|a don|no need|note[:,])|"
+            # a lead-in is not work - "Bo, dis na di plan fo..." was
+            # coming out as task number one because this only looked
+            # at the start of the line
+            r"(dis na|dis de|here na|here is|na di plan|di plan fo|the plan for|"
+            r"wetin a tink|my suggestion|breakdown)|:\s*$")
+
+
+def _pt_table():
+    """Whatever this app calls the chat history."""
+    for t in ("conversations", "chat_messages", "messages", "chat_history"):
+        try:
+            rows = db.query("PRAGMA table_info(%s)" % t) or []
+            cols = [r["name"] for r in rows]
+            if not cols:
+                continue
+            resp = None
+            for c in ("ami_response", "response", "reply", "assistant",
+                      "answer", "message"):
+                if c in cols:
+                    resp = c
+                    break
+            if not resp:
+                continue
+            when = None
+            for c in ("timestamp", "created_at", "time", "id"):
+                if c in cols:
+                    when = c
+                    break
+            return t, resp, (when or "id")
+        except Exception:
+            continue
+    return None, None, None
+
+
+def _pt_last_said(n=4):
+    """The last few things she said, newest first."""
+    t, resp, when = _pt_table()
+    if not t:
+        return []
+    try:
+        rows = db.query("SELECT %s AS r FROM %s ORDER BY %s DESC LIMIT %d"
+                        % (resp, t, when, int(n))) or []
+        return [str(r.get("r") or "") for r in rows if r.get("r")]
+    except Exception as e:
+        print("PLAN TASKS: could not read the chat -", repr(e), flush=True)
+        return []
+
+
+def _pt_clean(s):
+    import re
+    s = re.sub(r"\*+", "", s or "")
+    s = re.sub(r"^\s*[-*•·]+\s*", "", s)
+    s = re.sub(r"^\s*\d+[.)]\s*", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip(" .;:-")
+
+
+def _pt_lines(text):
+    """The task lines out of a plan, with the phase they sit under."""
+    import re
+    out = []
+    phase = ""
+    chunks = [c for c in (text or "").split("\n")]
+    if len([c for c in chunks if c.strip()]) < 3:
+        chunks = re.split(r"\s+[-•]\s+|\n", text or "")
+    for raw in chunks:
+        l = (raw or "").strip()
+        if not l:
+            continue
+        ph = re.match(r"^\**\s*((?:phase|week|stage|part|step)\s*\d*[^:]{0,40})"
+                      r"\s*[:.]\s*(.*)$", l, re.I)
+        if ph:
+            # "Phase 1: Foundation & Data Scraping" is a heading, not work -
+            # the whole line becomes the group the next lines sit under
+            phase = _pt_clean(ph.group(1))
+            rest = _pt_clean(ph.group(2))
+            if rest:
+                phase = (phase + ": " + rest)[:60]
+            continue
+        c = _pt_clean(l)
+        if not (6 <= len(c) <= 160):
+            continue
+        if re.search(_PT_SKIP, c, re.I):
+            continue
+        if c.endswith("?"):
+            continue
+        out.append((c, phase))
+    return out
+
+
+def _pt_make(title, phase, venture_id=None):
+    from datetime import datetime as _dt
+    try:
+        got = db.query("SELECT id FROM tasks WHERE LOWER(title) = LOWER(?) "
+                       "AND COALESCE(status,'') != 'deleted'", (title[:200],))
+        if got:
+            return None
+        db.execute("INSERT INTO tasks (title, description, status, priority, "
+                   "category, context, venture_id, source, created_at) "
+                   "VALUES (?, ?, 'pending', 'medium', ?, ?, ?, ?, ?)",
+                   (title[:200], "", (phase or "")[:60], (phase or "")[:60],
+                    venture_id, "from a plan in chat",
+                    _dt.now().strftime("%Y-%m-%d %H:%M:%S")))
+        return True
+    except Exception as e:
+        print("PLAN TASKS: could not write one -", repr(e), flush=True)
+        return False
+
+
+def _pt_venture(text):
+    """If he named a project, hang them on it."""
+    import re
+    low = (text or "").lower()
+    try:
+        rows = db.query("SELECT id, name FROM ventures WHERE "
+                        "COALESCE(active,1) = 1") or []
+    except Exception:
+        return None, None
+    best, score = None, 0
+    for r in rows:
+        nm = (r.get("name") or "").lower().strip()
+        if len(nm) < 3:
+            continue
+        if nm in low and len(nm) > score:
+            best, score = r, len(nm)
+    if best:
+        return best["id"], best["name"]
+    return None, None
+
+
+def _plan_to_tasks_inner(text):
+    """Turn a plan into tasks on the board. Her plan, or one he pasted."""
+    import re
+    low = (text or "").strip().lower()
+    if not low or not re.search(_PT_ASK, low):
+        return None
+    if (_charlie_asking(low) or low.endswith("?")) and not re.search(r"\b(can|could|would|will)\s+yu|"
+                                           r"\byou\b", low):
+        return None
+
+    # his own message may carry the list
+    mine = _pt_lines(text)
+    mine = [x for x in mine if not re.search(_PT_ASK, x[0], re.I)]
+
+    rows = mine
+    where = "wetin yu write"
+    if len(rows) < 2:
+        if not re.search(_PT_THEM, low) and not re.search(
+                r"\bfor (di|the|my)?\s*[a-z]", low):
+            return None
+        for said in _pt_last_said(4):
+            got = _pt_lines(said)
+            if len(got) >= 2:
+                rows = got
+                where = "di plan yu just see"
+                break
+
+    if len(rows) < 2:
+        return ("A no see any plan fɔ put pan di board, bo. Paste di list, or "
+                "ask mi fɔ write di plan first.")
+
+    vid, vname = _pt_venture(text)
+    made, skipped, failed = [], 0, 0
+    for title, phase in rows[:40]:
+        r = _pt_make(title, phase, vid)
+        if r is True:
+            made.append((title, phase))
+        elif r is None:
+            skipped += 1
+        else:
+            failed += 1
+
+    if not made:
+        if skipped:
+            return ("Dɛn %d task dem already de pan di board, bo - a no put "
+                    "am twice." % skipped)
+        return "A try fɔ put dem pan di board bɔt notin save. Check di logs."
+
+    out = "A don put %d task%s pan di board" % (len(made),
+                                                "" if len(made) == 1 else "s")
+    if vname:
+        out += " ɔnda %s" % vname
+    out += " (from %s):\n" % where
+    last = None
+    for title, phase in made:
+        if phase and phase != last:
+            out += "\n_%s_" % phase
+            last = phase
+        out += "\n- " + title
+    if skipped:
+        out += "\n\n%d bin de dɛ already." % skipped
+    if failed:
+        out += "\n\n%d no save - check di logs." % failed
+    return out
+
+
+
+# ---------------------------------------------------------------------------
+# "yes add them" has to work.
+#
+# When she offers a plan and he says yes add them, there is no word like
+# task or board in the message, so the old trigger never fired and the
+# message went to the model - which cannot write to the tasks table.
+# A short confirm now counts on its own, but only when she really has a
+# plan sitting in her last few replies, and never when the message smells
+# like the buy list.
+# ---------------------------------------------------------------------------
+
+_PT_YES = (r"^\s*(yes|yeah|yep|ok|okay|sure|right|good|fine|do it|go ahead|"
+           r"please|abeg)?[\s,.!-]*"
+           r"(add|put|create|make|save|lock|enter)\s+"
+           r"(them|dem|d\u025bn|those|these|dat|it|all)\b")
+
+_PT_NOT_PLAN = (r"\b(list|buy|shop|shopping|market|grocery|groceries|gas|"
+                r"food|money|owe|paid|pay|spend|price|medication|medicine)\b")
+
+
+def _plan_to_tasks(text):
+    """Bare confirms first, then the normal path."""
+    import re as _re
+    low = (text or "").strip().lower()
+
+    if low and len(low.split()) <= 9 \
+            and _re.search(_PT_YES, low) \
+            and not _re.search(_PT_NOT_PLAN, low):
+        # only if there is actually a plan to put up
+        try:
+            for _said in _pt_last_said(4):
+                if len(_pt_lines(_said)) >= 2:
+                    return _plan_to_tasks_inner("add them to the task board")
+        except Exception as _pe:
+            print("PLAN TASKS confirm failed:", repr(_pe), flush=True)
+        return None
+
+    return _plan_to_tasks_inner(text)
+
+@app.post("/api/tasks/from-plan")
+@require_password
+def tasks_from_plan():
+    try:
+        d = request.get_json() or {}
+        text = d.get("text") or ""
+        rows = _pt_lines(text)
+        vid = d.get("venture_id")
+        made = [t for t, p in rows if _pt_make(t, p, vid) is True]
+        return {"status": "success", "made": len(made), "titles": made}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+# ===========================================================================
+# UPKEEP - everything that gets serviced, in one place.
+#
+# Cars, the Keke, the bike, and now the new building: ACs, fridge,
+# generator, pump, inverter, roof, water tank.  They all behave the same -
+# a thing, serviced on a date, by someone, for a price, due again after an
+# interval.  The clock starts at the install date and moves to the last
+# service date once there is one.
+#
+# Intervals are set for Freetown, not a catalogue: dust and salt air
+# shorten most of them, and the roof is done twice a year around the rains
+# rather than on a fixed month count.
+# ===========================================================================
+
+_UP_EVERY = {
+    # added with the grouped picker. still Freetown numbers:
+    # dust kills gate motors, the rains decide the drainage,
+    # and salt air means outside paint goes every 3 years.
+    'fan': 12, 'water cooler': 12,
+    'battery bank': 6, 'stabilizer': 12, 'wiring': 24,
+    'water heater': 12, 'water filter': 6, 'plumbing': 12,
+    'drainage': 6,
+    'exterior paint': 36, 'windows': 24, 'doors': 24,
+    'gate motor': 6, 'cctv': 12, 'alarm': 12,
+    'cooker': 12, 'gas cylinder': 12,
+    'ac': 6, 'aircon': 6, 'air conditioner': 6, 'split': 6,
+    'generator': 6, 'genset': 6, 'gen': 6,
+    'fridge': 12, 'freezer': 12, 'refrigerator': 12,
+    'inverter': 6, 'battery': 6, 'batteries': 6, 'solar': 12,
+    'pump': 12, 'borehole': 12, 'well': 12,
+    'roof': 6, 'gutter': 6, 'gutters': 6,
+    'tank': 12, 'water tank': 12,
+    'septic': 36, 'soakaway': 36,
+    'extinguisher': 12, 'pest': 12, 'termite': 12,
+    'washing machine': 12, 'washer': 12, 'microwave': 12, 'tv': 24,
+    'vehicle': 4, 'car': 4, 'keke': 3, 'bike': 6, 'motorbike': 6,
+    'other': 12,
+}
+
+# the two that are not really a month count - they follow the rains
+_UP_SEASONAL = ('roof', 'gutter', 'gutters')
+
+
+def _up_every_for(kind, name=''):
+    """How many months between services for this sort of thing."""
+    hay = ((kind or '') + ' ' + (name or '')).lower()
+    best, blen = None, 0
+    for k, v in _UP_EVERY.items():
+        if k in hay and len(k) > blen:
+            best, blen = v, len(k)
+    return best or 12
+
+
+def _up_add_months(datestr, months):
+    """A date, n months on. No dateutil - it may not be installed."""
+    import calendar
+    from datetime import date as _date
+    try:
+        y, m, d = [int(x) for x in str(datestr)[:10].split('-')]
+    except Exception:
+        return None
+    m2 = m + int(months or 0)
+    y2 = y + (m2 - 1) // 12
+    m2 = (m2 - 1) % 12 + 1
+    d2 = min(d, calendar.monthrange(y2, m2)[1])
+    try:
+        return _date(y2, m2, d2).strftime('%Y-%m-%d')
+    except Exception:
+        return None
+
+
+def _up_tables():
+    """Make the tables if they are not there. Never touches a table that
+    already exists with other columns - that bit me before."""
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS upkeep_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            kind TEXT,
+            place TEXT,
+            brand TEXT,
+            model TEXT,
+            serial TEXT,
+            installed_on TEXT,
+            warranty_until TEXT,
+            every_months INTEGER,
+            vehicle_id INTEGER,
+            status TEXT DEFAULT 'active',
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS upkeep_services (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id INTEGER NOT NULL,
+            done_on TEXT NOT NULL,
+            what TEXT,
+            who TEXT,
+            who_phone TEXT,
+            outcome TEXT,
+            cost REAL,
+            currency TEXT DEFAULT 'SLE',
+            parts TEXT,
+            next_due_on TEXT,
+            notes TEXT,
+            created_at TEXT)""")
+    except Exception as e:
+        print("UPKEEP: tables -", repr(e), flush=True)
+        return
+    _up_sync_vehicles()
+
+
+def _up_sync_vehicles():
+    """The cars are already in their own table. Pull any new one in here
+    so one list covers everything - the Toyota and the living room AC in
+    the same place. Runs every time, inserts only what is missing."""
+    from datetime import datetime as _dt
+    try:
+        have = {r['vehicle_id'] for r in (db.query(
+            "SELECT vehicle_id FROM upkeep_assets "
+            "WHERE vehicle_id IS NOT NULL") or [])}
+        vs = db.query("SELECT * FROM vehicles") or []
+    except Exception:
+        return
+    for v in vs:
+        v = dict(v)
+        if v.get('id') in have:
+            continue
+        if str(v.get('active', 1)) in ('0', 'False'):
+            continue
+        nm = (v.get('name') or v.get('nickname') or
+              (" ".join(str(v.get(k) or '') for k in ('make', 'model'))
+               ).strip() or "vehicle %s" % v.get('id'))
+        try:
+            if db.query("SELECT id FROM upkeep_assets WHERE "
+                        "LOWER(name) = LOWER(?)", (nm,)):
+                nm = nm + " (vehicle)"
+            db.execute(
+                "INSERT INTO upkeep_assets (name, kind, place, brand, model, "
+                "installed_on, every_months, vehicle_id, status, created_at, "
+                "updated_at) VALUES (?,'vehicle',?,?,?,?,?,?,'active',?,?)",
+                (nm, v.get('where_kept') or v.get('place'), v.get('make'),
+                 v.get('model'), v.get('bought_on') or v.get('created_at'),
+                 4, v.get('id'),
+                 _dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                 _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+        except Exception as e:
+            print("UPKEEP: vehicle sync -", repr(e), flush=True)
+
+
+def _up_last(asset_id):
+    try:
+        r = db.query("SELECT * FROM upkeep_services WHERE asset_id = ? "
+                     "ORDER BY done_on DESC, id DESC LIMIT 1", (asset_id,))
+        return dict(r[0]) if r else None
+    except Exception:
+        return None
+
+
+def _up_due_on(a, last=None):
+    """When this thing is next due. Last service wins; failing that, the
+    day it went in."""
+    last = last if last is not None else _up_last(a.get('id'))
+    if last and last.get('next_due_on'):
+        return last['next_due_on']
+    base = (last or {}).get('done_on') or a.get('installed_on')
+    if not base:
+        return None
+    return _up_add_months(base, a.get('every_months')
+                          or _up_every_for(a.get('kind'), a.get('name')))
+
+
+def _up_days_left(due):
+    from datetime import date as _date
+    if not due:
+        return None
+    try:
+        y, m, d = [int(x) for x in str(due)[:10].split('-')]
+        try:
+            today = _charlie_now().date()
+        except Exception:
+            today = _date.today()
+        return (_date(y, m, d) - today).days
+    except Exception:
+        return None
+
+
+def _up_all(include_gone=False):
+    """Every asset with its next due date, worst first."""
+    _up_tables()
+    try:
+        q = "SELECT * FROM upkeep_assets"
+        if not include_gone:
+            q += " WHERE COALESCE(status,'active') != 'gone'"
+        rows = [dict(r) for r in (db.query(q) or [])]
+    except Exception as e:
+        print("UPKEEP: read -", repr(e), flush=True)
+        return []
+    out = []
+    for a in rows:
+        last = _up_last(a['id'])
+        due = _up_due_on(a, last)
+        a['last_service'] = last
+        a['next_due_on'] = due
+        a['days_left'] = _up_days_left(due)
+        a['every_months'] = (a.get('every_months')
+                             or _up_every_for(a.get('kind'), a.get('name')))
+        a['seasonal'] = any(s in ((a.get('kind') or '') + ' ' +
+                                  (a.get('name') or '')).lower()
+                            for s in _UP_SEASONAL)
+        if (a.get('status') or 'active') == 'suspended':
+            a['days_left'] = None
+        out.append(a)
+    out.sort(key=lambda x: (x['days_left'] is None, x['days_left'] or 0))
+    return out
+
+
+def _up_due_soon(days=3):
+    """What needs doing inside n days, overdue included. 3 days = the 72
+    hours he asked for."""
+    return [a for a in _up_all()
+            if a.get('days_left') is not None and a['days_left'] <= days]
+
+
+def _up_find(text):
+    """Which thing is he talking about."""
+    low = (text or '').lower()
+    best, blen = None, 0
+    for a in _up_all():
+        nm = (a.get('name') or '').lower().strip()
+        if len(nm) >= 3 and nm in low and len(nm) > blen:
+            best, blen = a, len(nm)
+    if best:
+        return best
+    # no exact name - try the kind.  "ac" is two letters, so a length
+    # guard would throw it away; a word boundary is what is actually
+    # needed.  these words are too everyday to match on: "the other one",
+    # "well, when..." would both pick up a thing he never named.
+    import re as _re
+    vague = ('other', 'well', 'gen', 'split', 'tv')
+    for key in sorted(_UP_EVERY, key=len, reverse=True):
+        if key in vague or len(key) < 2:
+            continue
+        if not _re.search(r"\b" + _re.escape(key) + r"\b", low):
+            continue
+        hits = [a for a in _up_all()
+                if key in ((a.get('kind') or '') + ' ' +
+                           (a.get('name') or '')).lower()]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            return {'_many': hits, '_word': key}
+    return None
+
+
+def _up_when(text):
+    """A date out of what he typed. Defaults to today."""
+    import re as _re
+    from datetime import timedelta as _td
+    try:
+        now = _charlie_now()
+    except Exception:
+        from datetime import datetime as _dt
+        now = _dt.now()
+    low = (text or '').lower()
+    g = _re.search(r"(\d{4}-\d{2}-\d{2})", low)
+    if g:
+        return g.group(1)
+    if 'yesterday' in low or 'yestaday' in low:
+        return (now - _td(days=1)).strftime('%Y-%m-%d')
+    if 'last week' in low:
+        return (now - _td(days=7)).strftime('%Y-%m-%d')
+    g = _re.search(r"\bon di (\d{1,2})|\bon the (\d{1,2})(?:st|nd|rd|th)?\b",
+                   low)
+    if g:
+        d = int(g.group(1) or g.group(2))
+        if 1 <= d <= 31:
+            try:
+                cand = now.replace(day=d)
+                if cand.date() > now.date():
+                    m = now.month - 1 or 12
+                    y = now.year - (1 if now.month == 1 else 0)
+                    cand = cand.replace(year=y, month=m)
+                return cand.strftime('%Y-%m-%d')
+            except Exception:
+                pass
+    return now.strftime('%Y-%m-%d')
+
+
+def _up_money(text):
+    """A price, if he gave one."""
+    import re as _re
+    g = _re.search(r"(?:fo|for|cost|na|charge[d]?|pay|paid)\s*"
+                   r"(?:sle|le|nle)?\s*([\d,]+(?:\.\d+)?)", (text or '').lower())
+    if not g:
+        g = _re.search(r"([\d,]+(?:\.\d+)?)\s*(?:sle|le|nle)\b",
+                       (text or '').lower())
+    if not g:
+        return None
+    try:
+        return float(g.group(1).replace(',', ''))
+    except Exception:
+        return None
+
+
+def _up_who(text):
+    """Who did it, if he said."""
+    import re as _re
+    g = _re.search(r"\b(?:by|from|na)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+                   text or '')
+    if g:
+        return g.group(1).strip()
+    g = _re.search(r"\b([A-Z][a-z]{2,})\s+(?:servic|clean|fix|repair|"
+                   r"check|do|did)", text or '')
+    if g:
+        return g.group(1).strip()
+    return None
+
+
+def _up_log(asset, text, when=None):
+    """Write a service down."""
+    from datetime import datetime as _dt
+    done = when or _up_when(text)
+    every = (asset.get('every_months')
+             or _up_every_for(asset.get('kind'), asset.get('name')))
+    nxt = _up_add_months(done, every)
+    cost = _up_money(text)
+    who = _up_who(text)
+    try:
+        db.execute("INSERT INTO upkeep_services (asset_id, done_on, what, "
+                   "who, outcome, cost, currency, next_due_on, notes, "
+                   "created_at) VALUES (?, ?, ?, ?, ?, ?, 'SLE', ?, ?, ?)",
+                   (asset['id'], done, (text or '')[:300], who, None, cost,
+                    nxt, None, _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+    except Exception as e:
+        print("UPKEEP: log -", repr(e), flush=True)
+        return None
+    return {'done_on': done, 'next_due_on': nxt, 'cost': cost, 'who': who}
+
+
+# --------------------------------------------------------------- the chat
+
+_UP_DID = (r"\b(servic\w*|clean\w*|fix\w*|repair\w*|change\w*|replac\w*|"
+           r"maintain\w*|check\w*)\b")
+_UP_DONE_HINT = (r"\b(a don|i don|we don|dem don|don|did|done|just|today|"
+                 r"yesterday|yestaday|finish)\b")
+_UP_ASK_LAST = (r"\b(when|wetin time|which time|how long)\b.{0,40}"
+                r"\b(last|las|befo)\b")
+_UP_ASK_DUE = (r"\b(wetin|what|which|anything|something)\b.{0,24}"
+               r"\b(due|overdue|need servic\w*|fo servic|to service)\b|"
+               r"\bwetin due\b|\bwhat.{0,6}due\b")
+
+
+def _up_note_text(text):
+    """The finding out of what he typed, if there is one."""
+    import re as _re
+    g = _re.search(r"(?:^|\b)(?:note|nota)\s*[:,-]\s*(.+)$|"
+                   r"\b(?:dem|they|he|she|di man|di man dɛn)\s+"
+                   r"(?:find|found|se|say|said|tok|tell\s+mi|told\s+mi)\s+"
+                   r"(?:se\s+)?(.+)$|"
+                   r"\b(?:wetin|what)\s+dem\s+(?:find|found)\s*[:,-]\s*(.+)$",
+                   text or '', _re.I)
+    if not g:
+        return None
+    found = (g.group(1) or g.group(2) or g.group(3) or '').strip(' .;:')
+    return found if len(found) >= 3 else None
+
+
+def _up_attach_note(text, found):
+    """Hang a finding on the right service.
+
+    If he named the thing, use that.  If he did not, this is the line
+    right after logging a service, so it goes on the newest one - but
+    only if that was logged today, or a stray "note: buy milk" would get
+    swallowed in here instead of reaching his notes.
+    """
+    hit = _up_find((text or '').lower())
+    if isinstance(hit, dict) and hit.get('_many'):
+        return None
+    try:
+        if hit:
+            last = _up_last(hit['id'])
+            if last:
+                prev = (last.get('outcome') or '').strip()
+                merged = (prev + " | " + found) if prev else found
+                db.execute("UPDATE upkeep_services SET outcome = ? "
+                           "WHERE id = ?", (merged[:600], last['id']))
+                return ("A add am to di %s service we bin de %s:\n_%s_"
+                        % (hit['name'], last['done_on'], found))
+            prev = (hit.get('notes') or '').strip()
+            merged = (prev + " | " + found) if prev else found
+            db.execute("UPDATE upkeep_assets SET notes = ? WHERE id = ?",
+                       (merged[:600], hit['id']))
+            return ("A no get any service fɔ %s yet, so a put di note pan "
+                    "di %s itself:\n_%s_" % (hit['name'], hit['name'], found))
+
+        # nothing named - only take it if a service went in today
+        try:
+            today = _charlie_now().strftime('%Y-%m-%d')
+        except Exception:
+            from datetime import date as _d
+            today = _d.today().strftime('%Y-%m-%d')
+        r = db.query("SELECT s.*, a.name AS aname FROM upkeep_services s "
+                     "JOIN upkeep_assets a ON a.id = s.asset_id "
+                     "WHERE DATE(s.created_at) = ? "
+                     "ORDER BY s.id DESC LIMIT 1", (today,))
+        if not r:
+            return None
+        last = dict(r[0])
+        prev = (last.get('outcome') or '').strip()
+        merged = (prev + " | " + found) if prev else found
+        db.execute("UPDATE upkeep_services SET outcome = ? WHERE id = ?",
+                   (merged[:600], last['id']))
+        return ("A add am to di %s service:\n_%s_" % (last['aname'], found))
+    except Exception as e:
+        print("UPKEEP: note -", repr(e), flush=True)
+        return None
+
+
+def _upkeep_from_chat(text):
+    """Log a service, say when one last happened, or list what is due."""
+    import re as _re
+    low = (text or '').strip().lower()
+    if not low:
+        return None
+
+    # 1. what is due?
+    if _re.search(_UP_ASK_DUE, low):
+        rows = _up_due_soon(14)
+        if not rows:
+            return "Notin due pan di next two wiks, bo. Alltin klin."
+        out = "Dis na wetin due:\n"
+        for a in rows[:12]:
+            d = a['days_left']
+            if d < 0:
+                out += "\n- %s - **%d day dɛn ɔva**" % (a['name'], -d)
+            elif d == 0:
+                out += "\n- %s - **tide**" % a['name']
+            else:
+                out += "\n- %s - %d day%s (%s)" % (a['name'], d,
+                                                   "" if d == 1 else " dɛn",
+                                                   a['next_due_on'])
+        return out
+
+    # what they found.  The finding is the part worth keeping - a service
+    # with no outcome tells you nothing a year later, and "dem se di gas
+    # de low" is how a dying compressor announces itself.  This runs
+    # before anything else, because the natural way to say it does not
+    # name the thing at all: you log the service, then say what they
+    # found, and it belongs on the service you just logged.
+    note = _up_note_text(text)
+    if note:
+        r = _up_attach_note(text, note)
+        if r:
+            return r
+
+    hit = _up_find(low)
+    if isinstance(hit, dict) and hit.get('_many'):
+        names = ", ".join(a['name'] for a in hit['_many'][:6])
+        return ("Yu get mɔ dan wan %s - %s. Which wan?"
+                % (hit['_word'], names))
+    if not hit:
+        return None
+
+    # 2. when was it last done?  a question has to be ABOUT the servicing -
+    # "should i sell the generator?" is not one, and answering it with a
+    # service date would just be in the way
+    if _re.search(_UP_ASK_LAST, low) or (
+            (_charlie_asking(low) or low.endswith('?')) and
+            _re.search(r"servic|clean|maintain|due|\blast\b|\blas\b|"
+                       r"when.{0,12}(do|did|done)", low)):
+        last = _up_last(hit['id'])
+        due = _up_due_on(hit, last)
+        d = _up_days_left(due)
+        if not last:
+            if hit.get('installed_on'):
+                return ("A no get any service fɔ %s yet. Dɛn put am %s, so "
+                        "di first wan due %s." % (hit['name'],
+                                                  hit['installed_on'], due))
+            return ("A no get any service fɔ %s, en a no sabi wen dɛn put "
+                    "am. Tell mi di date dɛn install am." % hit['name'])
+        out = "Di last service fɔ %s na %s" % (hit['name'], last['done_on'])
+        if last.get('who'):
+            out += ", %s du am" % last['who']
+        if last.get('cost'):
+            out += ", %s SLE" % ('{:,.0f}'.format(last['cost']))
+        if due:
+            if d is not None and d < 0:
+                out += ". Di nɛks wan bin due %s - %d day dɛn ɔva." % (due, -d)
+            else:
+                out += ". Di nɛks wan due %s" % due
+                if d is not None:
+                    out += " (%d day dɛn)" % d
+                out += "."
+        return out
+
+    # 3. he did it
+    if _re.search(_UP_DID, low) and _re.search(_UP_DONE_HINT, low):
+        r = _up_log(hit, text)
+        if not r:
+            return "A try fɔ write am dɔŋ bɔt i no save. Check di logs."
+        out = "A write am dɔŋ: %s servic pan %s" % (hit['name'], r['done_on'])
+        if r.get('who'):
+            out += ", %s du am" % r['who']
+        if r.get('cost'):
+            out += ", %s SLE" % ('{:,.0f}'.format(r['cost']))
+        out += ". Di nɛks wan due %s." % r['next_due_on']
+        if not r.get('cost'):
+            out += " Omɔs dɛn chaj yu?"
+        return out
+
+    return None
+
+
+# ------------------------------------------------------------- the screen
+
+@app.get("/api/upkeep")
+@require_password
+def upkeep_list():
+    try:
+        rows = _up_all(include_gone=(request.args.get('all') == '1'))
+        return {"status": "success", "assets": rows,
+                "due_soon": [a for a in rows
+                             if a.get('days_left') is not None
+                             and a['days_left'] <= 3]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/upkeep/due")
+@require_password
+def upkeep_due():
+    try:
+        d = int(request.args.get('days', 3))
+    except Exception:
+        d = 3
+    try:
+        return {"status": "success", "due": _up_due_soon(d)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/upkeep/<int:aid>")
+@require_password
+def upkeep_one(aid):
+    try:
+        r = db.query("SELECT * FROM upkeep_assets WHERE id = ?", (aid,))
+        if not r:
+            return {"error": "no such thing"}, 404
+        a = dict(r[0])
+        hist = [dict(x) for x in (db.query(
+            "SELECT * FROM upkeep_services WHERE asset_id = ? "
+            "ORDER BY done_on DESC, id DESC", (aid,)) or [])]
+        a['next_due_on'] = _up_due_on(a)
+        a['days_left'] = _up_days_left(a['next_due_on'])
+        spent = sum(float(h.get('cost') or 0) for h in hist)
+        return {"status": "success", "asset": a, "history": hist,
+                "times_serviced": len(hist), "spent_total": spent}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/upkeep")
+@require_password
+def upkeep_add():
+    from datetime import datetime as _dt
+    try:
+        d = request.get_json() or {}
+        name = (d.get('name') or '').strip()
+        if not name:
+            return {"error": "what do you call it?"}, 400
+        _up_tables()
+        if db.query("SELECT id FROM upkeep_assets WHERE LOWER(name)=LOWER(?)",
+                    (name,)):
+            return {"error": "you already have one called that"}, 400
+        kind = (d.get('kind') or '').strip().lower()
+        cur = db.execute(
+            "INSERT INTO upkeep_assets (name, kind, place, brand, model, "
+            "serial, installed_on, warranty_until, every_months, vehicle_id, "
+            "status, notes, created_at, updated_at) VALUES "
+            "(?,?,?,?,?,?,?,?,?,?,'active',?,?,?)",
+            (name, kind, d.get('place'), d.get('brand'), d.get('model'),
+             d.get('serial'), d.get('installed_on'), d.get('warranty_until'),
+             d.get('every_months') or _up_every_for(kind, name),
+             d.get('vehicle_id'), d.get('notes'),
+             _dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+             _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+        return {"status": "success", "id": getattr(cur, "lastrowid", None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/upkeep/<int:aid>")
+@require_password
+def upkeep_edit(aid):
+    from datetime import datetime as _dt
+    try:
+        d = request.get_json() or {}
+        ok = ('name', 'kind', 'place', 'brand', 'model', 'serial',
+              'installed_on', 'warranty_until', 'every_months', 'status',
+              'notes')
+        sets, vals = [], []
+        for k in ok:
+            if k in d:
+                sets.append("%s = ?" % k)
+                vals.append(d[k])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        sets.append("updated_at = ?")
+        vals.append(_dt.now().strftime('%Y-%m-%d %H:%M:%S'))
+        vals.append(aid)
+        db.execute("UPDATE upkeep_assets SET %s WHERE id = ?"
+                   % ", ".join(sets), tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/upkeep/<int:aid>/service")
+@require_password
+def upkeep_service(aid):
+    from datetime import datetime as _dt
+    try:
+        d = request.get_json() or {}
+        r = db.query("SELECT * FROM upkeep_assets WHERE id = ?", (aid,))
+        if not r:
+            return {"error": "no such thing"}, 404
+        a = dict(r[0])
+        done = d.get('done_on') or _up_when('')
+        every = (d.get('every_months') or a.get('every_months')
+                 or _up_every_for(a.get('kind'), a.get('name')))
+        nxt = d.get('next_due_on') or _up_add_months(done, every)
+        cur = db.execute(
+            "INSERT INTO upkeep_services (asset_id, done_on, what, who, "
+            "who_phone, outcome, cost, currency, parts, next_due_on, notes, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (aid, done, d.get('what'), d.get('who'), d.get('who_phone'),
+             d.get('outcome'), d.get('cost'), d.get('currency') or 'SLE',
+             d.get('parts'), nxt, d.get('notes'),
+             _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+        return {"status": "success", "id": getattr(cur, "lastrowid", None),
+                "next_due_on": nxt}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/upkeep/service/<int:sid>/delete")
+@require_password
+def upkeep_service_del(sid):
+    try:
+        db.execute("DELETE FROM upkeep_services WHERE id = ?", (sid,))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/upkeep/<int:aid>/delete")
+@require_password
+def upkeep_del(aid):
+    """Default is to mark it gone - the history is worth keeping. hard=1
+    really removes it."""
+    try:
+        if (request.get_json() or {}).get('hard'):
+            db.execute("DELETE FROM upkeep_services WHERE asset_id = ?",
+                       (aid,))
+            db.execute("DELETE FROM upkeep_assets WHERE id = ?", (aid,))
+            return {"status": "success", "removed": True}
+        db.execute("UPDATE upkeep_assets SET status = 'gone' WHERE id = ?",
+                   (aid,))
+        return {"status": "success", "removed": False}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+# ===========================================================================
+# LESSONS LEARNED, per project.
+#
+# What was discovered, what was done about it, and what to do differently.
+# The third one is the only part that pays you back, so it is its own
+# field rather than buried in a note.
+#
+# Capturable from chat, because the moment you learn something is almost
+# never the moment you are sitting at the screen:
+#
+#   "lesson learned on the Freetown house: always agree the price per bag
+#    before the cement lands, Mr Allie quoted after delivery"
+#
+# ===========================================================================
+
+_LS_SAY = (r"(?:^|\b)(?:lesson|lessons|lesson learn\w*|lessons learn\w*|"
+           r"wetin wi lan|wetin a lan|a lan|note di lesson|"
+           r"for next time|next time)\b")
+
+_LS_ASK = (r"\b(?:wetin|what|which|any|show|list|tell)\b.{0,30}"
+           r"\blesson")
+
+
+def _ls_tables():
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS project_lessons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            venture_id INTEGER,
+            title TEXT,
+            discovered TEXT,
+            did TEXT,
+            next_time TEXT,
+            cost_note TEXT,
+            tags TEXT,
+            happened_on TEXT,
+            created_at TEXT,
+            updated_at TEXT)""")
+    except Exception as e:
+        print("LESSONS: tables -", repr(e), flush=True)
+
+
+def _ls_today():
+    try:
+        return _charlie_now().strftime('%Y-%m-%d')
+    except Exception:
+        from datetime import date as _d
+        return _d.today().strftime('%Y-%m-%d')
+
+
+def _ls_venture(text):
+    """Which project is he talking about, if he named one."""
+    low = (text or '').lower()
+    try:
+        rows = db.query("SELECT id, name FROM ventures "
+                        "WHERE COALESCE(active,1) = 1") or []
+    except Exception:
+        return None, None
+    best, blen = None, 0
+    for r in rows:
+        nm = (r['name'] or '').lower().strip()
+        if len(nm) >= 3 and nm in low and len(nm) > blen:
+            best, blen = r, len(nm)
+    if best:
+        return best['id'], best['name']
+    return None, None
+
+
+def _ls_list(venture_id=None, limit=200):
+    _ls_tables()
+    try:
+        if venture_id:
+            rows = db.query(
+                "SELECT l.*, v.name AS venture_name FROM project_lessons l "
+                "LEFT JOIN ventures v ON v.id = l.venture_id "
+                "WHERE l.venture_id = ? "
+                "ORDER BY COALESCE(l.happened_on, l.created_at) DESC, "
+                "l.id DESC LIMIT ?", (venture_id, int(limit)))
+        else:
+            rows = db.query(
+                "SELECT l.*, v.name AS venture_name FROM project_lessons l "
+                "LEFT JOIN ventures v ON v.id = l.venture_id "
+                "ORDER BY COALESCE(l.happened_on, l.created_at) DESC, "
+                "l.id DESC LIMIT ?", (int(limit),))
+        return [dict(r) for r in (rows or [])]
+    except Exception as e:
+        print("LESSONS: read -", repr(e), flush=True)
+        return []
+
+
+def _ls_add(venture_id, title, discovered=None, did=None, next_time=None,
+            cost_note=None, tags=None, happened_on=None):
+    from datetime import datetime as _dt
+    _ls_tables()
+    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        cur = db.execute(
+            "INSERT INTO project_lessons (venture_id, title, discovered, "
+            "did, next_time, cost_note, tags, happened_on, created_at, "
+            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (venture_id, (title or '')[:200], discovered, did, next_time,
+             cost_note, tags, happened_on or _ls_today(), now, now))
+        return getattr(cur, "lastrowid", None)
+    except Exception as e:
+        print("LESSONS: write -", repr(e), flush=True)
+        return None
+
+
+def _ls_split(body):
+    """Pull the three parts out of one sentence, if they are in there.
+
+    He will not type fields. He will say "the cement came before we
+    agreed a price, so now I pay per bag up front" - which is a
+    discovery and a decision in one breath.
+    """
+    import re as _re
+    body = (body or '').strip(" .;:-")
+    nxt = None
+    # longest first: "so from now on" must not match the "so from now"
+    # branch and leave a stray "on" at the front of the lesson
+    g = _re.search(r"\b(?:so from now on|so from now|from now on|"
+                   r"so next time|so in future|so going forward|"
+                   r"next time|in future|going forward|from now|"
+                   r"so now|now i|now a)\b[,:\s]*(.+)$",
+                   body, _re.I)
+    if g:
+        nxt = g.group(1).strip(" .;:-")
+        body = body[:g.start()].strip(" .,;:-")
+    return body, nxt
+
+
+def _lesson_from_chat(text):
+    """Save a lesson, or read them back."""
+    import re as _re
+    raw = (text or '').strip()
+    low = raw.lower()
+    if not low:
+        return None
+
+    vid, vname = _ls_venture(low)
+
+    # Reading them back.  "wetin wi lan pan di Bo chicken farm?" has no
+    # word "lesson" in it, so the pattern alone misses it and the save
+    # branch below would happily store the question as a lesson.  A
+    # question mark with no colon is the honest discriminator: a lesson
+    # being saved has a colon or is a statement, never a question.
+    looks_like_lesson = bool(_re.search(r"lesson|wi lan|a lan|wi larn",
+                                        low))
+    if looks_like_lesson and (_re.search(_LS_ASK, low)
+                              or ((_charlie_asking(low) or low.endswith('?')) and ':' not in raw)):
+        rows = _ls_list(vid, 12)
+        if not rows:
+            if vname:
+                return ("A no get any lesson fɔ %s yet. Tell mi wan en a go "
+                        "kip am." % vname)
+            return ("A no get any lesson dɔŋ yet. Se 'lesson learned pan "
+                    "di Freetown house: ...' en a go kip am.")
+        out = ("Lesson dɛn fɔ %s:" % vname) if vname else "Di lesson dɛn:"
+        for r in rows:
+            out += "\n\n**%s**" % (r.get('title') or '(no title)')
+            if not vname and r.get('venture_name'):
+                out += "  _(%s)_" % r['venture_name']
+            if r.get('happened_on'):
+                out += "\n_%s_" % r['happened_on']
+            if r.get('discovered'):
+                out += "\nWetin wi fɛn: %s" % r['discovered']
+            if r.get('did'):
+                out += "\nWetin wi du: %s" % r['did']
+            if r.get('next_time'):
+                out += "\nNɛks tɛm: %s" % r['next_time']
+            if r.get('cost_note'):
+                out += "\nI kɔst: %s" % r['cost_note']
+        return out
+
+    # saving one
+    g = _re.search(r"(?:lesson(?:s)?(?:\s+learn\w*)?|wetin wi lan|"
+                   r"wetin a lan|note di lesson)\b[^:]{0,40}:\s*(.+)$",
+                   raw, _re.I | _re.S)
+    if not g:
+        if not _re.search(_LS_SAY, low):
+            return None
+        g = _re.search(r"(?:lesson(?:s)?(?:\s+learn\w*)?|wetin wi lan|"
+                       r"wetin a lan)\b\s+(?:is|na|was)?\s*(.+)$",
+                       raw, _re.I | _re.S)
+        if not g:
+            return None
+
+    body = g.group(1).strip()
+    if len(body) < 8:
+        return ("Wetin na di lesson? Se am lɛk dis: 'lesson learned pan di "
+                "Freetown house: agree di price before di cement kam.'")
+
+    discovered, next_time = _ls_split(body)
+    # split on a comma or full stop that ends a clause, not on the dot in
+    # "app.py" - that cut a lesson title down to "always restart the
+    # server after changing app"
+    title = _re.split(r"[,;]|(?<=\w)\.(?=\s|$)", discovered)[0].strip()
+    if len(title) > 70:
+        title = title[:67].rstrip() + "..."
+
+    new = _ls_add(vid, title, discovered=discovered, next_time=next_time)
+    if not new:
+        return "A try fɔ kip di lesson bɔt i no save. Check di logs."
+
+    out = "A kip di lesson"
+    if vname:
+        out += " ɔnda %s" % vname
+    out += ":\n\n**%s**" % title
+    if discovered and discovered != title:
+        out += "\nWetin wi fɛn: %s" % discovered
+    if next_time:
+        out += "\nNɛks tɛm: %s" % next_time
+    if not vname:
+        out += ("\n\n_A no tai am to any project - tell mi which wan if yu "
+                "want._")
+    if not next_time:
+        out += "\n\nSo wetin yu go du difrɛn nɛks tɛm?"
+    return out
+
+
+# ------------------------------------------------------------- the screen
+
+@app.get("/api/lessons")
+@require_password
+def lessons_list():
+    try:
+        vid = request.args.get('venture_id')
+        vid = int(vid) if vid not in (None, '', 'all') else None
+        return {"status": "success", "lessons": _ls_list(vid)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/lessons")
+@require_password
+def lessons_add():
+    try:
+        d = request.get_json() or {}
+        title = (d.get('title') or '').strip()
+        if not title and not (d.get('discovered') or '').strip():
+            return {"error": "what is the lesson?"}, 400
+        if not title:
+            title = (d.get('discovered') or '')[:70]
+        new = _ls_add(d.get('venture_id'), title, d.get('discovered'),
+                      d.get('did'), d.get('next_time'), d.get('cost_note'),
+                      d.get('tags'), d.get('happened_on'))
+        if not new:
+            return {"error": "could not save it"}, 400
+        return {"status": "success", "id": new}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/lessons/<int:lid>")
+@require_password
+def lessons_edit(lid):
+    from datetime import datetime as _dt
+    try:
+        d = request.get_json() or {}
+        ok = ('venture_id', 'title', 'discovered', 'did', 'next_time',
+              'cost_note', 'tags', 'happened_on')
+        sets, vals = [], []
+        for k in ok:
+            if k in d:
+                sets.append("%s = ?" % k)
+                vals.append(d[k])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        sets.append("updated_at = ?")
+        vals.append(_dt.now().strftime('%Y-%m-%d %H:%M:%S'))
+        vals.append(lid)
+        db.execute("UPDATE project_lessons SET %s WHERE id = ?"
+                   % ", ".join(sets), tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/lessons/<int:lid>/delete")
+@require_password
+def lessons_del(lid):
+    try:
+        db.execute("DELETE FROM project_lessons WHERE id = ?", (lid,))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+
+
+# ===========================================================================
+# THE LAWS WIKI
+#
+# Four layers, each useful on its own, and the voice says which one the
+# answer is standing on:
+#
+#   law_sources      the catalogue - which Act governs what (353 entries,
+#                    1926-2021, from Charlie's own index) plus the
+#                    authoritative places the text lives
+#   law_sections     provisions, VERBATIM. Empty until the Acts are
+#                    loaded. Never paraphrased in storage.
+#   law_practice     what actually happens, with a source and a date
+#   local_knowledge  what people who grew up here believe, who said it,
+#                    roughly when they learned it, and whether anyone
+#                    has checked
+#
+# THE RULE THAT HOLDS IT UP: she may only speak in the local-knowledge
+# voice about a row that exists, attributed to the person who said it.
+# Never from her own training. With nothing to stand on the answer is
+# "a no get notin pan dis wan" - not a plausible-sounding recollection.
+# A made-up belief in a friendly hedged voice is worse than a made-up
+# citation, because the hedge disarms you instead of warning you.
+# ===========================================================================
+
+import re  # harmless if app.py already has it; this block leans on it
+
+_LAW_ASK = (
+    r"\b(?:wetin|what|which|is|are|am|can|could|do|does|dem)\b[^?]{0,60}"
+    r"\b(law|laws|legal|illegal|lawful|unlawful|right|rights|act\b|"
+    r"allowed|permitted|entitled|offence|offense|crime|court|police)\b"
+    r"|\bwetin di law\b|\bwhat does the law\b|\bwhat.{0,12}my right"
+    r"|\bis it legal\b|\bam i allowed\b|\bwhich act\b|\bwhat act\b"
+    # these carry no legal word at all but are legal questions
+    r"|\bhow old\b|\bwhat age\b|\bminimum (?:wage|age)\b"
+    r"|\b(?:can|may|must) (?:i|we|dem|they|a) \w+"
+    r"|\bam i (?:supposed|meant|required)\b|\bdo i (?:have|need) to\b"
+    r"|\bwetin (?:a|wi) fo du\b|\bwetin fo du\b"
+)
+
+# the situations get their own triggers, because nobody phrases these as
+# a legal question
+_LAW_SIT_CACHE = []
+
+_LAW_SIT = (
+    r"pull(?:ed)? (?:me )?over|police stop|checkpoint|road ?block|"
+    r"traffic police|break ?in|broke into|burgl|thief|tif man|"
+    r"someone enter(?:ed)? my|rob(?:bed)?|licen[cs]e pan my phone|"
+    r"copy of my licen"
+)
+
+
+def _law_tables():
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS law_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            jurisdiction TEXT DEFAULT 'SL',
+            kind TEXT,
+            title TEXT NOT NULL,
+            act_no INTEGER,
+            year INTEGER,
+            citation TEXT,
+            purpose TEXT,
+            subjects TEXT,
+            tier INTEGER DEFAULT 1,
+            publisher TEXT,
+            source_url TEXT,
+            as_at TEXT,
+            retrieved_on TEXT,
+            gazette TEXT,
+            commenced_on TEXT,
+            repeals TEXT,
+            repealed_by TEXT,
+            amends TEXT,
+            amended_by TEXT,
+            superseded_by TEXT,
+            has_text INTEGER DEFAULT 0,
+            searchable INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at TEXT)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS law_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            part TEXT,
+            section_no TEXT,
+            heading TEXT,
+            text TEXT NOT NULL,
+            page_from INTEGER,
+            page_to INTEGER,
+            created_at TEXT)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS law_practice (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT,
+            what_happens TEXT NOT NULL,
+            source_id INTEGER,
+            source_name TEXT,
+            tier INTEGER DEFAULT 2,
+            as_at TEXT,
+            notes TEXT,
+            created_at TEXT)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS local_knowledge (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            who TEXT,
+            said_on TEXT,
+            belief TEXT NOT NULL,
+            era TEXT,
+            subject TEXT,
+            status TEXT DEFAULT 'unchecked',
+            checked_source_id INTEGER,
+            checked_section TEXT,
+            what_changed TEXT,
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS law_situations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            triggers TEXT,
+            what_to_do TEXT,
+            what_to_carry TEXT,
+            who_to_call TEXT,
+            receipt_looks_like TEXT,
+            unsettled TEXT,
+            source_ids TEXT,
+            practice_ids TEXT,
+            local_ids TEXT,
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT)""")
+    except Exception as e:
+        print("LAWS: tables -", repr(e), flush=True)
+        return
+    _law_fts()
+    _law_seed()
+
+
+_LAW_SEEDED = [False]
+
+
+def _law_seed():
+    """Load the starting data once: the 353-entry catalogue, the places
+    the real text lives, the practice notes, Jeremiah's belief, and the
+    three situation cards. Kept in a data file rather than inlined, so
+    app.py stays readable and the seed can be replaced."""
+    if _LAW_SEEDED[0]:
+        return
+    _LAW_SEEDED[0] = True
+    try:
+        if db.query("SELECT id FROM law_sources LIMIT 1"):
+            return          # already loaded; never doubles up
+    except Exception:
+        return
+    import os as _os
+    import json as _json
+    here = _os.path.dirname(_os.path.abspath(__file__))
+    path = None
+    for cand in (_os.path.join(here, "data", "laws_seed.json"),
+                 _os.path.join(here, "laws_seed.json")):
+        if _os.path.isfile(cand):
+            path = cand
+            break
+    if not path:
+        print("LAWS: no laws_seed.json found - starting empty", flush=True)
+        return
+    try:
+        seed = _json.load(open(path, "r", encoding="utf-8"))
+    except Exception as e:
+        print("LAWS: seed unreadable -", repr(e), flush=True)
+        return
+
+    def _ins(table, rows):
+        n = 0
+        for r in rows or []:
+            ks = [k for k in r if r[k] is not None]
+            if not ks:
+                continue
+            try:
+                db.execute("INSERT INTO %s (%s) VALUES (%s)"
+                           % (table, ",".join(ks),
+                              ",".join("?" * len(ks))),
+                           tuple(r[k] for k in ks))
+                n += 1
+            except Exception as e:
+                print("LAWS: seed %s -" % table, repr(e), flush=True)
+                break
+        return n
+
+    a = _ins("law_sources", seed.get("sources"))
+    b = _ins("law_practice", seed.get("practice"))
+    c = _ins("local_knowledge", seed.get("local"))
+    d = _ins("law_situations", seed.get("situations"))
+    print("LAWS: seeded %d sources, %d practice, %d local, %d situations"
+          % (a, b, c, d), flush=True)
+
+
+def _law_fts():
+    """Full text over the provisions. For statute the exact word IS the
+    query, so keyword search beats embeddings on its own."""
+    try:
+        db.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS law_fts
+            USING fts5(section_id UNINDEXED, source_id UNINDEXED,
+                       section_no, heading, text)""")
+        return True
+    except Exception as e:
+        print("LAWS: no fts5, falling back to LIKE -", repr(e), flush=True)
+        return False
+
+
+def _law_has_fts():
+    try:
+        return bool(db.query("SELECT name FROM sqlite_master WHERE "
+                             "name = 'law_fts'"))
+    except Exception:
+        return False
+
+
+def _law_today():
+    try:
+        return _charlie_now().strftime('%Y-%m-%d')
+    except Exception:
+        from datetime import date as _d
+        return _d.today().strftime('%Y-%m-%d')
+
+
+# ------------------------------------------------------------- searching
+
+_LAW_STOP = set("""what which this that with from have does about when they
+their will would could should there here been being sierra leone legal
+laws law rights right someone somebody must need want know tell find
+thing things time just like make made your mine");""".split())
+
+# A question is rarely phrased in the words of an Act's title, so the
+# subject tag is what actually connects "pulled over" to the Road Traffic
+# Act. Without this the matcher returned the Refugees Protection Act for
+# a question about a checkpoint.
+_LAW_SUBJ_HINTS = [
+    ("traffic", r"pull(?:ed)? over|checkpoint|road ?block|driving|driver|"
+                r"licen[cs]e|car|vehicle|traffic|speed|plate|keke|okada|"
+                r"motorbike|road"),
+    ("police", r"police|officer|arrest|detain|custody|station|bribe|"
+               r"extort|corrupt|crime|criminal|thief|tif|rob|burgl|"
+               r"break ?in|broke into|search"),
+    ("land", r"\bland\b|plot|boundary|survey|acre|title deed|lease|"
+             r"compound|provinces|chiefdom|customary"),
+    ("property", r"tenant|landlord|rent|evict|ejectment|mortgage|"
+                 r"inherit|estate|will\b|airbnb|guest"),
+    ("employment", r"employ|worker|staff|wage|salary|stipend|volunteer|"
+                   r"sack|fire|dismiss|overtime|leave|union|strike|"
+                   r"nassit|pension|contract of service"),
+    ("children", r"child|children|minor|under ?18|pupil|student|school|"
+                 r"young person|pikin"),
+    ("mining", r"diamond|gold|mineral|mining|quarry|dig|rutile|bauxite"),
+    ("money", r"currency|leone|dollar|forex|exchange|bank|payment|"
+              r"transfer|loan|interest|debt"),
+    ("tax", r"\btax\b|duty|duties|customs|import|export|gst|revenue|nra"),
+    ("business", r"compan|business|register|licence to trade|ngo|"
+                 r"non.?profit|charity|procurement|tender"),
+    ("citizenship", r"citizen|passport|nationalit|naturalis|naturaliz|"
+                    r"\bid\b|identity card|residence permit|immigration|"
+                    r"visa"),
+    ("marriage", r"marriage|marry|divorce|wife|husband|spouse|dowry"),
+    ("rights", r"freedom|discriminat|assembly|speech|privacy|disabilit|"
+               r"domestic violence|harass"),
+    ("courts", r"court|sue|lawyer|magistrate|judge|appeal|legal aid"),
+    ("health", r"hospital|clinic|doctor|medical|health|medicine"),
+    ("local", r"council|chief|paramount|ward|district"),
+]
+
+
+def _law_subjects(q):
+    low = (q or '').lower()
+    return {name for name, pat in _LAW_SUBJ_HINTS if re.search(pat, low)}
+
+
+def _law_words(q):
+    return [w for w in re.findall(r"[a-z]{4,}", (q or '').lower())
+            if w not in _LAW_STOP]
+
+def _law_recent(n=2):
+    """The last few exchanges, newest first, as (asked, answered).
+
+    Reads the conversations table - the same one chat_history() serves
+    the chat window from - rather than adding another way to find the
+    same rows.
+    """
+    try:
+        rows = db.query(
+            "SELECT user_message, ami_response FROM conversations "
+            "ORDER BY id DESC LIMIT ?", (int(n),)) or []
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        r = dict(r)
+        out.append(((r.get("user_message") or "").strip(),
+                    (r.get("ami_response") or "").strip()))
+    return out
+
+def _law_prior_words():
+    """The words from the LAST question, but only if the last answer was
+    a legal one.
+
+    Why this exists: "what if i forgot my license. Can I send someone to
+    run back to my house and bring it?" only means "my driving licence,
+    at a police stop" because of the question before it. On its own
+    words, s.18 "Old licence to be produced on applying for renewal" and
+    s.87 "Power of police officers ... to require production of driving
+    licences" are equally good guesses, and s.18 was winning.
+
+    These words are deliberately WEAKER than the ones just typed. They
+    add to the score and they widen the search, but they can never
+    satisfy the relevance floor by themselves - see _law_find_sections.
+    Otherwise asking "how old must a child be to work?" straight after
+    a licence question would start pulling in licence sections, which
+    is a worse failure than the one being fixed.
+    """
+    # kept inside the function so that replacing the function later
+    # cannot leave a second copy of it behind at module level
+    was_legal = ("wetin di law se", "wetin wi nɔ sho bɔt", "don chenj",
+                 "di act dɛn we fit cover", "nɔ go guess pan law",
+                 "wetin rili apin")
+    try:
+        for asked, answered in _law_recent(2):
+            low = (answered or "").lower()
+            if not any(k in low for k in was_legal):
+                continue
+            if not (asked or "").strip():
+                continue
+            return _law_words(asked.lower())[:8]
+    except Exception as e:
+        print("LAWS: prior words -", repr(e), flush=True)
+    return []
+
+def _law_forms(w):
+    """Every spelling of one query word that the Acts might use.
+
+    This exists in one place because it is needed in TWO, and having it
+    in only one was the bug. "What if I forgot my LICENSE, can I send
+    someone to bring it" found nothing: the matcher knew that license
+    and licence are the same word, but the full-text search did not, so
+    section 87 was never even retrieved to be matched. Expanding the
+    word for scoring is useless if the search never returns the row.
+
+    Every Act in here is British-drafted and Charlie writes American.
+    """
+    forms = {w}
+
+    if w.endswith("ies") and len(w) > 4:
+        forms.add(w[:-3] + "y")
+    if w.endswith("es") and len(w) > 4:
+        forms.add(w[:-2])
+    if w.endswith("s") and len(w) > 4:
+        forms.add(w[:-1])
+    else:
+        forms.add(w + "s")
+    if w == "children":
+        forms.add("child")
+    if w == "child":
+        forms.add("children")
+
+    PAIRS = (("cense", "cence"), ("fense", "fence"), ("tense", "tence"),
+             ("eling", "elling"), ("eled", "elled"), ("eler", "eller"),
+             ("tire", "tyre"), ("program", "programme"),
+             ("inquir", "enquir"), ("judgment", "judgement"),
+             ("aging", "ageing"), ("center", "centre"),
+             ("meter", "metre"), ("liter", "litre"),
+             ("labor", "labour"), ("behavior", "behaviour"),
+             ("neighbor", "neighbour"), ("honor", "honour"))
+    for f in list(forms):
+        alt = set()
+        for a, b in PAIRS:
+            if a in f:
+                alt.add(f.replace(a, b))
+            if b in f:
+                alt.add(f.replace(b, a))
+        if f.endswith("ize"):
+            alt.add(f[:-3] + "ise")
+        elif f.endswith("ise"):
+            alt.add(f[:-3] + "ize")
+        if f.endswith("ization"):
+            alt.add(f[:-7] + "isation")
+        elif f.endswith("isation"):
+            alt.add(f[:-7] + "ization")
+        forms |= alt
+
+    # plural the spelling variants too, so "licenses" reaches "licences"
+    for f in list(forms):
+        if not f.endswith("s"):
+            forms.add(f + "s")
+
+    # People ask in one vocabulary and Acts are drafted in another. You
+    # asked whether you could BRING your licence; s.87 says PRODUCE it,
+    # and so every section that answers a "can I show / can I bring"
+    # question was invisible to those words. These are one-directional
+    # on purpose - the word you type reaches the word the Act uses, not
+    # the other way about - and the list is deliberately short, because
+    # a loose synonym is how "keeping bees" found the Peace KEEPING Act.
+    SYN = {
+        "show": ("produc", "exhibit"), "bring": ("produc",),
+        "present": ("produc",), "give": ("produc",),
+        "carry": ("produc", "carry"),
+        "cop": ("police",), "cops": ("police",),
+        "car": ("motor vehicle", "vehicle"),
+        "auto": ("motor vehicle",), "bike": ("cycle",),
+        "kid": ("child",), "kids": ("child",),
+        "gun": ("firearm",), "guns": ("firearm",),
+        "home": ("dwelling", "premises"),
+        "rent": ("tenan", "leas"), "renter": ("tenan",),
+        "fired": ("dismiss", "terminat"),
+        "sack": ("dismiss",), "sacked": ("dismiss",),
+        "pay": ("wage", "remunerat", "salar"),
+        "fine": ("fine", "penalt", "liable"),
+        "jailed": ("imprison",), "prison": ("imprison",),
+    }
+    for f in list(forms):
+        for extra in SYN.get(f, ()):  
+            forms.add(extra)
+    return {f for f in forms if len(f) > 2}
+
+def _law_hits(words, hay):
+    """How many of the query words appear, in any spelling the Act uses.
+
+    "Can i hold two CITIZENSHIPS" scored one hit against a section that
+    says CITIZENSHIP, and the relevance floor then threw away the exact
+    provision that answered the question. The forms come from
+    _law_forms, which the search itself now uses too.
+    """
+    n = 0
+    for w in words:
+        if any(f in hay for f in _law_forms(w)):
+            n += 1
+    return n
+
+def _law_quote(text, words, budget):
+    """Quote a section without cutting off the part that answers.
+
+    There was a flat 900-character cap here, and it was eating the law.
+    Road Traffic Act 2007 s.87 is 2,986 characters: the cap stopped it
+    at "shall, on being so" - one word before "produce his licence for
+    examination" - and threw away subsection (6), which is the twenty-
+    four hours you get to produce it. The question was answered in the
+    2,086 characters that were discarded.
+
+    So instead of the first N characters, this keeps the subsections
+    that match the question, in their own numbering order, and says
+    out loud when it has left something out. A legal quote that has
+    been silently trimmed is worse than no quote.
+    """
+    text = str(text or '').strip()
+    if len(text) <= budget:
+        return text
+
+    # Split on subsection numbering at the start of a line: (1), (2)...
+    parts, cur, num = [], [], None
+    for line in text.split("\n"):
+        m = re.match(r"\s*\((\d{1,2})\)\s", line)
+        if m and (num is None or int(m.group(1)) == num + 1):
+            if cur:
+                parts.append((num, "\n".join(cur)))
+            num = int(m.group(1))
+            cur = [line]
+        else:
+            cur.append(line)
+    if cur:
+        parts.append((num, "\n".join(cur)))
+
+    def _trim(t):
+        """Last resort: cut at a sentence end, never mid-word, and say
+        how much is missing."""
+        cut = t[:budget]
+        for sep in (".\n", ". ", "\n", " "):
+            k = cut.rfind(sep)
+            if k > budget * 0.5:
+                cut = cut[:k + 1]
+                break
+        return cut.rstrip() + ("\n\n_… dis sekshɔn kɔntinyu "
+                               "(%d mɔ karakta)_" % (len(t) - len(cut)))
+
+    if len(parts) < 2:
+        return _trim(text)
+
+    scored = []
+    for i, (n, body) in enumerate(parts):
+        low = body.lower()
+        hits = _law_hits(words, low) if words else 0
+        # the opening always matters: it carries the preamble and (1)
+        scored.append((0 if i == 0 else 1, -hits, i, n, body))
+    scored.sort()
+
+    keep, used = set(), 0
+    for _, _, i, n, body in scored:
+        if used + len(body) > budget and keep:
+            continue
+        keep.add(i)
+        used += len(body)
+
+    # Dropping a subsection is only worth it if what is left actually
+    # fills the space. Road Traffic s.143 is 7,435 characters in two
+    # subsections: dropping the second to fit 3,200 left 466 - it threw
+    # away 94% of the section to stay inside a budget it then did not
+    # use. Below 60% of the budget, trimming the whole thing is simply
+    # more law on the page.
+    if used < budget * 0.6:
+        return _trim(text)
+
+    out, skipped = [], []
+    for i, (n, body) in enumerate(parts):
+        if i in keep:
+            out.append(body)
+        elif n is not None:
+            skipped.append(str(n))
+    s = "\n".join(out).strip()
+    if skipped:
+        s += ("\n\n_… a lɛf out subsekshɔn (%s) fɔ mek dis shɔt. Dɛn de "
+              "pan di Act._" % "), (".join(skipped))
+    return s
+
+
+def _law_find_sources(q, limit=6):
+    """Which Act governs this.
+
+    Title words count for much more than purpose words, the subject tag
+    counts for most of all, and anything below the floor is dropped
+    rather than shown - a weak match presented confidently is worse than
+    no match.
+    """
+    words = _law_words(q)
+    subs = _law_subjects(q)
+    if not words and not subs:
+        return []
+    try:
+        rows = db.query("SELECT * FROM law_sources") or []
+    except Exception:
+        return []
+
+    scored = []
+    for r in rows:
+        r = dict(r)
+        title = (r.get('title') or '').lower()
+        purpose = (r.get('purpose') or '').lower()
+        rsubs = {s for s in (r.get('subjects') or '').split(',') if s}
+
+        th = _law_hits(words, title)
+        ph = _law_hits(words, purpose)
+        ov = len(subs & rsubs)
+
+        # THE GUARD. One title word in common is coincidence, not
+        # relevance: "law on keeping bees" hit the Peace KEEPING and Law
+        # Enforcement Academy Act. Demand a subject hit, or two
+        # independent title words, before this is a candidate at all.
+        if not ov and th < 2:
+            continue
+
+        score = 9 * th + 1 * ph + 11 * ov
+        # an Act nobody repealed, with text, recent, wins
+        if r.get('repealed_by') or r.get('superseded_by'):
+            score -= 14
+        if r.get('has_text'):
+            score += 7
+        if r.get('searchable'):
+            score += 2
+        if r.get('year'):
+            try:
+                # recency has to count for something real: dividing the
+                # raw year by 400 made 1960 and 2016 almost identical
+                score += (min(int(r['year']), 2026) - 1920) / 15.0
+            except Exception:
+                pass
+        # for a plain question, the Act beats the regulations under it
+        if (r.get('kind') or '') in ('regulations', 'rules', 'si', 'order'):
+            score -= 4
+        scored.append((score, r))
+
+    if not scored:
+        return []
+    scored.sort(key=lambda x: -x[0])
+    # the floor: either a subject hit or a real title hit
+    floor = 10
+    keep = [r for s, r in scored if s >= floor]
+    return keep[:limit] if keep else []
+
+
+def _law_find_sections(q, limit=4, prior=None):
+    """The provisions themselves, best match first.
+
+    Without ranking, FTS5 returns rows in storage order and the
+    interpretation section wins every query - it contains every word in
+    the Act. So: rank by bm25 (ORDER BY rank), and boost a section whose
+    HEADING carries the query words, because a heading match is what a
+    person actually means.
+    """
+    words = _law_words(q)
+    if not words:
+        return []
+    try:
+        if _law_has_fts():
+            # Search for every spelling, not just the one typed. With
+            # only the typed word, "license" never retrieved s.87,
+            # whose heading says "licences" - and the answer cannot be
+            # ranked if it was never fetched.
+            terms = " OR ".join('"%s"' % x for w in words
+                                for x in sorted(_law_forms(w)))
+            rows = db.query(
+                "SELECT f.section_id AS sid, f.source_id AS src, "
+                "f.section_no, f.heading, s.text, s.part, l.title, "
+                "l.act_no, l.year, l.as_at, l.tier, l.subjects, "
+                "COALESCE(s.amend_note,'') AS amend_note, "
+                "COALESCE(l.completeness,'') AS completeness "
+                "FROM law_fts f "
+                "JOIN law_sections s ON s.id = f.section_id "
+                "JOIN law_sources l ON l.id = f.source_id "
+                "WHERE law_fts MATCH ? ORDER BY rank LIMIT ?",
+                (terms, int(limit) * 6))
+        else:
+            like = "%" + " ".join(words[:3]) + "%"
+            rows = db.query(
+                "SELECT s.id AS sid, s.source_id AS src, s.section_no, "
+                "s.heading, s.text, s.part, l.title, l.act_no, l.year, "
+                "l.as_at, l.tier, l.subjects, COALESCE(s.amend_note,'') AS amend_note, "
+                "COALESCE(l.completeness,'') AS completeness "
+                "FROM law_sections s "
+                "JOIN law_sources l ON l.id = s.source_id "
+                "WHERE s.text LIKE ? LIMIT ?", (like, int(limit) * 6))
+        rows = [dict(r) for r in (rows or [])]
+    except Exception as e:
+        # an older database has neither amend_note nor completeness
+        if "no such column" in str(e).lower():
+            try:
+                terms = " OR ".join('"%s"' % x for w in words
+                                    for x in sorted(_law_forms(w)))
+                rows = [dict(r) for r in (db.query(
+                    "SELECT f.section_id AS sid, f.source_id AS src, "
+                    "f.section_no, f.heading, s.text, s.part, l.title, "
+                    "l.act_no, l.year, l.as_at FROM law_fts f "
+                    "JOIN law_sections s ON s.id = f.section_id "
+                    "JOIN law_sources l ON l.id = f.source_id "
+                    "WHERE law_fts MATCH ? ORDER BY rank LIMIT ?",
+                    (terms, int(limit) * 6)) or [])]
+            except Exception:
+                return []
+        else:
+            print("LAWS: section search -", repr(e), flush=True)
+            return []
+
+    subs = _law_subjects(q)
+    scored = []
+    for i, r in enumerate(rows):
+        head = (r.get("heading") or "").lower()
+        text = (r.get("text") or "").lower()
+        hh = _law_hits(words, head)
+        th = _law_hits(words, text)
+        # the previous question's words, kept separate on purpose: they
+        # are never counted towards the floor below
+        ph = _law_hits(prior, head) if prior else 0
+        pt = _law_hits(prior, text) if prior else 0
+        rsubs = {x for x in (r.get("subjects") or "").split(",") if x}
+        on_subject = bool(subs and (subs & rsubs))
+
+        # THE FLOOR, adaptive. Without any floor every FTS hit comes back
+        # as law - "keeping bees in Freetown" returned Child Rights s.16
+        # because the word "Freetown" is in it. But a fixed floor of
+        # three words was too strict the other way: the 2006 Citizenship
+        # Amendment Act has NO section headings, so it can never score a
+        # heading hit, and the one provision that actually answers "can I
+        # hold two citizenships" got thrown away.
+        need = 3 if head else 2
+        # on-subject used to drop this to ONE word, and one word is not
+        # evidence however rare it is. "What if I forgot my license,
+        # can I send someone to bring it" came back with s.49 on
+        # hazardous goods - matched on "send" - and s.129 on
+        # pedestrians, matched on "back", out of "on horse back". Both
+        # words are in only 3 or 4 of the 339 sections, so weighting by
+        # rarity would not have caught either. Two words, or a heading
+        # match, or it does not get quoted.
+        if on_subject:
+            need = max(2, need - 1)
+        if hh < 1 and th < need:
+            continue
+
+        score = 14 * hh + 2 * th - i * 0.35      # keep some bm25 order
+        # Context breaks ties among rows the question itself found; it
+        # never widens the search. Worth about a third of a word you
+        # actually typed.
+        score += 4 * ph + 0.6 * pt
+
+        # The subject has to gate this too. "can i hold two citizenships"
+        # was answered with the Road Traffic Act on "Holding or getting
+        # on to a motor vehicle" and "may hold two or more trade
+        # licences" - pure word overlap, no sense of what was asked.
+        if subs:
+            if on_subject:
+                score += 26
+            else:
+                score -= 18
+        # the interpretation section matches everything and answers
+        # almost nothing
+        if re.match(r"^\s*interpretation", head) or \
+                (r.get("section_no") == "1" and len(text) > 2500):
+            score -= 22
+        if len(text) > 6000:
+            score -= 4
+        scored.append((score, r))
+    scored.sort(key=lambda x: -x[0])
+
+    # If the subject is clear AND some sections match it, keep only those.
+    # A penalty was not enough: "hold two citizenships" still surfaced
+    # the Road Traffic Act on the word "Holding".
+    if subs:
+        on = [(s, r) for s, r in scored
+              if subs & {x for x in (r.get("subjects") or "").split(",") if x}]
+        if len(on) >= 1:
+            scored = on
+
+    return [r for _, r in scored[:limit]]
+
+
+def _law_find_local(q, limit=4):
+    """A belief only surfaces on a subject hit or two distinctive words.
+    One loose word in common is not a match."""
+    words = _law_words(q)
+    subs = _law_subjects(q)
+    try:
+        rows = db.query("SELECT * FROM local_knowledge") or []
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        r = dict(r)
+        hay = (r.get('belief') or '').lower()
+        rsubs = {s for s in (r.get('subject') or '').split(',') if s}
+        hits = _law_hits(words, hay)
+        overlap = len(subs & rsubs)
+        if overlap or hits >= 2:
+            out.append((overlap * 5 + hits, r))
+    out.sort(key=lambda x: -x[0])
+    return [r for _, r in out[:limit]]
+
+
+def _law_find_practice(q, limit=3):
+    """Same floor. A traffic question should not drag in the workweek."""
+    words = _law_words(q)
+    subs = _law_subjects(q)
+    try:
+        rows = db.query("SELECT * FROM law_practice") or []
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        r = dict(r)
+        hay = (r.get('what_happens') or '').lower()
+        rsubs = {s for s in (r.get('subject') or '').split(',') if s}
+        hits = _law_hits(words, hay)
+        overlap = len(subs & rsubs)
+        if overlap or hits >= 2:
+            out.append((overlap * 5 + hits, r))
+    out.sort(key=lambda x: -x[0])
+    return [r for _, r in out[:limit]]
+
+
+def _law_find_situation(q):
+    """The situation card for this question, or None.
+
+    This used to sit behind a hardcoded regex, _LAW_SIT, which was a
+    second copy of the triggers already stored in the table. Widening
+    the triggers in the database therefore did nothing: "can i show my
+    driving licence on my phone?" never got this far, because the regex
+    only knew "licence pan my phone" and "copy of my licen". The card
+    that answers that exact question was unreachable.
+
+    So the triggers now come from one place - the table - and the gate
+    is the match itself. Cached for a minute so this does not query on
+    every chat message."""
+    import time
+    now = time.time()
+    if not _LAW_SIT_CACHE or now - _LAW_SIT_CACHE[0] > 60:
+        try:
+            rows = db.query("SELECT * FROM law_situations") or []
+        except Exception:
+            rows = []
+        _LAW_SIT_CACHE[:] = [now, [dict(r) for r in rows]]
+    rows = _LAW_SIT_CACHE[1] if len(_LAW_SIT_CACHE) > 1 else []
+    low = (q or '').lower()
+    best, bn = None, 0
+    for r in rows:
+        n = 0
+        for t in (r.get('triggers') or '').split('|'):
+            t = t.strip().lower()
+            # longest match wins, so a specific card beats a vague one
+            if t and t in low:
+                n = max(n, len(t))
+        if n > bn:
+            best, bn = r, n
+    return best
+
+
+def _law_cite(r):
+    """How an Act is named in an answer."""
+    bits = r.get('title') or 'unknown'
+    if r.get('act_no') and r.get('year'):
+        bits += " (No. %s of %s)" % (r['act_no'], r['year'])
+    elif r.get('year'):
+        bits += " (%s)" % r['year']
+    return bits
+
+
+# --------------------------------------------------------------- the chat
+
+def _law_from_chat(text):
+    """Answer a legal question, saying which layer it stands on."""
+    raw = (text or '').strip()
+    low = raw.lower()
+    if not low:
+        return None
+
+    # A belief arrives as a statement, never a question, so this has to
+    # run before the question gate or it is unreachable.
+    _belief = re.match(r"\s*([A-Z][a-z]+)\s+(?:se|say|says|tol mi|"
+                       r"told me|tell mi|se se)\s+(?:se\s+)?(.{12,})$",
+                       raw)
+
+    # No regex pre-gate here any more - see _law_find_situation. The
+    # gate was a stale copy of the triggers and it silently blocked the
+    # phone-licence card.
+    sit = _law_find_situation(low)
+    if not sit and not _belief and not re.search(_LAW_ASK, low):
+        return None
+
+    _law_tables()
+
+    g = _belief
+    if g and not sit:
+        who, belief = g.group(1), g.group(2).strip(" .")
+        try:
+            db.execute(
+                "INSERT INTO local_knowledge (who, said_on, belief, "
+                "status, created_at, updated_at) VALUES (?,?,?,'unchecked',"
+                "?,?)", (who, _law_today(), belief[:600], _law_today(),
+                         _law_today()))
+            out = ("A kip dat as local knowledge from %s, **unchecked**:\n"
+                   "_%s_\n\n" % (who, belief))
+            srcs = _law_find_sources(belief, 2)
+            if srcs:
+                out += "Di law we probably cover dis:\n"
+                for s in srcs:
+                    out += "- %s" % _law_cite(s)
+                    if s.get('repealed_by'):
+                        out += "  _(repealed by %s)_" % s['repealed_by']
+                    out += "\n"
+                out += "\nA nɔ check am yet pan di Act."
+            return out
+        except Exception as e:
+            print("LAWS: save belief -", repr(e), flush=True)
+
+    _prior = _law_prior_words()
+    secs = _law_find_sections(low, prior=_prior)
+    locs = _law_find_local(low)
+    prac = _law_find_practice(low)
+    srcs = _law_find_sources(low)
+
+    if not (sit or secs or locs or prac or srcs):
+        return ("A nɔ get notin pan dis wan, bo. A nɔ go guess pan law.\n\n"
+                "If yu sabi sɔntin bɔt am, tɛl mi lɛk dis: _Jeremiah se "
+                "..._ en a go kip am as local knowledge till wi check am.")
+
+    out = ""
+
+    if sit:
+        out += "**%s**\n" % sit['title']
+        if sit.get('what_to_do'):
+            out += "\n%s\n" % sit['what_to_do']
+        if sit.get('what_to_carry'):
+            out += "\n**Wetin fɔ kɛr:** %s\n" % sit['what_to_carry']
+        if sit.get('who_to_call'):
+            out += "**Udat fɔ kɔl:** %s\n" % sit['who_to_call']
+        if sit.get('receipt_looks_like'):
+            out += "**Di rayt way fɔ pay:** %s\n" % sit['receipt_looks_like']
+        # This field holds what is NOT settled, and it was being stored
+        # and never shown. On the phone-licence card it is the whole
+        # answer - that nothing confirms a photo satisfies the law - so
+        # leaving it out turned an honest card into a confident one.
+        if sit.get('unsettled'):
+            out += ("\n⚠️ **Wetin wi nɔ sho bɔt:** %s\n"
+                    % sit['unsettled'])
+
+    # 1. the provisions, if we have them
+    if secs:
+        out += "\n**Wetin di law se:**\n"
+        _qwords = _law_words(low)
+        _spent = [0]
+        for s in secs:
+            out += "\n_%s" % (s.get('title') or '')
+            if s.get('act_no') and s.get('year'):
+                out += " (No. %s of %s)" % (s['act_no'], s['year'])
+            if s.get('section_no'):
+                out += ", section %s" % s['section_no']
+            out += "_"
+            if s.get('heading'):
+                out += "  \n_%s_" % s['heading']
+            if s.get('as_at'):
+                out += "  \n_(version as at %s)_" % s['as_at']
+
+            # A provision quoted without its amendment is a wrong answer
+            # delivered confidently - the 1973 citizenship definition was
+            # patrilineal and the 2006 Act replaced it. The warning goes
+            # ABOVE the text so it cannot be read past.
+            if (s.get('amend_note') or '').strip():
+                out += ("\n\n⚠️ **DIS SEKSHƆN DON CHENJ** — nɔ rid am "
+                        "wan-say:\n%s\n" % s['amend_note'])
+            if (s.get('completeness') or '').strip():
+                out += ("\n\n⚠️ _Dis sɔs nɔ komplit: %s_\n"
+                        % s['completeness'])
+
+            # A flat 900-character cap used to sit here and it was
+            # cutting the law in half. 95% of the 339 sections fit in
+            # 2,400 characters, so the budget is now big enough to
+            # quote almost everything whole, with a running ceiling so
+            # a five-section answer cannot run away.
+            _b = min(3200, max(500, 9000 - _spent[0]))
+            _q = _law_quote(s.get('text'), _qwords, _b)
+            _spent[0] += len(_q)
+            out += "\n> %s\n" % _q
+    elif srcs:
+        # candidates, not certainty: the index is titles only, so the
+        # ranking can be wrong and the wording must not pretend otherwise
+        out += ("\n**Di Act dɛn we fit cover dis** — a nɔ get di sections "
+                "yet, so a nɔ go tɛl yu wetin dɛn se word fɔ word, en a "
+                "nɔ sho fɔ se na di rayt wan:\n")
+        for s in srcs[:3]:
+            out += "- %s" % _law_cite(s)
+            if s.get('repealed_by'):
+                out += "  — _repealed by %s_" % s['repealed_by']
+            if s.get('searchable'):
+                out += "  _(full text de online)_"
+            out += "\n"
+        out += ("\nIf yu want, a go tɛl yu usay fɔ fɛn di real text.\n")
+
+    # 2. what actually happens
+    if prac:
+        out += "\n**Wetin rili apin:**\n"
+        for p in prac:
+            out += "- %s" % p['what_happens']
+            if p.get('source_name'):
+                out += "  \n  _(%s" % p['source_name']
+                if p.get('as_at'):
+                    out += ", %s" % p['as_at']
+                out += " — dis na report, nɔto di law)_"
+            out += "\n"
+
+    # 3. what people believe - attributed, always
+    if locs:
+        out += "\n**Wetin pipul dɛn se** (nɔto law — "
+        out += "local knowledge):\n"
+        for l in locs:
+            who = l.get('who') or 'sɔmbɔdi'
+            out += "\n- **%s se:** _%s_" % (who, l['belief'])
+            st = (l.get('status') or 'unchecked')
+            if st == 'confirmed':
+                out += "\n  ✓ Wi check am — i korekt."
+                if l.get('checked_section'):
+                    out += " (%s)" % l['checked_section']
+            elif st == 'superseded':
+                out += "\n  ⚠ Dat bin tru wan tɛm bɔt i don chenj."
+                if l.get('what_changed'):
+                    out += " %s" % l['what_changed']
+            elif st == 'wrong':
+                out += "\n  ✗ Wi check am — i nɔ korekt."
+            else:
+                out += "\n  **A nɔ check am pan di Act yet.** Check am."
+            if l.get('era'):
+                out += " _(i lan dis %s)_" % l['era']
+
+    if not secs:
+        out += ("\n\n_A nɔ get di real text yet — so dis na guide, nɔto di "
+                "law itself. Fɔ sɔntin we go kɔst yu, si wan lawyer._")
+    return out.strip()
+
+
+# ------------------------------------------------------------- endpoints
+
+@app.get("/api/laws/search")
+@require_password
+def laws_search():
+    try:
+        q = request.args.get('q') or ''
+        _law_tables()
+        return {"status": "success",
+                "sources": _law_find_sources(q, 12),
+                "sections": _law_find_sections(q, 10),
+                "practice": _law_find_practice(q, 6),
+                "local": _law_find_local(q, 10)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/laws/sources")
+@require_password
+def laws_sources():
+    try:
+        _law_tables()
+        subj = request.args.get('subject')
+        if subj and subj != 'all':
+            rows = db.query("SELECT * FROM law_sources WHERE subjects "
+                            "LIKE ? ORDER BY year DESC, title",
+                            ("%" + subj + "%",))
+        else:
+            rows = db.query("SELECT * FROM law_sources "
+                            "ORDER BY year DESC, title")
+        return {"status": "success",
+                "sources": [dict(r) for r in (rows or [])]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/laws/local")
+@require_password
+def laws_local():
+    try:
+        _law_tables()
+        rows = db.query("SELECT k.*, s.title AS checked_title FROM "
+                        "local_knowledge k LEFT JOIN law_sources s "
+                        "ON s.id = k.checked_source_id "
+                        "ORDER BY k.id DESC") or []
+        return {"status": "success", "local": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/laws/local")
+@require_password
+def laws_local_add():
+    try:
+        d = request.get_json() or {}
+        belief = (d.get('belief') or '').strip()
+        if len(belief) < 8:
+            return {"error": "what is the belief?"}, 400
+        _law_tables()
+        cur = db.execute(
+            "INSERT INTO local_knowledge (who, said_on, belief, era, "
+            "subject, status, notes, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (d.get('who'), d.get('said_on') or _law_today(), belief,
+             d.get('era'), d.get('subject'), d.get('status') or 'unchecked',
+             d.get('notes'), _law_today(), _law_today()))
+        return {"status": "success", "id": getattr(cur, "lastrowid", None)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/laws/local/<int:lid>")
+@require_password
+def laws_local_edit(lid):
+    try:
+        d = request.get_json() or {}
+        ok = ('who', 'said_on', 'belief', 'era', 'subject', 'status',
+              'checked_source_id', 'checked_section', 'what_changed',
+              'notes')
+        sets, vals = [], []
+        for k in ok:
+            if k in d:
+                sets.append("%s = ?" % k)
+                vals.append(d[k])
+        if not sets:
+            return {"error": "nothing to change"}, 400
+        sets.append("updated_at = ?")
+        vals.append(_law_today())
+        vals.append(lid)
+        db.execute("UPDATE local_knowledge SET %s WHERE id = ?"
+                   % ", ".join(sets), tuple(vals))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/laws/local/<int:lid>/delete")
+@require_password
+def laws_local_del(lid):
+    try:
+        db.execute("DELETE FROM local_knowledge WHERE id = ?", (lid,))
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/laws/situations")
+@require_password
+def laws_situations():
+    try:
+        _law_tables()
+        rows = db.query("SELECT * FROM law_situations ORDER BY title") or []
+        return {"status": "success",
+                "situations": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.post("/api/laws/sections")
+@require_password
+def laws_sections_add():
+    """Bulk-load provisions once the Acts are in hand. VERBATIM only -
+    whatever is posted here is stored exactly as given."""
+    from datetime import datetime as _dt
+    try:
+        d = request.get_json() or {}
+        sid = d.get('source_id')
+        rows = d.get('sections') or []
+        if not sid or not rows:
+            return {"error": "source_id and sections required"}, 400
+        _law_tables()
+        n = 0
+        for s in rows:
+            t = (s.get('text') or '').strip()
+            if not t:
+                continue
+            cur = db.execute(
+                "INSERT INTO law_sections (source_id, part, section_no, "
+                "heading, text, created_at) VALUES (?,?,?,?,?,?)",
+                (sid, s.get('part'), s.get('section_no'), s.get('heading'),
+                 t, _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+            new = getattr(cur, "lastrowid", None)
+            try:
+                db.execute("INSERT INTO law_fts (section_id, source_id, "
+                           "section_no, heading, text) VALUES (?,?,?,?,?)",
+                           (new, sid, s.get('section_no'), s.get('heading'),
+                            t))
+            except Exception:
+                pass
+            n += 1
+        if n:
+            db.execute("UPDATE law_sources SET has_text = 1 WHERE id = ?",
+                       (sid,))
+        for k in ('as_at', 'gazette', 'commenced_on', 'source_url',
+                  'publisher'):
+            if d.get(k):
+                db.execute("UPDATE law_sources SET %s = ? WHERE id = ?" % k,
+                           (d[k], sid))
+        return {"status": "success", "added": n}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+
+
+def _charlie_asking(text):
+    r"""Is he ASKING, rather than telling?
+
+    This existed in six places, written slightly differently each time,
+    and every copy had the same two holes:
+
+        asking = bool(re.match(r"^(and\s+)?(how|what|which|when|...)", low)
+                      or low.rstrip().endswith("?"))
+
+    It allowed a leading "and" but not "but", "so", "ok" or "wait", and
+    otherwise fell back to a question mark. Charlie does not type
+    question marks: "but does this mean I can ask a friend to run to my
+    house and get my license" has none. The dictionary stored that as a
+    Krio word. In _pap_from_chat the same gap is worse - "but should i
+    pay the car insurance this month" is not a question by either test,
+    so the next line sees "pay" plus "insurance" and records the
+    insurance as PAID. A false paid date is worse than no date, because
+    it silences the renewal warning he built that tab to get.
+
+    So it is one function now, and the places that used to each have
+    their own copy call this.
+
+    Deliberately NOT included: a bare verb-first imperative. "Pay the
+    insurance" and "log the service" must still go through as
+    instructions, so only the interrogative openings below count.
+    """
+    import re as _ra
+    low = (text or "").strip().lower()
+    if not low:
+        return False
+    if low.rstrip().rstrip(")\"'").endswith("?"):
+        return True
+
+    # strip the lead-ins that a real question often starts with - this
+    # is the part the old test missed
+    low = _ra.sub(r"^(?:but|so|and|ok|okay|hmm|hm|well|also|wait|now|"
+                  r"abeg|bo|please|just)\s+", "", low)
+    low = _ra.sub(r"^(?:tell mi|tell me|a wan sabi|i wan sabi|"
+                  r"i want to know|quick question|one question)[,:]?\s+",
+                  "", low)
+
+    OPEN = (r"how|what|whats|what's|which|when|where|who|whose|whom|why|"
+            r"whether|does|do|did|is|are|am|was|were|can|could|should|"
+            r"shall|would|will|wud|must|may|have|has|had|need|"
+            r"wetin|udat|usay|us[ɛe]f|ust[ɛe]m|aw|abi|enti|ustem")
+    if _ra.match(r"^(?:" + OPEN + r")\b", low):
+        return True
+
+    # "if i ... ?" style, and the ones that hide mid-sentence
+    if _ra.match(r"^if\b.{0,60}\b(can|could|should|would|will|do|does|"
+                 r"is|are)\b", low):
+        return True
+    if _ra.search(r"\b(?:does|do|did) (?:this|that|it|yu|you|i|we) "
+                  r"mean\b", low):
+        return True
+    if _ra.search(r"^(?:what if|how about|wetin if|wetin bɔt|what about)\b",
+                  low):
+        return True
+    if _ra.search(r"\b(?:am i|are we|is it|na im|na so) "
+                  r"(?:suppose|supposed|meant|right|correct|ok)\b", low):
+        return True
+    return False
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000, use_reloader=False)

@@ -2,7 +2,7 @@ import TodayStrip from '../components/TodayStrip';
 import React, { useState, useEffect, useRef } from 'react';
 import { startVoiceInput } from '../services/VoiceService';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 import { chatWithAmi, getMorningBriefing, getAmiIdentity, getTodayTodos, parseVoiceCommand, createTodo, getTodayBriefing, generateMorningBriefing, storeBriefingMessage, generateEveningBriefing, chatAboutNews, orchestratedChat, orchestratedChatStream } from '../utils/api';
 import TodoPage from './TodoPage';
@@ -33,6 +33,7 @@ import PricesTab from '../components/PricesTab';
 
 
 
+import UpkeepTab from '../components/UpkeepTab';
 const dayLabel = (ts) => {
   if (!ts) return null;
   const d = new Date(ts);
@@ -907,12 +908,18 @@ const handleSendMessage = async (msgToSend = null) => {
       {activeTab === 'plan' && <PlanTab />}
       {activeTab === 'admin' && <AdminPortal />}
       {activeTab === 'birthdays' && <BirthdayCalendar />}
+      {activeTab === 'upkeep' && <UpkeepTab />}
         {activeTab === 'menu' && (
           <div style={{padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px'}}>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('sports')}>
               <div style={{fontSize: '28px', marginBottom: '6px'}}>🏈</div>
               <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Sports</div>
               <div style={{fontSize: '12px', color: '#666'}}>Who is playing, and when</div>
+            </div>
+            <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('upkeep')}>
+              <div style={{fontSize: '28px', marginBottom: '6px'}}>🔧</div>
+              <div style={{fontWeight: 'bold', color: '#1a1a1a'}}>Upkeep</div>
+              <div style={{fontSize: '12px', color: '#666'}}>Cars, ACs, generator - what is due</div>
             </div>
             <div style={{background: 'white', padding: '15px', borderRadius: '10px', cursor: 'pointer'}} onClick={() => setActiveTab('money')}>
               <div style={{fontSize: '28px', marginBottom: '6px'}}>💰</div>

@@ -8,7 +8,7 @@ const ShoppingListsNew = () => {
   const [newItemData, setNewItemData] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const API_URL = import.meta.env.VITE_API_URL || API + '';
+  const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
   const PASSWORD = AMI_PASSWORD;
   const CATEGORIES = ['Grocery', 'Dairy', 'Frozen', 'Household', 'Other'];
 

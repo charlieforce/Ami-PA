@@ -1,6 +1,6 @@
 import { useState } from 'react';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 export default function AIToolbar({ text, setText, disabled = false }) {
   const [processing, setProcessing] = useState(false);

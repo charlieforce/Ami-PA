@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import MemoirDocument from './MemoirDocument';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 export default function MemoirView({ memoir, onEdit, onBack }) {
   const [fullMemoir, setFullMemoir] = useState(memoir);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
-const API = import.meta.env.VITE_API_URL || API + '';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const AUTH = { 'X-Ami-Password': AMI_PASSWORD };
 
 export default function TodayStrip({ onAsk }) {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import LessonsSection from './LessonsSection';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
-const API = import.meta.env.VITE_API_URL || API + '';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const H = { 'X-Ami-Password': AMI_PASSWORD, 'Content-Type': 'application/json' };
 // not everything is software. a bootcamp, a house, a farm all fit here too.
 const STAGES = ['idea', 'planning', 'under way', 'paused', 'done',
@@ -389,6 +390,7 @@ export default function VenturesProjectsTab() {
           📁 Projects ({fp.length})
         </button>
         <button style={S.tab(view === 'report')} onClick={goReport}>📊 Report</button>
+        <button style={S.tab(view === 'lessons')} onClick={() => setView('lessons')}>📘 Lessons</button>
       </div>
 
       {view !== 'report' && (
@@ -448,6 +450,7 @@ export default function VenturesProjectsTab() {
       )}
 
       {/* PORTFOLIO REPORT */}
+      {view === 'lessons' && <LessonsSection />}
       {view === 'report' && (
         <>
           <button onClick={loadReport} style={{ ...S.btn('#2a2a2a'), width: '100%', marginBottom: '12px' }}>

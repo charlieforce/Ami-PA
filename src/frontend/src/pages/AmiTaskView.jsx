@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 const SOURCE_BADGE = {
   from_ami: { label: '💬 Ami', bg: '#8b5cf620', fg: '#a78bfa' },

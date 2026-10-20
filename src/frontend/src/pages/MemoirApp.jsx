@@ -4,7 +4,7 @@ import MemoirLibrary from './MemoirLibrary';
 import MemoirEdit from './MemoirEdit';
 import MemoirView from './MemoirView';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 export default function MemoirApp() {
   const [memoirs, setMemoirs] = useState([]);

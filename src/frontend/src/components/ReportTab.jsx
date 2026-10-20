@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const AUTH = { 'X-Ami-Password': AMI_PASSWORD };
 const H = { 'Content-Type': 'application/json', ...AUTH };

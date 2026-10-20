@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
-const API = import.meta.env.VITE_API_URL || API + '';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const H = { 'X-Ami-Password': AMI_PASSWORD, 'Content-Type': 'application/json' };
 const CYCLES = [['weekly', 'week'], ['monthly', 'month'], ['quarterly', 'quarter'], ['yearly', 'year']];
 const PER_MONTH = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };

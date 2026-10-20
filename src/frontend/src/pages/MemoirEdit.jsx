@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 const EMOTIONS = ['😊 Happy', '😢 Sad', '😡 Angry', '😰 Anxious', '😴 Tired', '🥰 Loved', '😌 Peaceful', '🏆 Proud', '😒 Frustrated', '🤔 Confused', '🥺 Vulnerable', '🎉 Excited'];
 const LIFE_STAGES = ['Childhood', 'Adolescence', 'School', 'College', 'Career', 'Military', 'Travel', 'Family', 'Romance', 'Health', 'Friendship', 'Other'];
