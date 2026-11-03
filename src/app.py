@@ -41504,5 +41504,38 @@ def _ep_usually_en(p):
     return "%s (%d of the %d times a time was given)" % (part, n, of)
 
 
+
+# --- the PWA, served from this same origin ---------------------------
+# One hostname means one Cloudflare Access policy to get right instead
+# of two, no CORS, and a frontend that cannot disagree with the API
+# about which version it is. The Flask constructor is left alone so
+# /static keeps working.
+_PWA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "frontend", "dist")
+
+
+@app.route("/")
+def _pwa_root():
+    from flask import send_from_directory
+    return send_from_directory(_PWA_DIR, "index.html")
+
+
+@app.route("/<path:_pwa_path>")
+def _pwa_catchall(_pwa_path):
+    """A real file out of the bundle, or index.html so React can route.
+
+    Never HTML for an /api path. A mistyped endpoint must still 404, or
+    a frontend bug reads as a backend answering every request with a
+    web page.
+    """
+    from flask import send_from_directory
+    if _pwa_path == "api" or _pwa_path.startswith("api/"):
+        return {"error": "not found"}, 404
+    _f = os.path.join(_PWA_DIR, _pwa_path)
+    if os.path.isfile(_f):
+        return send_from_directory(_PWA_DIR, _pwa_path)
+    return send_from_directory(_PWA_DIR, "index.html")
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=8000, use_reloader=False)
