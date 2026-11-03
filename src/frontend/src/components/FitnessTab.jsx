@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import GoalsPanel from './GoalsPanel';
+import PlanTab from './PlanTab';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
@@ -303,7 +304,7 @@ export default function FitnessTab() {
       {err && <div style={{ background: '#7f1d1d', padding: '10px', borderRadius: '6px', marginBottom: '10px', fontSize: '13px' }}>{err}</div>}
 
       <div style={S.tabs}>
-        {[['today', 'Today'], ['goals', 'Goals'], ['plan', 'My plan'], ['library', 'Exercises'], ['progress', 'Progress']].map(([k, l]) => (
+        {[['today', 'Today'], ['goals', 'Goals'], ['plan', 'My plan'], ['plans', 'Saved plans'], ['library', 'Exercises'], ['progress', 'Progress']].map(([k, l]) => (
           <button key={k} style={S.tab(view === k)} onClick={() => { setView(k); setLogging(null); }}>{l}</button>
         ))}
       </div>
@@ -353,6 +354,7 @@ export default function FitnessTab() {
       )}
 
       {view === 'goals' && !logging && <GoalsPanel />}
+      {view === 'plans' && !logging && <PlanTab />}
 
       {/* ---------------- TODAY ---------------- */}
       {view === 'today' && !logging && (

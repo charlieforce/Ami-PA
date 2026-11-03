@@ -32,3 +32,26 @@ src/uploads/
 *.pem
 src/data/vapid_private.pem
 src/data/vapid_public.txt
+
+# scratch inspectors and patch scripts - local only
+src/scratch/
+
+# backups left by the patch scripts
+*.bak-*
+
+# python
+__pycache__/
+*.pyc
+
+# environment and secrets - never commit
+.env
+.env.local
+.env.*.local
+*.key
+
+# databases - never commit
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3

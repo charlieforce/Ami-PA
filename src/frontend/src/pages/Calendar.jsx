@@ -8,7 +8,7 @@ export default function Calendar() {
   const [error, setError] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('month');
+  const [viewMode, setViewMode] = useState('week');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterLocation, setFilterLocation] = useState('all');
   const [locations, setLocations] = useState([]);
@@ -51,10 +51,10 @@ export default function Calendar() {
           setShowHelp(false);
           break;
         case 'arrowleft':
-          setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+          stepPeriod(-1);
           break;
         case 'arrowright':
-          setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+          stepPeriod(1);
           break;
         case 't':
           if (e.ctrlKey || e.metaKey) return; // Don't override Ctrl+T
@@ -234,6 +234,24 @@ export default function Calendar() {
     const today = new Date();
     setCurrentDate(today);
     setSelectedDate(today);
+  };
+
+  // Step the calendar by one period in whatever view is showing.
+  //
+  // Every caller used to do `new Date(year, month +/- 1)` with no day
+  // argument, which silently lands on the 1st of the month. That is
+  // invisible in the month grid and useless in a week view, which has
+  // to move seven days. The month branch below reproduces the old
+  // behaviour exactly, including landing on the 1st.
+  const stepPeriod = (dir) => {
+    const d = new Date(currentDate);
+    d.setHours(0, 0, 0, 0);
+    if (viewMode === 'week') {
+      d.setDate(d.getDate() + (7 * dir));
+    } else {
+      d.setMonth(d.getMonth() + dir, 1);
+    }
+    setCurrentDate(d);
   };
 
   const getWeekDays = (date) => {
@@ -467,6 +485,136 @@ export default function Calendar() {
             </React.Fragment>
           ))}
         </div>
+      </div>
+    );
+  };
+
+
+  // WEEK LIST - Sunday to Saturday, everything listed
+  //
+  // renderWeekView above is the original hours x 7 grid. It is left in
+  // place, unused, so going back is one word on the render switch. It
+  // needs 1200px of width in a mobile-first app, and its
+  // `eHour === hour` filter drops every all-day event - which is every
+  // birthday in the calendar.
+  //
+  // The day boundaries here come from a midnight-aligned Sunday, not
+  // from getEventsForWeek, which carries the time of day from
+  // currentDate and so cuts off Sunday morning and Saturday evening.
+  // Events are gathered per day through getEventsForDate, which
+  // compares toDateString() and cannot drift.
+  const renderWeekList = () => {
+    const start = new Date(currentDate);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(d);
+    }
+
+    const todayStr = new Date().toDateString();
+
+    // An all-day event's start is a bare date with no 'T' in it.
+    const isAllDay = (ev) => !String(ev.start || '').includes('T');
+    const when = (ev) => {
+      if (isAllDay(ev)) return 'All day';
+      return new Date(ev.start).toLocaleTimeString('default', {
+        hour: '2-digit', minute: '2-digit'
+      });
+    };
+
+    // All-day events sort first: a bare date string is shorter than
+    // the same date with a time on it.
+    const forDay = (d) => getFilteredEvents(getEventsForDate(d))
+      .slice()
+      .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+
+    const total = days.reduce((n, d) => n + forDay(d).length, 0);
+    const span = start.toLocaleDateString('default',
+                   { month: 'short', day: 'numeric' })
+      + ' \u2013 ' + days[6].toLocaleDateString('default',
+                   { month: 'short', day: 'numeric' });
+
+    return (
+      <div style={{ background: '#1a1a1a', borderRadius: '12px',
+                    padding: '14px', border: '1px solid #404040' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'baseline', marginBottom: '12px',
+                      flexWrap: 'wrap', gap: '6px' }}>
+          <div style={{ color: '#10b981', fontWeight: 'bold',
+                        fontSize: '15px' }}>{span}</div>
+          <div style={{ color: '#888', fontSize: '12px' }}>
+            {total} event{total === 1 ? '' : 's'} this week
+          </div>
+        </div>
+
+        {days.map((day, idx) => {
+          const list = forDay(day);
+          const isToday = day.toDateString() === todayStr;
+          return (
+            <div key={idx} style={{ marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline',
+                            gap: '8px', padding: '6px 8px',
+                            borderRadius: '6px',
+                            background: isToday ? '#10b98120' : '#232323',
+                            borderLeft: isToday ? '3px solid #10b981'
+                                                : '3px solid #404040' }}>
+                <span style={{ fontWeight: 'bold', fontSize: '13px',
+                               color: isToday ? '#10b981' : '#dddddd' }}>
+                  {day.toLocaleDateString('default', { weekday: 'long' })}
+                </span>
+                <span style={{ color: '#888', fontSize: '12px' }}>
+                  {day.toLocaleDateString('default',
+                    { month: 'short', day: 'numeric' })}
+                </span>
+                {isToday && (
+                  <span style={{ color: '#10b981', fontSize: '11px',
+                                 fontWeight: 'bold' }}>TODAY</span>
+                )}
+              </div>
+
+              {list.length === 0 ? (
+                <div style={{ color: '#555', fontSize: '12px',
+                              padding: '6px 12px' }}>&mdash;</div>
+              ) : list.map((ev) => {
+                const c = getVentureColor(ev);
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={() => setSelectedEvent(ev)}
+                    style={{ display: 'flex', gap: '10px',
+                             alignItems: 'flex-start',
+                             padding: '8px 10px', margin: '4px 0 0 10px',
+                             background: '#2a2a2a', borderRadius: '6px',
+                             borderLeft: '3px solid ' + c.color,
+                             cursor: 'pointer', minHeight: '40px' }}
+                  >
+                    <span style={{ color: '#aaa', fontSize: '12px',
+                                   minWidth: '62px',
+                                   fontVariantNumeric: 'tabular-nums' }}>
+                      {when(ev)}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ color: '#fff', fontSize: '13px',
+                                     display: 'block',
+                                     wordBreak: 'break-word' }}>
+                        {ev.title}
+                      </span>
+                      {ev.location ? (
+                        <span style={{ color: '#777', fontSize: '11px' }}>
+                          {ev.location}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -908,15 +1056,15 @@ export default function Calendar() {
       {/* Navigation */}
       {viewMode !== 'agenda' && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))} style={{ padding: '8px 12px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>← Prev</button>
+          <button onClick={() => stepPeriod(-1)} style={{ padding: '8px 12px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>← Prev</button>
           <button onClick={goToToday} style={{ padding: '8px 12px', background: '#667eea', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Today</button>
-          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))} style={{ padding: '8px 12px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>Next →</button>
+          <button onClick={() => stepPeriod(1)} style={{ padding: '8px 12px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>Next →</button>
         </div>
       )}
 
       {/* View Content */}
       {viewMode === 'month' && renderMonthView()}
-      {viewMode === 'week' && renderWeekView()}
+      {viewMode === 'week' && renderWeekList()}
       {viewMode === 'agenda' && renderAgendaView()}
 
       {/* Event Modal */}

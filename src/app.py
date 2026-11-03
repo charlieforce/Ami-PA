@@ -1278,6 +1278,14 @@ def get_all_todos():
 @require_password
 def get_today_todos():
     """Get today + tomorrow's TODOs (from todos table + tasks)"""
+    # Charlie asked for his todos to pick up today's and tomorrow's
+    # calendar items. At most one Google call every ten minutes, and
+    # it swallows its own errors - if Google is slow or down the
+    # todos below load exactly as they always did.
+    try:
+        _sync_calendar_todos()
+    except Exception:
+        pass
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     try:
@@ -1292,8 +1300,9 @@ def get_today_todos():
                      WHERE due_date = ? OR due_date = ?
                         OR (due_date IS NULL AND date(created_at) = ?)
                         OR (due_date < ? AND status != 'done')
-                     ORDER BY CASE WHEN due_date < ? THEN 0 WHEN due_date = ? THEN 1 ELSE 2 END,
-                              priority DESC, id''',
+                     ORDER BY CASE WHEN due_date = ? OR due_date IS NULL THEN 0
+                                   WHEN due_date < ? THEN 1 ELSE 2 END,
+                              CASE lower(COALESCE(priority,'')) WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, id''',
                   (today, tomorrow, today, today, today, today))
         def _days_late(d):
             if not d:
@@ -1318,7 +1327,7 @@ def get_today_todos():
                   'from_tasks': False} for row in c.fetchall()]
         
         # Get tasks due today + tomorrow (handle both date and datetime formats)
-        c.execute('SELECT id, title, priority, status, venture_id, project_id, DATE(due_date) FROM tasks WHERE DATE(due_date) = ? OR DATE(due_date) = ? ORDER BY CASE WHEN DATE(due_date) = ? THEN 0 ELSE 1 END, priority DESC', (today, tomorrow, today))
+        c.execute('SELECT id, title, priority, status, venture_id, project_id, DATE(due_date) FROM tasks WHERE DATE(due_date) = ? OR DATE(due_date) = ? ORDER BY CASE WHEN DATE(due_date) = ? THEN 0 ELSE 1 END, CASE lower(COALESCE(priority,\'\')) WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 ELSE 3 END', (today, tomorrow, today))
         for task in c.fetchall():
             if not any(t.get('task_id') == task[0] for t in todos):
                 todos.append({
@@ -2220,6 +2229,50 @@ def detect_and_handle_birthday(message):
         return None
     
     name = name_match.group(1).strip()
+
+    # A question must never write. "whose birthday is today?"
+    # captured "whose" as the name, found no such person, read
+    # the word "today" as a date he had supplied, and inserted
+    # whose = 10-30. The _gave_date test below only ever ran for
+    # people already in the table, so a NEW name had no asking
+    # check at all.
+    #
+    # This list matters more than it looks: the capture above is
+    # weak. On "tomorrow is Ashley's birthday" it returns
+    # "is ashley", because \w+(\s+\w+)? spans the verb. Failing
+    # to add is the right way to be wrong about that.
+    _BD_NOTNAME = {
+        'whose', 'who', 'whom', 'whoever', 'anyone', 'anybody',
+        'someone', 'somebody', 'everyone', 'everybody', 'nobody',
+        'it', 'that', 'this', 'there', 'they', 'them', 'he',
+        'she', 'him', 'her', 'his', 'their', 'your', 'our',
+        'my', 'mine',
+        # deliberately NOT here: sister, brother, mother, friend,
+        # cousin. "my sister's birthday is today" is a real thing
+        # to say and "sister" is a reasonable row to keep. Asking
+        # WHICH sister is the ask-flow's job, not this guard's.
+        'the', 'a', 'an', 'any', 'what', 'when', 'which', 'why',
+        'how', 'is', 'are', 'was', 'were', 'be', 'been', 'am',
+        'do', 'does', 'did', 'has', 'have', 'had', 'today',
+        'tomorrow', 'yesterday', 'next', 'last', 'person',
+        'people', 'someones', 'birthday', 'birthdays',
+    }
+    #
+    # Leading junk is STRIPPED rather than rejected, because that
+    # rescues the genuine case as well as killing the bad one:
+    #   "whose"                  -> nothing left  -> refuse
+    #   "has a"                  -> nothing left  -> refuse
+    #   "is Ashley"              -> "Ashley"       -> add, correctly
+    # Before this, that last one filed a person called "is Ashley".
+    _nm_parts = [w for w in (name or '').replace("'", ' ').split()]
+    while _nm_parts and _nm_parts[0].lower() in _BD_NOTNAME:
+        _nm_parts.pop(0)
+    name = ' '.join(_nm_parts[:3]).strip()
+    _nm_words = {w.lower() for w in _nm_parts[:3]}
+    if not name or (_nm_words & _BD_NOTNAME):
+        print('\U0001F382 not a name, not adding: '
+              + repr(name_match.group(1).strip()))
+        return None
     
     # Check if this person ALREADY exists in the table
     existing = db.query("SELECT * FROM user_birthdays WHERE LOWER(name) LIKE LOWER(?)", (f"%{name}%",))
@@ -2230,6 +2283,22 @@ def detect_and_handle_birthday(message):
         r"|\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b"
         r"|\b\d{1,2}[-/]\d{1,2}\b|\btoday\b|\btomorrow\b",
         message, re.IGNORECASE))
+
+    # Asking, not telling - answer from the table if we hold the
+    # person, and write nothing either way. Thirteen handlers were
+    # routed through _charlie_asking two weeks ago for exactly
+    # this; this one was missed.
+    _bd_asking = False
+    try:
+        _bd_asking = bool(_charlie_asking(message))
+    except Exception:
+        _bd_asking = False
+    if _bd_asking:
+        if existing:
+            return {"action": "found", "name": existing[0]['name'],
+                    "date": existing[0]['date'],
+                    "zodiac": existing[0]['zodiac']}
+        return None
 
     if existing and not _gave_date:
         # He is asking, not telling
@@ -3527,9 +3596,7 @@ def chat_stream():
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
-@app.post("/api/chat/orchestrated")
-@require_password
-def orchestrated_chat():
+def orchestrated_chat_real():
     """Chat with Ami using full engine orchestration with conversation memory"""
     try:
         data = request.get_json()
@@ -4099,7 +4166,13 @@ def orchestrated_chat():
             _now = _charlie_now()
             _slot = 'morning' if 5 <= _now.hour < 17 else 'evening'
             is_first = check_briefing_given_today(_slot)
-            if is_first:
+            # The briefing is a monologue. It used to go out on whatever
+            # he happened to type first, so on 1 November "whose birthday
+            # is today?" came back with the right answer and then the
+            # whole morning's news. mark_briefing_given is inside this
+            # block, so holding it here leaves it pending for his next
+            # greeting rather than spending it on a question.
+            if is_first and _wants_the_briefing(query):
                 _b = db.query("""SELECT briefing_text FROM briefing_messages
                                   WHERE type = ? AND DATE(date_created) >= DATE('now','-1 day')
                                   ORDER BY id DESC LIMIT 1""", (_slot,))
@@ -4258,6 +4331,7 @@ Which one yu want tackle right now? Let's go! 🔥"""
             _saved_anything = bool(_made_something) or bool(locals().get('_log_note')) \
                               or 'PRICE SAVED' in '' or 'YOU JUST' in ''
             response_text = _claims_without_doing(response_text, _saved_anything)
+            response_text = _law_claims_unsourced(response_text, query)
         except Exception as _cb:
             print("backstop skipped: " + str(_cb)[:60])
         print(f"💬 Ami says: {response_text[:50]}...")
@@ -4877,6 +4951,46 @@ Things he has told you about himself are true because he said them. Use them the
 """
 
 
+# ---------------------------------------------------------------------------
+# The two rules she broke, written where she can read them.
+#
+# The script already said "Never say you have done something unless it has
+# actually been done" and "You are not a doctor and never pretend to be",
+# and she still produced:
+#
+#     A don kont am: hand - shaking... Dat na 9 tem naw...
+#     Charlie, dis frequensi noto sontin fo lef so. Mek yu kol yu dokto...
+#     ...no tray fo lif enitin hevi or tray wok pan compyuta right now.
+#
+# Nothing had been recorded and the count was invented. So these are
+# stated again, specifically, about his body - and the real enforcement
+# is _claims_without_doing, not this text.
+# ---------------------------------------------------------------------------
+AMI_SCRIPT = AMI_SCRIPT + """
+
+HIS BODY - WHAT YOU MAY NOT DO
+You are not his doctor. You have not examined him, you do not have his
+history and you have not seen a test result. So:
+
+- NEVER give a medical instruction. Not what to do, not what to avoid,
+  not what it might be, not whether it is urgent. No "sit down", no
+  "do not lift anything", no "that frequency is not normal".
+- NEVER say how many times something has happened. The record counts;
+  you do not. If he asks how many, say you will look, and let the
+  record answer. Do not add one to a number you said earlier.
+- NEVER say you have recorded, counted, kept or saved an episode. The
+  code does that and prints its own confirmation in its own words. If
+  YOU are writing the reply, nothing was saved - say so plainly and
+  show him the wording that works: "my hand bin de shake dis monin".
+- You MAY say that something is worth telling his doctor, and you may
+  offer to show him what the record holds. That is true, useful, and
+  the most you can honestly do.
+- If he describes something that frightens him, say straight that you
+  cannot judge it, that you are not able to, and that it is worth a
+  call. Do not soften it into advice and do not pretend to know.
+"""
+
+
 import threading as _thr_stream
 _stream_state = _thr_stream.local()
 
@@ -4912,19 +5026,53 @@ def _ask_gemini(client, prompt=None, model=None, tries=3, **kw):
 def synthesize_response(query, engines, engine_data):
     import google.genai as genai
     # extract_and_learn(query)  # replaced by extract_durable_facts - wrote empty rows
-    store_correction_if_found(query)
+    # store_correction_if_found(query)  <- REMOVED 29 Oct 2026.
+    #
+    # It split any sentence on " not " and filed the left half
+    # as `incorrect_text` and the right half as `correct_text`.
+    # 16 of the 32 rows in `corrections` came from here.
+    #
+    # 14 of those 16 were the evening closeout's OWN prompt.
+    # This runs inside synthesize_response, and
+    # send_evening_closeout calls synthesize_response with
+    # "[Close out his day warmly.] ... give him ... not ... nag
+    # about what he missed" - so every evening it split that and
+    # stored it as a correction Charlie had made.
+    #
+    # Worse, one real correction was inverted. He said "no no, it
+    # was taken on the 11th and NOT the 13th"; it was stored as
+    # "...the 11th and" -> "the 13th", and corr_dial then put
+    # that in every prompt under "do not get these wrong again".
+    #
+    # Corrections come from the thumbs-down path instead
+    # (chat_correct, around 13032), which takes `wrong` and
+    # `right` as separate fields and cannot mangle them.
+    pass
     # questions rarely carry anything personal to save - skip the extra Gemini call for them
     _ql = (query or '').strip().lower()
     _first = _ql.split(' ')[0] if _ql else ''
     _is_question = (_charlie_asking(_ql) or _ql.endswith('?')) or _first in (
         'what', "what's", 'whats', 'when', 'where', 'who', 'why', 'how', 'is', 'are', 'do', 'does',
         'did', 'can', 'could', 'should', 'would', 'will', 'tell', 'explain', 'show', 'give')
-    _learned = None if _is_question else extract_durable_facts(query)
-    _course_note = None if _is_question else _course_day_change(query)
-    _log_note = None if _is_question else _log_from_chat(query)
-    _goal_note = None if _is_question else _log_goal_from_chat(query)
-    _many_note = None if _is_question else _make_many(query)
-    _plan_note = None if _many_note else _make_tasks_from_plan(query)
+    # Six of the seven callers of this function pass our own text
+    # joined onto his, and send_evening_closeout passes text that is
+    # ours from end to end. The gate above tests only the FIRST WORD
+    # of the combined string, so whether our instructions reach the
+    # writes below used to depend on whether he opened with 'how'
+    # (skipped) or with 'good morning' (not skipped). That is how
+    # `corrections` collected fourteen copies of the evening closeout.
+    #
+    # _only_his_words cuts our additions back off and returns '' when
+    # there was nothing of his to begin with.
+    _typed = _only_his_words(query)
+    _mine = _is_question or not _typed
+    _learned = None if _mine else extract_durable_facts(_typed)
+    _course_note = None if _mine else _course_day_change(_typed)
+    _log_note = None if _mine else _log_from_chat(_typed)
+    _goal_note = None if _mine else _log_goal_from_chat(_typed)
+    _many_note = None if _mine else _make_many(_typed)
+    _plan_note = (None if (_many_note or not _typed)
+                  else _make_tasks_from_plan(_typed))
     _conv_note = _instant_conversion(query)
     # use what the caller already worked out - only route and run engines if nothing was passed
     if not engines:
@@ -4999,7 +5147,7 @@ FIRST MESSAGE OF THE SESSION:
                 context += _fixtures_for_context(query)
         except Exception:
             pass
-        if _hr_now() >= 17 or _rtg.search(r'\b(pushup|situp|press[- ]?up|cardio|goal|target|workout|train|exercise|gym|swim|run|jog|walk)\w*', (query or '').lower()):
+        if _rtg.search(r'\b(pushup|situp|press[- ]?up|cardio|goal|target|workout|train|exercise|gym|swim|run|jog|walk)\w*', (query or '').lower()):
             context += _goals_for_context()
     except Exception:
         pass
@@ -5027,11 +5175,16 @@ FIRST MESSAGE OF THE SESSION:
                 continue
             if (_m5['id'], 'morning') not in _tset:
                 _pending.append(_m5['name'] + (" " + _m5['dose'] if _m5.get('dose') else ""))
-        if _pending and _d5.now().hour < 14:
+        if (_pending and _d5.now().hour < 14 and _nudge_due('meds_pending')):
             context += ("\n\nNOT TAKEN YET TODAY: " + ", ".join(_pending) +
                         ". If this is the first you have spoken today, mention it once, briefly, "
                         "at the end of whatever else you are saying. Once only - never twice, "
                         "never a lecture.")
+            # Once a day, not once a message. The text above already
+            # asks for "once only - never twice, never a lecture";
+            # that is prose telling the model to rate-limit something
+            # the code handed it on every turn before 2pm.
+            _nudge_said('meds_pending')
     except Exception:
         pass
 
@@ -5880,7 +6033,12 @@ FIRST MESSAGE OF THE SESSION:
 
     corr_dial = ""
     try:
-        _corr = db.query("SELECT incorrect_text, correct_text, category FROM corrections ORDER BY id DESC LIMIT 30") or []
+        # category='chat' is excluded: that is what the removed
+        # store_correction_if_found wrote, and any that survive a
+        # cleanup must not reach the prompt. 30 was also too few -
+        # with 32 rows the oldest had already aged out, so a real
+        # correction could be forgotten by making another one.
+        _corr = db.query("SELECT incorrect_text, correct_text, category FROM corrections WHERE COALESCE(category, '') <> 'chat' ORDER BY id DESC LIMIT 60") or []
         if _corr:
             corr_dial = "CORRECTIONS HE HAS ALREADY MADE - do not get these wrong again:\n"
             for _c in _corr:
@@ -6015,7 +6173,7 @@ FIRST MESSAGE OF THE SESSION:
     try:
         _nw = _charlie_now()
         _tc_add = ('\n\nRIGHT NOW, WHERE CHARLIE IS: ' + _nw.strftime('%A %d %B %Y, %H:%M') + '. Work the time of day out from that clock, never guess it. Anything earlier today has already happened; anything later has not. A match or an event from yesterday is NOT tonight.'
-                   + '\n\nHOW TO SOUND: Sierra Leone Krio, the Freetown kind, not Nigerian pidgin. Write de, not dey. we, not wey. dɛn, not dem. lɛ wi, not make we. i de go, not e dey go. abeg and wahala are fine, young people in Freetown use them. Keep the Krio light and mixed with English, the way Charlie likes it.\n\nWHEN HE ASKS WHAT A WORD MEANS: give the meaning in plain English. He is learning Krio, so an explanation he has to decode is not an explanation. The Krio word stays Krio, the meaning comes in English, then one or two short examples.')
+                   + '\n\nHOW TO SOUND: Sierra Leone Krio, the Freetown kind, not Nigerian pidgin. Write de, not dey. we, not wey. dɛn, not dem. lɛ wi, not make we. i de go, not e dey go. abeg and wahala are fine, young people in Freetown use them. SPELL IT PROPERLY: write the real letters, not the ascii stand-ins - nɔto not noto, tɛm not tem, fɔ not fo, dɔn not don, ɔl not ol, bɔt not bot, lɛk not lek, dɛn not den. He is learning to READ Krio, so the spelling is the lesson; a sentence written in plain ascii is the easy version he already knows. How much Krio to use is set by the KRIO line above - follow that, and do not soften it here.\n\nWHEN HE ASKS WHAT A WORD MEANS: give the meaning in plain English. He is learning Krio, so an explanation he has to decode is not an explanation. The Krio word stays Krio, the meaning comes in English, then one or two short examples.')
     except Exception as _tce:
         print('CLOCK/VOICE failed:', repr(_tce), flush=True)
         _tc_add = ''
@@ -6292,35 +6450,189 @@ def get_lesson_content(subject, lesson_num):
 
 
 
+_BD_CAL = {'at': 0.0, 'rows': None}
+_BD_RX = {}
+
+
+def _bd_rx():
+    """The birthday patterns, compiled on first use.
+
+    Not at module level: `import re` in this file is not above this
+    point, so a module-level re.compile() here raised NameError and
+    took app.py down at import. A local import is also what most of
+    this file already does.
+    """
+    if not _BD_RX:
+        import re as _r
+        _BD_RX['title'] = _r.compile(
+            r"(?:\bbirthdays?\b|\bbday\b|\bb-?day\b|\bbirfday\b"
+            r"|\bhbd\b|\U0001F382)", _r.I)
+        _BD_RX['noise'] = _r.compile(
+            r"\b(?:happy|hbd|celebrate|celebration)\b", _r.I)
+        _BD_RX['emoji'] = _r.compile(
+            "[\U0001F380-\U0001F38F\U0001F389\U0001F973"
+            "\U0001F381\U0001F370\U00002764]")
+        _BD_RX['poss'] = _r.compile(r"['\u2019]s\b")
+        # No ( or ) here. They were meant to strip stray decorative
+        # brackets and instead ate the real one off a parenthesised
+        # nickname: "Lil Mama (Katie)'s birthday" came back as
+        # "Lil Mama (Katie". A name entirely wrapped in brackets is
+        # unwrapped below instead, which is what this was for.
+        _BD_RX['lead'] = _r.compile(r"^[\s\-\u2013\u2014:,|]+")
+        _BD_RX['tail'] = _r.compile(r"[\s\-\u2013\u2014:,|]+$")
+        _BD_RX['wrap'] = _r.compile(r"^\((?P<in>[^()]{2,38})\)$")
+    return _BD_RX
+
+
+def _bd_name_from_title(title):
+    """The person out of a birthday-shaped event title, or None.
+
+    "Ashley's Birthday" -> Ashley.  "Standup" -> None.
+
+    Known and accepted: "Team birthday lunch" gives "Team lunch". The
+    names from here are ADDED to a list and reported separately as
+    from_calendar, so a wrong one is visible rather than silent - which
+    is the right way round for a guess.
+    """
+    _rx = _bd_rx()
+    t = (title or "").strip()
+    if not _rx['title'].search(t):
+        return None
+    n = _rx['title'].sub(" ", t)
+    n = _rx['emoji'].sub(" ", n)
+    n = _rx['noise'].sub(" ", n)
+    n = _rx['poss'].sub("", n)
+    n = _rx['lead'].sub("", n)
+    n = _rx['tail'].sub("", n)
+    # a name entirely wrapped in brackets is the bracket's fault,
+    # not the name's: "(Katie) birthday" -> Katie. Only when the
+    # whole thing is wrapped, so "Lil Mama (Katie)" is left alone.
+    _wm = _rx['wrap'].match(n.strip())
+    if _wm:
+        n = _wm.group('in')
+    n = " ".join(n.split())
+    if len(n) < 2 or len(n) > 40:
+        return None
+    return n
+
+
+def _bdays_from_calendar(day_iso):
+    """Birthday-shaped calendar events on one day, as a list of names.
+
+    user_birthdays and Google Calendar had never spoken to each other -
+    no line in app.py mentioned both. And the two things that read the
+    calendar for the day, meeting_nudges (648) and today_strip (20246),
+    both skip events whose title contains "birthday" so that a birthday
+    is not read out as a meeting. Each half was reasonable; together
+    they meant a birthday that lived only in the calendar was invisible
+    on the day it happened.
+
+    Read-through on purpose. Nothing is written to user_birthdays:
+    copying would leave two Ashleys a year from now, and anything that
+    counts rows would count them both. One duplicated episode became
+    "every 6 days" last week on exactly that mistake.
+
+    Cached for ten minutes, because this reaches Google and the
+    birthday helpers are read by the briefing, the nudges and the
+    today strip.
+    """
+    # READ-THROUGH OFF - 2 November 2026.
+    #
+    # Every birthday that lived only in the calendar is now in
+    # user_birthdays (31 imported, the rest already there), so that
+    # table is the single source of truth. This merge dedupes on
+    # NAME, and several of the imported names are shorter than the
+    # calendar titles they came from - "Ashley" from "Ashley In
+    # Yvr", "Olga" from "Olga (Rubi From Tinder) In Spain". Rename
+    # one of those and the merge would stop recognising the person
+    # and bring the calendar copy back as a second row. That is the
+    # duplication the migration existed to remove.
+    #
+    # From now on a birthday is added through the Birthdays app or
+    # chat. One added to Google Calendar will not reach Ami.
+    #
+    # To put the read-through back, delete these two lines. The
+    # body below is untouched and still works.
+    return []
+    import time as _t
+    rows = _BD_CAL['rows']
+    if rows is None or _t.time() - _BD_CAL['at'] >= 600:
+        rows = []
+        try:
+            got = get_calendar_events()
+            # get_calendar_events returns ({...}, 400) on failure, not a
+            # bare dict, so this has to unwrap before reading it
+            if isinstance(got, tuple):
+                got = got[0] if got else {}
+            for _e in ((got or {}).get('events') or []):
+                _nm = _bd_name_from_title(_e.get('title'))
+                if _nm:
+                    rows.append((str(_e.get('start') or '')[:10], _nm))
+            _BD_CAL['rows'] = rows
+            _BD_CAL['at'] = _t.time()
+        except Exception as _bce:
+            print("BIRTHDAYS: could not read the calendar -", repr(_bce),
+                  flush=True)
+            rows = []
+    return [_nm for _d, _nm in rows if _d == day_iso]
+
+
+def _bd_merge(names, day_iso):
+    """Add the calendar-only birthdays. Returns (all, from_calendar)."""
+    names = list(names or [])
+    try:
+        _cal = _bdays_from_calendar(day_iso)
+    except Exception:
+        _cal = []
+    _have = {str(n).strip().lower() for n in names}
+    _extra = []
+    for _n in _cal:
+        _k = str(_n).strip().lower()
+        if _k and _k not in _have:
+            _have.add(_k)
+            _extra.append(_n)
+    return names + _extra, _extra
+
+
 @app.get("/api/reminders/birthdays-today")
 def get_birthdays_today():
-    """Get birthdays today"""
+    """Get birthdays today - from the table AND the calendar."""
     try:
         from datetime import datetime
         today = datetime.now().strftime("%m-%d")
         birthdays = db.query(f"SELECT name FROM user_birthdays WHERE date LIKE '%{today}%'")
-        
-        if birthdays:
-            names = [b['name'] for b in birthdays]
-            return {"success": True, "birthdays": names, "message": f"🎂 {len(names)} birthday(s) today!"}
-        
-        return {"success": True, "birthdays": [], "message": "No birthdays today"}
+        names = [b['name'] for b in (birthdays or [])]
+        names, from_cal = _bd_merge(
+            names, datetime.now().strftime("%Y-%m-%d"))
+
+        if names:
+            return {"success": True, "birthdays": names,
+                    "from_calendar": from_cal,
+                    "message": f"\U0001F382 {len(names)} birthday(s) today!"}
+
+        return {"success": True, "birthdays": [], "from_calendar": [],
+                "message": "No birthdays today"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @app.get("/api/reminders/birthdays-tomorrow")
 def get_birthdays_tomorrow():
-    """Get birthdays tomorrow"""
+    """Get birthdays tomorrow - from the table AND the calendar."""
     try:
         from datetime import datetime, timedelta
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%m-%d")
+        _d1 = datetime.now() + timedelta(days=1)
+        tomorrow = _d1.strftime("%m-%d")
         birthdays = db.query(f"SELECT name FROM user_birthdays WHERE date LIKE '%{tomorrow}%'")
-        
-        if birthdays:
-            names = [b['name'] for b in birthdays]
-            return {"success": True, "birthdays": names, "message": f"🎂 {len(names)} birthday(s) tomorrow!"}
-        
-        return {"success": True, "birthdays": [], "message": "No birthdays tomorrow"}
+        names = [b['name'] for b in (birthdays or [])]
+        names, from_cal = _bd_merge(names, _d1.strftime("%Y-%m-%d"))
+
+        if names:
+            return {"success": True, "birthdays": names,
+                    "from_calendar": from_cal,
+                    "message": f"\U0001F382 {len(names)} birthday(s) tomorrow!"}
+
+        return {"success": True, "birthdays": [], "from_calendar": [],
+                "message": "No birthdays tomorrow"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -6810,44 +7122,120 @@ def sync_todos_from_tasks():
     except Exception as e:
         return {"error": str(e)}, 400
 
+_CAL_TODO = {'at': 0}
+
+
+def _calendar_todo_candidates(days=2):
+    """Today's and tomorrow's real calendar events.
+
+    get_upcoming_events returns RAW Google items, so the keys here
+    are 'summary' and a 'start' dict of dateTime/date - not the
+    flattened shape /api/calendar hands the frontend.
+
+    Two classes are skipped, for reasons visible in his own
+    calendar on 2 November, where three of the four events in the
+    window were auto-blocks:
+
+      all-day        every all-day event in his calendar is a
+                     birthday. The birthday system already reads
+                     them, and a birthday is not something you
+                     tick off a list.
+      id 'reclaim'   the habit scheduler's own blocks - Morning
+                     Catch Up, Afternoon Catch Up, Decompress.
+
+    Times are taken straight off the string, which is correct
+    while he is on UTC+00:00 (Freetown). Somewhere with an offset
+    this needs converting first.
+    """
+    import os as _os
+    from datetime import datetime as _dt, timedelta as _td
+    _here = _os.path.dirname(_os.path.abspath(__file__))
+    cal = CalendarIntegration(
+        credentials_file=_os.path.join(_here, 'credentials.json'),
+        token_file=_os.path.join(_here, 'token.pickle'))
+    raw = cal.get_upcoming_events(days=days) or []
+    _today = _dt.now().strftime('%Y-%m-%d')
+    _tomorrow = (_dt.now() + _td(days=1)).strftime('%Y-%m-%d')
+    out = []
+    skipped = {'all_day': 0, 'auto_block': 0, 'outside_window': 0}
+    for ev in raw:
+        gid = str(ev.get('id') or '')
+        _s = ev.get('start') or {}
+        when = _s.get('dateTime') or _s.get('date') or ''
+        if not when:
+            continue
+        day = str(when)[:10]
+        if 'T' not in str(when):
+            skipped['all_day'] += 1
+            continue
+        if gid.lower().startswith('reclaim'):
+            skipped['auto_block'] += 1
+            continue
+        if day not in (_today, _tomorrow):
+            skipped['outside_window'] += 1
+            continue
+        _ti = (ev.get('summary') or 'Untitled').strip()
+        out.append({'id': gid, 'title': _ti, 'day': day,
+                    'time': str(when)[11:16]})
+    return out, skipped
+
+
+def _sync_calendar_todos(force=False):
+    """Today's and tomorrow's calendar events, as todos.
+
+    Never raises. get_today_todos calls this on every load, and the
+    todo list must not go blank because Google is slow.
+
+    Deduplicated on origin_id, which is the Google event id and is
+    stable across runs, so calling this repeatedly is free.
+    """
+    import time as _tm
+    from datetime import datetime as _dt
+    res = {'synced': 0, 'already': 0, 'skipped': {}, 'cached': False}
+    if not force and _tm.time() - _CAL_TODO['at'] < 600:
+        res['cached'] = True
+        return res
+    try:
+        cands, skipped = _calendar_todo_candidates()
+        res['skipped'] = skipped
+        _today = _dt.now().strftime('%Y-%m-%d')
+        for c in cands:
+            _ex = db.query_one("SELECT id FROM todos WHERE "
+                               "origin = 'calendar' AND origin_id = ?",
+                               (c['id'],))
+            if _ex:
+                res['already'] += 1
+                continue
+            db.execute(
+                "INSERT INTO todos (title, origin, origin_id, status, "
+                "priority, due_date, time) "
+                "VALUES (?, 'calendar', ?, 'pending', ?, ?, ?)",
+                (c['title'], c['id'],
+                 'high' if c['day'] == _today else 'medium',
+                 c['day'], c['time']))
+            res['synced'] += 1
+        _CAL_TODO['at'] = _tm.time()
+    except Exception as _e:
+        res['error'] = str(_e)
+    return res
+
+
 @app.post("/api/todos/sync-from-calendar")
 @require_password
 def sync_todos_from_calendar():
-    """Auto-sync calendar events today/tomorrow to todos"""
-    try:
-        from datetime import datetime, timedelta
-        today = datetime.now().strftime("%Y-%m-%d")
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        
-        # Get calendar events from tasks table that function as calendar
-        events = db.query("""
-            SELECT id, title 
-            FROM meetings 
-            WHERE DATE(start_time) = ? OR DATE(start_time) = ?
-        """, (today, tomorrow))
-        
-        synced_count = 0
-        for event in events:
-            # Check if already synced
-            existing = db.query_one("""
-                SELECT id FROM todos 
-                WHERE origin = 'calendar' AND origin_id = ?
-            """, (event['id'],))
-            
-            if not existing:
-                # Create todo from calendar event
-                db.execute("""
-                    INSERT INTO todos (title, origin, origin_id, status, priority)
-                    VALUES (?, 'calendar', ?, 'pending', 'high')
-                """, (event['title'], event['id']))
-                synced_count += 1
-        
-        return {"status": "success", "synced": synced_count, "message": f"Synced {synced_count} calendar events to todos"}
-    except Exception as e:
-        return {"error": str(e)}, 400
+    """Pull today's and tomorrow's calendar events into todos.
 
-
-
+    This used to read the `meetings` table, which has no rows and
+    does not even have the date column the query asked for, so it
+    raised before it read anything and returned a 400 that the
+    frontend logged next to a tick. The events live in Google.
+    """
+    r = _sync_calendar_todos(force=True)
+    if 'error' in r:
+        return {"error": r['error'], "synced": 0}, 400
+    return {"status": "success", "synced": r['synced'],
+            "already_there": r['already'], "skipped": r['skipped'],
+            "message": "Synced %d calendar event(s)" % r['synced']}
 @app.get("/api/calendar")
 @require_password
 def get_calendar_events():
@@ -7675,6 +8063,21 @@ def fast_parse_creation(text):
             if 0 <= _h <= 23 and 0 <= _mi <= 59:
                 due_time = "%02d:%02d" % (_h, _mi)
                 title = title[:_tm.start()].strip().rstrip(',').strip()
+        else:
+            # "at noon" has no digits, so the pattern above cannot see
+            # it at all. The time stayed at the default AND the words
+            # were left in the title, so the reminder read
+            # "Call mr allie at noon, today at 9am".
+            _tw = re.search(r"\b(?:at\s+|by\s+|around\s+)?"
+                            r"(noon|midday|midnight)\b", title,
+                            re.IGNORECASE)
+            if _tw:
+                due_time = ("00:00" if _tw.group(1).lower() == "midnight"
+                            else "12:00")
+                title = re.sub(r"\s{2,}", " ",
+                               title[:_tw.start()] + " "
+                               + title[_tw.end():]).strip().rstrip(
+                                   ',').strip()
 
         return {'kind': kind, 'title': title, 'due_date': due,
                 'due_time': due_time, 'priority': 'medium', 'notes': '', 'fast': True}
@@ -7749,9 +8152,13 @@ def create_from_chat(text):
                 print("REMINDER INSERT FAILED: " + title)
                 return None
             import re as _re
-            _gave_time = bool(_re.search(
-                r"\b\d{1,2}\s*(am|pm)\b|\b\d{1,2}:\d{2}\b|\bnoon\b|\bmidnight\b",
-                text or '', _re.IGNORECASE))
+            # This asked whether he MENTIONED a time, not whether one
+            # was understood. fast_parse_creation could not read "at
+            # noon", so due_time fell back to 09:00 while this said
+            # True - and the confirmation claimed 9am with no caveat,
+            # as though 9am was what he asked for. The honest flag is
+            # a time actually parsed, not a time merely mentioned.
+            _gave_time = bool(due_time)
             return ("FAST:" if _is_fast else "") + _reminder_confirmation(
                 title, due, due_time or '09:00', _gave_time)
         elif kind == "todo":
@@ -8352,9 +8759,42 @@ def handle_reminder_command(command_text):
             title = title.split(' by ')[0].split(' at ')[0].strip()
             
             import re as _re
-            _time_was_given = bool(_re.search(
-                r"\\b\\d{1,2}\\s*(am|pm)\\b|\\b\\d{1,2}:\\d{2}\\b|\\bnoon\\b|\\bmidnight\\b",
-                (message or ''), _re.IGNORECASE))
+            # The test here was r"\\b\\d{1,2}..." and in a raw string
+            # that is a literal backslash followed by b, not a word
+            # boundary - so it never matched and _time_was_given was
+            # ALWAYS False. _reminder_confirmation (8340) appends
+            # "A put <time> - tell mi if yu want another time"
+            # whenever the flag is false, so she said it on every
+            # reminder, including ones where he gave the time himself.
+            #
+            # Repairing only the flag would have been worse than
+            # leaving it: the block above reads am/pm and nothing
+            # else, so "remind me at noon" would set the flag True
+            # while due_time stayed 09:00 - a confirmation of 9am
+            # with no caveat at all. So the time is read here, and
+            # the flag means "the time came from him" rather than
+            # "he mentioned something clock-ish".
+            _tg = None
+            _msg = message or ''
+            _m = _re.search(r"\b(\d{1,2})(?::([0-5]\d))?\s*"
+                            r"(a\.?m|p\.?m)\b", _msg, _re.IGNORECASE)
+            if _m:
+                _h = int(_m.group(1)) % 12
+                if _m.group(3).lower().startswith('p'):
+                    _h += 12
+                _tg = "%02d:%02d:00" % (_h, int(_m.group(2) or 0))
+            elif _re.search(r"\b(noon|midday)\b", _msg, _re.IGNORECASE):
+                _tg = "12:00:00"
+            elif _re.search(r"\bmidnight\b", _msg, _re.IGNORECASE):
+                _tg = "00:00:00"
+            else:
+                _m = _re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", _msg)
+                if _m:
+                    _tg = "%02d:%02d:00" % (int(_m.group(1)),
+                                            int(_m.group(2)))
+            if _tg:
+                due_time = _tg
+            _time_was_given = bool(_tg)
             c.execute("""
                 INSERT INTO reminders (title, due_date, due_time, status, source)
                 VALUES (?, ?, ?, ?, ?)
@@ -11151,7 +11591,21 @@ def delete_visit(vid):
 @app.post("/api/medical/documents")
 @require_password
 def add_medical_document():
-    """Upload a scan, letter or report."""
+    """Upload a scan, letter or report - or a photo or video of an
+    episode.
+
+    medical_documents already HAS an episode_id column: _ep_tables adds
+    it, with the note that "an episode can carry a photo or a short
+    video - for a tremor that is worth more to a doctor than any
+    description". This endpoint was simply never told to fill it in, so
+    there was no way to attach one.
+
+    The column list is built from PRAGMA rather than assumed, because a
+    database that has not had _ep_tables run against it yet does not
+    have the column, and an INSERT naming a column that is not there
+    fails the whole upload - including for ordinary visit documents
+    that have nothing to do with episodes.
+    """
     try:
         import os as _os
         f = request.files.get('file')
@@ -11166,16 +11620,40 @@ def add_medical_document():
         path = _os.path.join(folder, name)
         f.save(path)
 
-        did = db.execute("""INSERT INTO medical_documents
-                            (visit_id, title, kind, file_path, taken_on, notes)
-                            VALUES (?,?,?,?,?,?)""",
-                         (request.form.get('visit_id') or None,
-                          request.form.get('title') or safe,
-                          request.form.get('kind') or 'document',
-                          path,
-                          request.form.get('taken_on') or None,
-                          request.form.get('notes') or None))
-        return {"status": "success", "id": did, "title": request.form.get('title') or safe}
+        _epid = request.form.get('episode_id') or None
+        if _epid:
+            try:
+                _ep_tables()
+            except Exception as _ete:
+                print("DOCS: _ep_tables -", repr(_ete), flush=True)
+        _cols = ["visit_id", "title", "kind", "file_path", "taken_on",
+                 "notes"]
+        _vals = [request.form.get('visit_id') or None,
+                 request.form.get('title') or safe,
+                 request.form.get('kind') or 'document',
+                 path,
+                 request.form.get('taken_on') or None,
+                 request.form.get('notes') or None]
+        if _epid:
+            try:
+                _have = [r["name"] for r in
+                         db.query("PRAGMA table_info(medical_documents)")
+                         or []]
+            except Exception:
+                _have = []
+            if "episode_id" in _have:
+                _cols.append("episode_id")
+                _vals.append(_epid)
+            else:
+                print("DOCS: no episode_id column, filed without it",
+                      flush=True)
+        did = db.execute(
+            "INSERT INTO medical_documents (%s) VALUES (%s)"
+            % (", ".join(_cols), ", ".join(["?"] * len(_cols))),
+            tuple(_vals))
+        return {"status": "success", "id": did,
+                "title": request.form.get('title') or safe,
+                "episode_id": _epid}
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -11186,7 +11664,7 @@ def add_medical_document():
 def medical_document_view(did):
     """Open a document in the browser - the address carries the password, as an <img> cannot."""
     import os as _osx
-    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != _osx.getenv('AMI_PASSWORD', 'charlie'):
+    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != AMI_PASSWORD:
         return {"error": "no"}, 401
     try:
         from flask import send_file
@@ -11439,6 +11917,102 @@ def medical_report_pdf():
         else:
             story.append(Paragraph("None known.", N))
 
+        # --- episodes -------------------------------------------------------------
+        # The reason Episodes was built: "it is nice to record this
+        # things and where, when and what happened ... this are things
+        # that will be nice to show a doctor in my overall medical
+        # report that i can hand to a doctor one day."
+        #
+        # ENGLISH here, deliberately. _ep_pattern_summary writes its
+        # "usually" line in Krio, which is right in chat and wrong in a
+        # document a doctor reads - the rest of this report says
+        # "Average of the last 14 readings" and "Taking since". The
+        # English comes from the structured fields, not from parsing
+        # that string.
+        try:
+            _eprep = _episodes_for_report()
+        except Exception as _epe:
+            print("report: episodes -", repr(_epe), flush=True)
+            _eprep = {"patterns": [], "episodes": []}
+        _eps = _eprep.get("episodes") or []
+        _pats = [p for p in (_eprep.get("patterns") or []) if p]
+        story.append(Paragraph("Episodes", H))
+        if not _eps and not _pats:
+            story.append(Paragraph("None recorded.", N))
+        else:
+            story.append(Paragraph(
+                "Noticed and recorded by the patient at the time, with no "
+                "diagnosis attached. Times and durations are as the patient "
+                "described them unless a row says otherwise.", Small))
+            story.append(Spacer(1, 6))
+            if _pats:
+                rows = [["What", "Times", "First", "Last", "Usually",
+                         "How long", "Avg gap"]]
+                for p in _pats:
+                    _rng = p.get("lasted_mins_range")
+                    if _rng and abs(float(_rng[0]) - float(_rng[1])) < 0.01:
+                        _len = _ep_mins_en(_rng[0])
+                    elif _rng:
+                        _len = (_ep_mins_en(_rng[0]) + " to "
+                                + _ep_mins_en(_rng[1]))
+                    else:
+                        _len = ""
+                    _gap = p.get("average_gap_days")
+                    _gap = (str(_gap) + (" day" if _gap == 1 else " days")
+                            ) if _gap else ""
+                    rows.append([Paragraph(str(p.get("pattern") or ""), N),
+                                 str(p.get("times") or ""),
+                                 str(p.get("first") or "")[:10],
+                                 str(p.get("last") or "")[:10],
+                                 Paragraph(_ep_usually_en(p), N),
+                                 Paragraph(_len, N), Paragraph(_gap, N)])
+                story.append(table(rows, [32*mm, 13*mm, 19*mm, 19*mm,
+                                          38*mm, 25*mm, 22*mm]))
+                story.append(Spacer(1, 8))
+            if _eps:
+                rows = [["Date", "Time", "What", "How long", "Stopped",
+                         "Doing at the time", "Other"]]
+                for e in _eps[:25]:
+                    _d0 = str(e.get("started_on") or "")[:10]
+                    _t0 = str(e.get("started_at") or "")
+                    _t0 = _t0[11:16] if len(_t0) >= 16 else ""
+                    _wh = str(e.get("what") or "")
+                    _bp = str(e.get("body_part") or "")
+                    if _bp and _bp.lower() not in _wh.lower():
+                        _wh = (_bp + " " + _wh) if _wh else _bp
+                    if e.get("still_going"):
+                        _ln = "still going"
+                    else:
+                        _ln = _ep_mins_en(e.get("lasted_mins"))
+                    _sb = e.get("stopped_by_itself")
+                    _st = ("on its own" if _sb == 1
+                           else "" if _sb is None else "not on its own")
+                    _ot = []
+                    if e.get("first_time"):
+                        _ot.append("first time")
+                    if e.get("severity") is not None:
+                        _ot.append("severity " + str(e.get("severity")))
+                    if e.get("where_was_i"):
+                        _ot.append(str(e["where_was_i"]))
+                    if e.get("made_it_better"):
+                        _ot.append("eased by: " + str(e["made_it_better"]))
+                    if e.get("made_it_worse"):
+                        _ot.append("worse with: " + str(e["made_it_worse"]))
+                    if e.get("told_anyone"):
+                        _ot.append("mentioned to " + str(e["told_anyone"]))
+                    if e.get("notes"):
+                        _ot.append(str(e["notes"]))
+                    rows.append([_d0, _t0, Paragraph(_wh, N),
+                                 Paragraph(_ln, N), Paragraph(_st, N),
+                                 Paragraph(str(e.get("what_was_i_doing")
+                                               or ""), N),
+                                 Paragraph("; ".join(_ot), N)])
+                story.append(table(rows, [20*mm, 14*mm, 34*mm, 18*mm,
+                                          20*mm, 32*mm, 34*mm]))
+                if len(_eps) > 25:
+                    story.append(Paragraph(
+                        "The 25 most recent of %d recorded." % len(_eps),
+                        Small))
         # --- blood pressure ------------------------------------------------------
         story.append(Paragraph("Blood pressure", H))
         if readings:
@@ -11522,6 +12096,7 @@ def medical_report_pdf():
         if _want is not None:
             _heads = {'Current medication': 'meds', 'Stopped recently': 'meds',
                       'Conditions': 'conditions', 'Allergies': 'allergies',
+                      'Episodes': 'episodes',
                       'Blood pressure': 'bp', 'Blood sugar': 'sugar',
                       'Cholesterol': 'lipids', 'Recent appointments': 'visits',
                       'Measurements': 'measurements', 'Weight': 'weight',
@@ -12713,7 +13288,7 @@ def exercise_photo_upload(ex_id):
 def exercise_photo(ex_id):
     # an <img> tag cannot send a header, so the password comes in the address here
     import os as _osx
-    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != _osx.getenv('AMI_PASSWORD', 'charlie'):
+    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != AMI_PASSWORD:
         return {"error": "no"}, 401
     try:
         import os as _os
@@ -12913,7 +13488,7 @@ def exercise_clip_upload(ex_id):
 @app.get("/api/fitness/exercises/<int:ex_id>/clip")
 def exercise_clip(ex_id):
     import os as _osx
-    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != _osx.getenv('AMI_PASSWORD', 'charlie'):
+    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != AMI_PASSWORD:
         return {"error": "no"}, 401
     try:
         from flask import send_file
@@ -13826,23 +14401,72 @@ def _make_many(text):
 
 
 def _claims_without_doing(reply, did_something):
-    """She must not say she saved something when nothing was saved."""
+    """She must not say she saved something when nothing was saved.
+
+    She told him:
+
+        A don kont am: hand - shaking, around 12:30 PM today.
+        Dat na 9 tem naw...
+
+    when no episode had been recorded at all. The count was the model
+    adding one to the number it had seen in its own previous reply.
+
+    This function was running and did exactly what it was written to
+    do: "kont" was not in the list of claim words, so it read the
+    sentence as prose. The list now covers the keeping and counting
+    verbs, in English and Krio.
+
+    The honest replacement used to suggest "remind me to X tomorrow",
+    which is no use at all when what he described was his hand shaking.
+    It now offers the wording for both.
+    """
     import re as _r
     if did_something or not reply:
         return reply
+
+    def _kcd_flat(s):
+        """Krio uses ɔ and ɛ, and a pattern written with ASCII o and e
+        will not match them. "A don kɔnt am" slipped straight through
+        a list that contained "kont". Same shape as the Cyrillic е
+        that got into the word for "day" - a character that looks
+        right and is not. Flatten once, match against that."""
+        return (str(s or "").replace("ɔ", "o").replace("Ɔ", "O")
+                .replace("ɛ", "e").replace("Ɛ", "E")
+                .replace("ŋ", "ng"))
+
     claim = _r.compile(
-        r"(a don (lock|set|put|save|add|log|mark|note)\w*|don lock am|don log am|"
-        r"i\'?ve (added|set|saved|logged|noted|marked)|"
-        r"(have|has) been (added|set|saved|logged|noted)|added to your|dey (yu|di) list|"
-        r"pan (yu|di) (list|board|record)|\u2705|task added|reminder set|todo added|"
-        r"on di board|logged (dat|it|am)|noted (dat|it|am))", _r.I)
-    if not claim.search(reply):
+        r"(a don (lock|set|put|save|add|log|mark|note|kip|keep|kont|"
+        r"count|rekod|record|writ)\w*|"
+        r"a (kip|kont|rekod|count|record)\w* am|"
+        r"don (lock|log|kip|kont|save|add) am|"
+        r"i\'?ve (added|set|saved|logged|noted|marked|counted|recorded|"
+        r"kept)|"
+        r"(have|has) been (added|set|saved|logged|noted|counted|"
+        r"recorded|kept)|added to your|dey (yu|di) lis\w*|"
+        # A bare ✅ used to be one of these alternatives. It is
+        # punctuation, not a claim - she decorates all sorts of replies
+        # with it, including ones that claim nothing. The effect was
+        # that any reply containing a tick, where nothing had been
+        # saved, had its whole text discarded and replaced with the
+        # honest refusal below. "whose birthday is today?" lost its
+        # answer that way, and the same question gave three different
+        # replies in twenty minutes depending on whether the model put
+        # a tick in it.
+        #
+        # The claims in WORDS stay. The invented tremor count this was
+        # built for said "A don kɔnt am", which is still caught.
+        r"pan (yu|di) (list|board|record)|task added|"
+        r"reminder set|todo added|on di board|"
+        r"(logged|noted|counted|recorded|kept) (dat|it|am))", _r.I)
+    if not claim.search(_kcd_flat(reply)):
         return reply
-    print("BLOCKED a false confirmation: " + reply[:70])
-    kept = [ln for ln in reply.split("\n") if not claim.search(ln)]
+    print("BLOCKED a false confirmation: " + reply[:70], flush=True)
+    kept = [ln for ln in reply.split("\n")
+            if not claim.search(_kcd_flat(ln))]
     rest = "\n".join(kept).strip()
-    honest = ("A nor save am, bo - say am again plain so a go lock am properly: "
-              "'remind me to X tomorrow' or 'add X to my todos'.")
+    honest = ("A nɔ kip dat wan, bo - say am again plain so a go kip am "
+              "propa. Fɔ sɔntin yu bodi du: _my hand bin de shake dis "
+              "mɔnin_. Fɔ a todo: _add X to my todos_.")
     return (rest + "\n\n" + honest) if len(rest) > 25 else honest
 
 
@@ -13856,6 +14480,50 @@ def _just_what_he_typed(msg):
         return t.strip() or (msg or '')[:200]
     except Exception:
         return msg
+
+
+def _only_his_words(msg):
+    """What Charlie typed, with everything the app bolted on removed.
+
+    This is the strict sibling of _just_what_he_typed above. That one
+    exists to keep the conversations log readable, so when stripping
+    leaves nothing it falls back to the original. Here that fallback
+    would defeat the point, so this one returns '' instead.
+
+    Six of the seven callers of synthesize_response pass our own text
+    joined onto his after a blank line - the news briefing, the
+    birthday instruction, '[You just did this: ...]', a plain _note -
+    and send_evening_closeout passes text that is ours start to
+    finish. Anything that WRITES what it reads must see only his half,
+    or it files our instructions as things he said. That is what
+    happened to the corrections table.
+
+    Returns '' when nothing of his remains, which the caller reads as
+    'this message did not come from a person - do not capture it'.
+    """
+    try:
+        import re as _r
+        t = msg or ''
+        # Our additions all arrive after a blank line. Cutting there
+        # costs a second paragraph he will have to repeat; not cutting
+        # costs a prompt filed as a fact about him.
+        t = _r.sub(r"\n\s*\n.*$", "", t, flags=_r.S)
+        # and the two the old helper knew about, in case they arrive
+        # without the blank line
+        t = _r.sub(r"\s*\[TODAY'S (MORNING|EVENING) NEWS.*$", "", t,
+                   flags=_r.S)
+        t = _r.sub(r"\s*\[(BRIEFING|NEWS)[^\]]{0,80}:.*$", "", t,
+                   flags=_r.S)
+        t = t.strip()
+        # A message that opens with a bracketed instruction is ours
+        # from end to end - the closeout, a nudge, a due reminder.
+        if t.startswith('['):
+            return ''
+        return t
+    except Exception:
+        # On any surprise, say nothing of his survived. A missed
+        # capture is recoverable; a filed instruction is not.
+        return ''
 
 
 def _log_from_chat(text):
@@ -14658,25 +15326,53 @@ def _maybe_make_project(query, session_id=None):
         return None
 
     # what was she just talking about?
+    #
+    # "do it" means do the thing she JUST said.  This was searching a
+    # whole day of history for anything long enough to look like a
+    # plan, so a bare "add it" - said straight after she asked a
+    # medical follow-up - reached back, found an evening-routine plan
+    # from earlier, and opened a project from it.
+    #
+    # Only the exchange immediately before this one counts.  His
+    # current message is not in this table yet (it is written further
+    # down, around 3546), so the newest row really is the turn he is
+    # answering.
     rows = db.query("""SELECT user_message, ami_response FROM conversations
                        WHERE DATE(timestamp) >= date('now','-1 day')
                        ORDER BY id DESC LIMIT 14""") or []
     plan, idea = None, None
+    _cand = None
     for r in rows:
-        resp = str(r.get('ami_response') or '')
-        # a substantial reply of hers about something he raised is the plan.
-        # do not insist it uses the word "phase" - she rarely does.
+        # her own nudges live in this same table with an empty
+        # user_message (the INSERTs at 262-1099).  A medication or
+        # kickoff nudge landing between his question and his answer is
+        # not a turn of his, so it must not become "the previous
+        # exchange".
+        if not str(r.get('user_message') or '').strip():
+            continue
+        _cand = r
+        break
+    if _cand is not None:
+        resp = str(_cand.get('ami_response') or '')
+        _um = str(_cand.get('user_message') or '')
         # skip her own asking-back and her refusals - they are not plans
-        if _r.search(r"which one|tell mi|a no get|a no fit|wetin yu mean", resp.lower()):
-            continue
-        # and skip the very message he is answering with
-        if _r.search(r"\\b(add|do it|set it up|track|save)\\b",
-                     str(r.get('user_message') or '').lower()) and len(resp) < 700:
-            continue
-        if len(resp) > 300 and len(str(r.get('user_message') or '')) > 20:
+        _asking_back = _r.search(
+            r"which one|tell mi|a no get|a no fit|wetin yu mean",
+            resp.lower())
+        # and if the previous turn was ITSELF a confirmation, this is a
+        # second "add it", and her reply about the project he already
+        # made is sitting there looking like a plan.
+        #
+        # This test existed, written as r"\\b(add|...)\\b".  In a raw
+        # string that is a literal backslash followed by b, not a word
+        # boundary, so it could only ever have matched text containing
+        # a backslash: it had never once run.
+        _was_confirm = _r.search(
+            r"\b(add|do it|set (it|that) up|track|save)\b", _um.lower())
+        if (not _asking_back and not _was_confirm
+                and len(resp) > 300 and len(_um) > 20):
             plan = resp
-            idea = str(r.get('user_message') or '')
-            break
+            idea = _um
     if not plan:
         return None
 
@@ -15233,15 +15929,15 @@ def _ledger_from_chat_inner(query):
     # he is ASKING, not telling. a question never moves money - "how much have
     # I paid Mr Allie since Phase 1" is not a payment of one leone.
     _asking = bool(_rl.match(r"^(and\s+)?(how|what|what's|whats|when|who|where|why|"
-                             r"show|list|tell|give me|break|can yu|can you|"
+                             r"show|list|tell|give me|breakdown|break down|history|itemi[sz]e|break|can yu|can you|"
                              r"do i|did i|am i|is there|any)\b", low)
                    or (_charlie_asking(low) or low.rstrip().endswith('?')))
 
     # the itemised answer, when he wants to see it line by line
     if _asking:
-        _bm = _rl.search(r"(?:everything|all|breakdown|break down|itemi[sz]e|history|"
+        _bm = _rl.search(r"\b(?:everything|all|breakdown|break down|itemi[sz]e|history|"
                          r"every line|line by line|how much have i paid|"
-                         r"how much did i pay|what have i paid|since phase)"
+                         r"how much did i pay|what have i paid|since phase)\b"
                          r"[^a-z]{0,12}(?:i\s+)?(?:paid|pay|owe|owed|gave|sent|to|for|"
                          r"with|on)?\s*([a-z][a-z .'-]{1,30}?)\s*\??$", low)
         if not _bm:
@@ -15273,7 +15969,17 @@ def _ledger_from_chat_inner(query):
         if _bm:
             _who = _rl.sub(r"\b(since|from|for|in|on|phase|the)\b.*$", "",
                            _bm.group(1)).strip()
-            _p = _ledger_person_by_name(_who or _bm.group(1))
+            # "why do they call you Angry Ami?" handed 'you angry ami'
+            # over as a NAME, and a word-level lookup found "ami" in
+            # it, so a question about her own nickname came back as a
+            # settlement card for Aminata's mother. Second person is
+            # her, not somebody in the books. "ami" is deliberately
+            # NOT in this list - she is a real person he really owes.
+            _hers = bool(_rl.search(
+                r"\b(?:you|yu|u|yourself|urself|yoself)\b",
+                _who or _bm.group(1) or ""))
+            _p = None if _hers else _ledger_person_by_name(
+                _who or _bm.group(1))
             if _p:
                 return _ledger_breakdown(_p['id'], _p['name'])
     if not _rl.search(r"\b(owe|owes|owed|paid|pay|sent|send|lent|lend|loan|borrow|"
@@ -22035,6 +22741,61 @@ def _charlie_now():
         return _d.now()
 
 
+def _wants_the_briefing(msg):
+    """Is this a message the morning or evening briefing belongs in?
+
+    The briefing is a monologue - four to six news items in flowing
+    paragraphs, then his day. It is right when he opens with a
+    greeting and wrong when he asked something specific. On
+    1 November "whose birthday is today?" got the correct one-line
+    answer and then the Africa Energy Bank, a Nigerian AI seed
+    round, AFCON squad news, the Seahawks and Davido's Martell deal.
+
+    An ALLOWLIST on purpose. The two mistakes cost very different
+    amounts: held wrongly, he gets it on his next message or reads
+    it in the Briefing tab; delivered wrongly is the bug.
+
+    The caller must NOT mark the briefing given when this returns
+    False. mark_briefing_given sits inside the delivery block, so
+    that already holds - the briefing stays pending for his next
+    greeting rather than being spent on a question.
+
+    No backslashes anywhere below. The text is reduced to letters,
+    digits and single spaces and then padded, so a space stands in
+    for a word boundary - which also means an apostrophe is gone by
+    the time the patterns run, and "what's" reads as "what s".
+    An earlier draft kept these patterns inside a triple-quoted
+    block where the escaping was doubled, and every case failed.
+    """
+    import re as _r
+    raw = str(msg or "")
+    t = _r.sub("[^a-z0-9 ]", " ", raw.lower())
+    t = _r.sub(" +", " ", t).strip()
+    if not t:
+        return False
+    t = " " + t + " "
+    # he opened the day rather than asking anything
+    _greet = ("^ (hi|hey|hello|yo|sup|morning|afternoon|evening"
+              "|good (morning|afternoon|evening|day|evenin)"
+              "|kushe|kusheh|how far|how (de )?body|how yu do"
+              "|wetin de apen|wetin de|aw di bodi|aw yu du) ")
+    if _r.search(_greet, t):
+        return True
+    # or he asked for the news, or for his day
+    _wants = (" (news|headline|headlines|briefing|brief me"
+              "|catch me up|what did i miss"
+              "|what s (happening|new|up|on|the plan)"
+              "|whats (happening|new|up|on|the plan)"
+              "|my day|my schedule|my agenda|on my plate"
+              "|today s plan|todays plan|plan for today"
+              "|planned for today"
+              "|what (do|did|have|has) (we|i) (have|got|plan|planned)"
+              ") ")
+    if _r.search(_wants, t):
+        return True
+    return False
+
+
 def check_briefing_given_today(slot=None):
     """Has this slot's briefing been delivered today, in Charlie's own timezone?"""
     now = _charlie_now()
@@ -24455,7 +25216,7 @@ def _money_first(query):
 
     said = ""
     pid, name = _money_find(low)
-    if not pid and re.search(r"(him|her|them|he|she|they|am)", low):
+    if not pid and re.search(r"\b(him|her|them|he|she|they|am)\b", low):
         if (_MONEY_WHO.get("id")
                 and (time.time() - float(_MONEY_WHO.get("when") or 0)) < 3600):
             pid, name = _MONEY_WHO["id"], _MONEY_WHO["name"]
@@ -36296,6 +37057,49 @@ def _kd_say(r, short=False):
     return out
 
 
+def _kd_unsplice(row, w):
+    """A gloss match is not a headword match.
+
+    The printed dictionary is two columns and the scan ran straight
+    across them, so 38 of the 6231 glosses have the whole of the next
+    entry buried inside them. "kompin" sits inside komishoma's gloss,
+    and "what is kompin" was answered **komishoma** - the host row's
+    own headword - because a gloss hit was handed on indistinguishable
+    from a real one.
+
+    So: if the asked word is genuinely the headword of a buried entry,
+    give back that entry, relabelled, and say where it was read from.
+    If it is only mentioned in passing, give back nothing. She then
+    says she does not know the word, which is true and is worth more
+    than a confident wrong answer he has no way to check.
+    """
+    import re as _r
+    g = " ".join(str((row or {}).get("gloss") or "").split())
+    if not g:
+        return None
+    for _m in _r.finditer(
+            r"([A-ZƆƐŊ][A-ZƆƐŊ'\- ]{1,28})"
+            r"\s*/\s*([a-zɔɛŋ'\- ]{2,28})\s*/"
+            r"\s*(\((?:n|v|adj|adv|pron|prep|conj|interj|num|aux)"
+            r"[^)]{0,12}\))?\s*([^/]{0,90})", g):
+        if _krio_fold(_m.group(2)) != w:
+            continue
+        _mean = (_m.group(4) or "").strip(" ,;:")
+        if not _mean:
+            return None
+        _out = dict(row)
+        _out["krio"] = _m.group(2).strip()
+        _out["english"] = _m.group(1).strip().title()
+        _out["pos"] = ((_m.group(3) or "").strip("() ")
+                       or _out.get("pos"))
+        _out["gloss"] = (_mean + "  (read out of the entry for "
+                         + str(row.get("krio") or "?") + " - the two "
+                         "columns of the page ran together there, so "
+                         "check it)")
+        return _out
+    return None
+
+
 def _kd_look(word, n=4):
     """Fold ɛ and ɔ, try the whole word first, then what starts with it."""
     _kd_ready()
@@ -36303,17 +37107,24 @@ def _kd_look(word, n=4):
     if len(w) < 2:
         return []
     out, seen = [], set()
-    for sql, args in (
-            ("SELECT * FROM krio_book WHERE krio = ? LIMIT 6", (w,)),
+    # the third query searches gloss, which is where the spliced
+    # entries are. Its rows are NOT headword matches and must not be
+    # printed as if they were - hence the flag and _kd_unsplice.
+    for sql, args, _gl in (
+            ("SELECT * FROM krio_book WHERE krio = ? LIMIT 6", (w,), False),
             ("SELECT * FROM krio_book WHERE krio LIKE ? "
-             "ORDER BY LENGTH(krio) LIMIT 6", (w + "%",)),
+             "ORDER BY LENGTH(krio) LIMIT 6", (w + "%",), False),
             ("SELECT * FROM krio_book WHERE LOWER(gloss) LIKE ? "
-             "ORDER BY LENGTH(gloss) LIMIT 4", ("%" + w + "%",))):
+             "ORDER BY LENGTH(gloss) LIMIT 4", ("%" + w + "%",), True)):
         try:
             for r in (db.query(sql, args) or []):
                 if r["id"] in seen:
                     continue
                 seen.add(r["id"])
+                if _gl:
+                    r = _kd_unsplice(r, w)
+                    if not r:
+                        continue
                 out.append(r)
             if len(out) >= n:
                 break
@@ -37323,7 +38134,7 @@ def _up_attach_note(text, found):
         return None
 
 
-def _upkeep_from_chat(text):
+def _upkeep_from_chat_real(text):
     """Log a service, say when one last happened, or list what is due."""
     import re as _re
     low = (text or '').strip().lower()
@@ -38103,9 +38914,14 @@ thing things time just like make made your mine");""".split())
 # Act. Without this the matcher returned the Refugees Protection Act for
 # a question about a checkpoint.
 _LAW_SUBJ_HINTS = [
-    ("traffic", r"pull(?:ed)? over|checkpoint|road ?block|driving|driver|"
+    # "driving|driver" does not match "drive", and "insurance" was
+    # not here at all, so "what happens if i drive without
+    # insurance?" matched no subject and the floor then dropped
+    # s.92, which is the section that answers it.
+    ("traffic", r"pull(?:ed)? over|checkpoint|road ?block|driv|drove|"
                 r"licen[cs]e|car|vehicle|traffic|speed|plate|keke|okada|"
-                r"motorbike|road"),
+                r"motorbike|road|insur|roadworth|accident|collision|"
+                r"number ?plate|seat ?belt|helmet"),
     ("police", r"police|officer|arrest|detain|custody|station|bribe|"
                r"extort|corrupt|crime|criminal|thief|tif|rob|burgl|"
                r"break ?in|broke into|search"),
@@ -38449,7 +39265,23 @@ def _law_find_sources(q, limit=6):
     return keep[:limit] if keep else []
 
 
-def _law_find_sections(q, limit=4, prior=None):
+# A lone heading word is only weak evidence when the word itself
+# carries no topic. "Insurance" is a subject; "night" is a modifier
+# that turns up in headings right across the corpus. Counting hits
+# cannot tell them apart, and treating the count as if it could is
+# what threw away s.92 on compulsory insurance.
+_LAW_WEAK_HEAD = set("""
+night nights day days time times year years month months week weeks
+hour hours work works worked person persons people child children
+road roads money notice notices place places thing things name names
+order orders right rights power powers part parts section sections
+general other others public matter matters case cases form forms
+date dates number numbers age ages duty duties provision provisions
+application applications register registration offence offences
+""".split())
+
+
+def _law_find_sections_real(q, limit=4, prior=None):
     """The provisions themselves, best match first.
 
     Without ranking, FTS5 returns rows in storage order and the
@@ -38543,7 +39375,36 @@ def _law_find_sections(q, limit=4, prior=None):
         # match, or it does not get quoted.
         if on_subject:
             need = max(2, need - 1)
-        if hh < 1 and th < need:
+        # A lone HEADING word used to bypass `need` completely, and
+        # that is how "noise at night in freetown" came back with
+        # s.126, Prohibition of child labour at night - matched on
+        # the single word "night", while "noise" appears nowhere in
+        # the corpus. The comment above says one word is not evidence
+        # however rare it is; it was enforced on the text only.
+        #
+        # It cannot simply become two words: s.87 has only one hit
+        # for "can i show my licence on my phone" as well, and s.87
+        # is the right answer. What separates them is the subject -
+        # that question resolves to {traffic}, and "noise at night in
+        # freetown" resolves to nothing at all. So one heading word
+        # counts only when the subject is known AND this section is
+        # on it.
+        # WHICH word matched the heading, not how many. The subject
+        # cannot separate these two, because both have an empty
+        # subject and exactly one heading hit:
+        #
+        #   "noise at night in freetown"  matched "night"      wrong
+        #   "drive without insurance"     matched "insurance"  right
+        #
+        # So a lone heading hit is too little only when the word it
+        # matched carries no topic of its own.
+        hw = [w for w in words
+              if any(f in head for f in _law_forms(w))]
+        if hh >= 1:
+            if (hh == 1 and not on_subject and th < need
+                    and hw and all(w in _LAW_WEAK_HEAD for w in hw)):
+                continue
+        elif th < need:
             continue
 
         score = 14 * hh + 2 * th - i * 0.35      # keep some bm25 order
@@ -38566,6 +39427,24 @@ def _law_find_sections(q, limit=4, prior=None):
         if re.match(r"^\s*interpretation", head) or \
                 (r.get("section_no") == "1" and len(text) > 2500):
             score -= 22
+        # A trade licence is a motor dealer's plates, not a driving
+        # licence. For "can i show my licence on my phone" every
+        # term above ties - same one heading hit, same one text hit,
+        # same subject bonus - so bm25 alone decides, and bm25
+        # rewards a SHORT section dense in the word. s.10 says
+        # "trade licence" three times in thirty words; s.87, the
+        # real answer, is long and diluted. They were winning on
+        # being short, not on being relevant.
+        #
+        # The subject gate cannot help: `subjects` comes from
+        # law_sources, so every section of one Act carries the same
+        # ones. This has to read the heading.
+        if re.search(r"\btrade\s+licen[cs]e", head) and \
+                not re.search(r"\btrade\b|\bdealer\b|\bplates?\b|"
+                              r"\bshowroom\b|\bgarage\b|\bsell\b|"
+                              r"\bselling\b|\bbusiness\b",
+                              (q or "").lower()):
+            score -= 30
         if len(text) > 6000:
             score -= 4
         scored.append((score, r))
@@ -38657,6 +39536,36 @@ def _law_find_situation(q):
             # longest match wins, so a specific card beats a vague one
             if t and t in low:
                 n = max(n, len(t))
+        if n > bn:
+            best, bn = r, n
+    if best:
+        return best
+
+    # Nothing matched as a whole phrase. "photo of my DRIVERS license"
+    # misses "photo of my licen" because one word is wedged into the
+    # middle of it, and that is how people actually type. So a second
+    # pass asks whether the trigger's content words are all there, in
+    # any order, with anything between them.
+    #
+    # Runs only when no literal matched, so it can never outrank a
+    # real phrase hit. Two content words minimum: one word is not a
+    # situation, it is a subject, and "licence" alone would catch
+    # "i need a new licence".
+    import re as _rs
+    _stop = {'of', 'my', 'the', 'a', 'an', 'on', 'in', 'at', 'to', 'for',
+             'is', 'it', 'do', 'does', 'can', 'i', 'yu', 'you', 'na',
+             'di', 'pan', 'fo', 'f\u0254', 'with', 'and', 'am', 'me',
+             'show', 'get', 'wan', 'want'}
+    for r in rows:
+        n = 0
+        for t in (r.get('triggers') or '').split('|'):
+            ws = [w for w in _rs.findall(r"[a-z\u0254\u025b\u014b]+",
+                                         t.strip().lower())
+                  if w not in _stop and len(w) > 2]
+            if len(ws) < 2:
+                continue
+            if all(w in low for w in ws):
+                n = max(n, sum(len(w) for w in ws))
         if n > bn:
             best, bn = r, n
     return best
@@ -39265,6 +40174,1335 @@ def ami_restore_upload():
             "previous_kept_at": backup,
             "next": "remove AMI_RESTORE_TOKEN from Railway, then delete "
                     "the DEPLOY BOOTSTRAP block from app.py"}
+
+
+
+# ===========================================================================
+# EPISODES - things his body did that he did not ask for.
+#
+# The driver: he was showing a friend a picture and she asked why his hand
+# was shaking. He had no answer, and nothing recorded it.
+#
+# One episode is an anecdote. The value is in the PATTERN - six of them
+# over three months, four in the evening, three after a long drive. So
+# every episode carries a `pattern` label, and episodes sharing a label
+# are counted, dated and spaced automatically. "Has this happened
+# before" becomes a question the data answers.
+#
+# It deliberately records the boring fields a doctor asks for and a
+# person never remembers two weeks later: when it started, how long,
+# whether it stopped on its own, what he was doing, how bad it was.
+#
+# This does NOT interpret anything. No cause, no severity judgement, no
+# suggestion of what it might be. It is a record, and it is Charlie's
+# doctor who reads it.
+# ===========================================================================
+
+_EP_BODY = (r"hand|hands|finger|fingers|thumb|wrist|arm|arms|elbow|"
+            r"shoulder|neck|jaw|head|face|eye|eyes|ear|ears|throat|"
+            r"chest|heart|breath|stomach|belly|gut|back|hip|leg|legs|"
+            r"knee|ankle|foot|feet|toe|skin|muscle|body|vision|balance")
+
+_EP_WHAT = (r"shak\w*|trembl\w*|twitch\w*|jerk\w*|numb\w*|tingl\w*|"
+            r"pins and needles|cramp\w*|spasm\w*|lock\w*|giv\w+ way|"
+            r"pain\w*|hurt\w*|ach\w*|sore|stiff|swell\w*|swollen|"
+            r"burn\w*|itch\w*|sting\w*|throb\w*|tight\w*|heav\w*|"
+            r"weak\w*|dizz\w*|light ?head\w*|faint\w*|black\w* out|"
+            r"blurr\w*|double|ring\w*|buzz\w*|spin\w*|nause\w*|"
+            r"sweat\w*|shiver\w*|cold|hot|breathless|wheez\w*")
+
+# said about himself, with no body part named
+_EP_SELF = (r"\b(?:i|a)\s+(?:felt|feel|fil|get|got|bin|was|woz)\s+"
+            r"(?:very\s+|well\s+|small\s+)?(?:" + _EP_WHAT + r")|"
+            r"\b(?:i|a)\s+(?:black\w*\s*out|pass\w*\s*out|faint\w*)|"
+            r"\bmi\s+bodi\s+(?:" + _EP_WHAT + r")")
+
+# Only things that UPDATE the last episode belong here. "came back"
+# and "happened again" were in this list, so "it came back 30 minutes
+# ago" went to the follow-up branch and recorded 30 minutes as the
+# DURATION of the previous episode - corrupting an entry instead of
+# adding one. Those phrasings mean a recurrence and now go to the
+# recurrence branch, where they belong.
+_EP_FOLLOW = (r"\b(?:it|e|dat|di shak\w*|di pain)\s+"
+              r"(?:last\w*|stop\w*|go\s+way|don\s+stop|still\s+de|"
+              r"de\s+go\s+on)")
+
+
+def _ep_tables():
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS medical_episodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern TEXT,
+            what TEXT NOT NULL,
+            body_part TEXT,
+            started_on TEXT,
+            started_at TEXT,
+            ended_at TEXT,
+            still_going INTEGER DEFAULT 0,
+            lasted_mins REAL,
+            stopped_by_itself INTEGER,
+            severity INTEGER,
+            where_was_i TEXT,
+            what_was_i_doing TEXT,
+            made_it_better TEXT,
+            made_it_worse TEXT,
+            first_time INTEGER,
+            told_anyone TEXT,
+            notes TEXT,
+            visit_id INTEGER,
+            created_at TEXT,
+            updated_at TEXT)""")
+        db.execute("CREATE INDEX IF NOT EXISTS ix_ep_pattern "
+                   "ON medical_episodes(pattern)")
+        db.execute("CREATE INDEX IF NOT EXISTS ix_ep_when "
+                   "ON medical_episodes(started_on)")
+        # an episode can carry a photo or a short video - for a tremor
+        # that is worth more to a doctor than any description. Reuses
+        # medical_documents rather than inventing a second store.
+        cols = [r["name"] for r in
+                db.query("PRAGMA table_info(medical_documents)") or []]
+        if cols and "episode_id" not in cols:
+            db.execute("ALTER TABLE medical_documents "
+                       "ADD COLUMN episode_id INTEGER")
+        ec = [r["name"] for r in
+              db.query("PRAGMA table_info(medical_episodes)") or []]
+        if ec and "part_of_day" not in ec:
+            db.execute("ALTER TABLE medical_episodes "
+                       "ADD COLUMN part_of_day TEXT")
+    except Exception as e:
+        print("EPISODES: tables -", repr(e), flush=True)
+
+
+def _ep_now():
+    try:
+        return _charlie_now()
+    except Exception:
+        import datetime as _d
+        return _d.datetime.now()
+
+
+def _ep_when(low, now):
+    """When it actually happened, from what he SAID - not the clock.
+
+    He typed "my hand was shaking again this evening" at 13:52 and it
+    was filed as afternoon, because the code used the time of the
+    message instead of the time in the sentence. The usual-time-of-day
+    line is the most useful thing in the whole summary - "four of them
+    in the evening" is a finding a doctor can work with - so taking it
+    from the wrong source corrupts the only part that matters.
+
+    Returns (started_on, started_at, part_of_day). part_of_day is only
+    set when he actually said it; otherwise it stays None and the
+    summary falls back to the hour, which is honest about where the
+    information came from.
+    """
+    import re as _r
+    import datetime as _dt
+    day = now.date()
+    hour = None
+    part = None
+
+    if _r.search(r"\b(?:yestade|yesterday|las nite|last night|lasnight)\b",
+                 low):
+        day = day - _dt.timedelta(days=1)
+        if _r.search(r"\b(?:las nite|last night|lasnight)\b", low):
+            part, hour = "night", 22
+    elif _r.search(r"\b(?:day before yesterday|two days ago|2 days ago)\b",
+                   low):
+        day = day - _dt.timedelta(days=2)
+    # "2 hours ago" was not parsed at all, which is half the reason
+    # "i feel like it was doing it again 2 hours ago" fell through to
+    # the model and got invented numbers. A relative time IS him
+    # telling me when, so the part of day is taken from it.
+    _rel = None
+    m = _r.search(r"\b(?:an?|1)\s*(?:hour|hr)\s*ago\b", low)
+    if m:
+        _rel = 60
+    m = _r.search(r"\bhalf\s*an?\s*hour\s*ago\b", low)
+    if m:
+        _rel = 30
+    m = _r.search(r"\b(\d{1,2})\s*(?:hours?|hrs?)\s*ago\b", low)
+    if m:
+        try:
+            _rel = int(m.group(1)) * 60
+        except Exception:
+            pass
+    m = _r.search(r"\b(\d{1,3})\s*(?:minutes?|mins?|min)\s*ago\b", low)
+    if m:
+        try:
+            _rel = int(m.group(1))
+        except Exception:
+            pass
+    if _r.search(r"\b(?:just now|jus naw|a moment ago|a few minutes ago|"
+                 r"small tɛm ago|few mins ago)\b", low):
+        _rel = 2
+    if _rel is not None and 0 < _rel <= 60 * 36:
+        _t0 = now - _dt.timedelta(minutes=_rel)
+        _h = _t0.hour
+        return (_t0.strftime("%Y-%m-%d"),
+                _t0.strftime("%Y-%m-%d %H:%M:%S"),
+                ("morning" if 5 <= _h < 12 else
+                 "afternoon" if 12 <= _h < 17 else
+                 "evening" if 17 <= _h < 22 else "night"))
+
+    if _r.search(r"\b(\d{1,2})\s*days?\s*ago\b", low):
+        try:
+            n = int(_r.search(r"\b(\d{1,2})\s*days?\s*ago\b",
+                              low).group(1))
+            if 0 < n <= 60:
+                day = day - _dt.timedelta(days=n)
+        except Exception:
+            pass
+
+    # A weekday name is him telling me WHICH DAY, and it was being
+    # thrown away.  "my hand was shaking on monday evening" said on a
+    # Sunday was filed as THIS evening, because "evening" was read and
+    # "monday" was not - so the record claimed it happened tonight.
+    #
+    # An episode is always in the past: he is reporting something that
+    # already happened.  So this looks BACKWARD.  _parse_meeting (7567)
+    # does the same job looking FORWARD, correctly, because a meeting
+    # is in the future.  Same words, opposite direction.
+    #
+    # Guarded on day being untouched, so "yesterday" and "3 days ago"
+    # above keep precedence over a stray weekday word.
+    if day == now.date():
+        for _wi, _wnm in enumerate(("monday", "tuesday", "wednesday",
+                                    "thursday", "friday", "saturday",
+                                    "sunday")):
+            if not _r.search(r"\b" + _wnm + r"\b", low):
+                continue
+            _back = (now.weekday() - _wi) % 7
+            # said on that same weekday, "on monday" means today - but
+            # "last monday" means the one before it.
+            if _back == 0 and _r.search(r"\b(?:las|last|pas|past)\s+"
+                                        + _wnm, low):
+                _back = 7
+            day = day - _dt.timedelta(days=_back)
+            break
+
+    # what he called the time of day
+    if part is None:
+        for pat, nm, hr in (
+                (r"\b(?:dis mɔnin|this morning|mɔnin tɛm|in the morning|"
+                 r"early morning|befo day)\b", "morning", 8),
+                (r"\b(?:dis aftanun|this afternoon|afternoon|midday|"
+                 r"noon|aftanun)\b", "afternoon", 14),
+                (r"\b(?:dis ivnin|this evening|evening|ivnin|tonight|"
+                 r"tunayt|dis nite)\b", "evening", 19),
+                (r"\b(?:middle of the night|midnight|late last night|"
+                 r"at night|na nite)\b", "night", 23)):
+            if _r.search(pat, low):
+                part, hour = nm, hr
+                break
+
+    # an explicit clock time beats a vague word
+    m = _r.search(r"\b(?:at|around|about|bɔt)?\s*(\d{1,2})"
+                  r"(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)\b", low)
+    if m:
+        h = int(m.group(1)) % 12
+        if m.group(3).startswith("p"):
+            h += 12
+        hour = h
+        part = ("morning" if 5 <= h < 12 else "afternoon" if 12 <= h < 17
+                else "evening" if 17 <= h < 22 else "night")
+    else:
+        m = _r.search(r"\bat\s+(\d{1,2}):(\d{2})\b", low)
+        if m:
+            h = int(m.group(1))
+            if 0 <= h <= 23:
+                hour = h
+                part = ("morning" if 5 <= h < 12 else
+                        "afternoon" if 12 <= h < 17 else
+                        "evening" if 17 <= h < 22 else "night")
+
+    if hour is None:
+        # nothing said - use the message time, and leave part_of_day
+        # unset so the summary knows it was inferred
+        at = now
+        if day != now.date():
+            at = _dt.datetime.combine(day, _dt.time(12, 0))
+    else:
+        at = _dt.datetime.combine(day, _dt.time(hour % 24, 0))
+
+    return (day.strftime("%Y-%m-%d"),
+            at.strftime("%Y-%m-%d %H:%M:%S"), part)
+
+
+def _ep_pattern_for(what, body):
+    """A short stable label, so repeats of the same thing group together.
+
+    "my hand was shaking again" and "hand shaking while holding the
+    phone" both land on "hand - shaking". Without this each episode is
+    an island and the pattern - the only part a doctor can use - never
+    appears."""
+    import re as _r
+    low = ((body or "") + " " + (what or "")).lower()
+    part = None
+    m = _r.search(r"\b(" + _EP_BODY + r")\b", low)
+    if m:
+        part = m.group(1)
+        part = {"hands": "hand", "fingers": "finger", "arms": "arm",
+                "legs": "leg", "eyes": "eye", "ears": "ear",
+                "feet": "foot"}.get(part, part)
+    sym = None
+    m = _r.search(r"\b(" + _EP_WHAT + r")\b", low)
+    if m:
+        sym = m.group(1)
+        for stem, name in (("shak", "shaking"), ("trembl", "shaking"),
+                           ("twitch", "twitching"), ("numb", "numbness"),
+                           ("tingl", "tingling"), ("dizz", "dizziness"),
+                           ("light", "lightheaded"), ("faint", "faintness"),
+                           ("blurr", "blurred vision"), ("pain", "pain"),
+                           ("hurt", "pain"), ("ach", "ache"),
+                           ("cramp", "cramp"), ("spasm", "spasm"),
+                           ("swell", "swelling"), ("swollen", "swelling"),
+                           ("burn", "burning"), ("itch", "itching"),
+                           ("tight", "tightness"), ("weak", "weakness"),
+                           ("nause", "nausea"), ("ring", "ringing")):
+            if sym.startswith(stem):
+                sym = name
+                break
+    if part and sym:
+        return "%s - %s" % (part, sym)
+    return (sym or part or (what or "").strip().lower()[:40]) or None
+
+
+def _ep_add(what, **kw):
+    n = _ep_now()
+    pat = kw.get("pattern") or _ep_pattern_for(what, kw.get("body_part"))
+    prev = 0
+    if pat:
+        try:
+            prev = (db.query("SELECT COUNT(*) AS n FROM medical_episodes "
+                             "WHERE pattern = ?", (pat,)) or
+                    [{"n": 0}])[0]["n"]
+        except Exception:
+            prev = 0
+    try:
+        rid = db.execute(
+            "INSERT INTO medical_episodes (pattern, what, body_part, "
+            "started_on, started_at, part_of_day, still_going, "
+            "lasted_mins, stopped_by_itself, severity, where_was_i, "
+            "what_was_i_doing, notes, first_time, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (pat, what, kw.get("body_part"),
+             kw.get("started_on") or n.strftime("%Y-%m-%d"),
+             kw.get("started_at") or n.strftime("%Y-%m-%d %H:%M:%S"),
+             kw.get("part_of_day"),
+             1 if kw.get("still_going") else 0, kw.get("lasted_mins"),
+             kw.get("stopped_by_itself"), kw.get("severity"),
+             kw.get("where_was_i"), kw.get("what_was_i_doing"),
+             kw.get("notes"), 1 if prev == 0 else 0,
+             n.strftime("%Y-%m-%d %H:%M:%S"),
+             n.strftime("%Y-%m-%d %H:%M:%S")))
+        return rid, pat, prev
+    except Exception as e:
+        print("EPISODES: add -", repr(e), flush=True)
+        return None, pat, prev
+
+
+def _ep_pattern_summary(pat):
+    """How often, how far apart, and when - the part a doctor uses."""
+    try:
+        rows = db.query(
+            "SELECT started_on, started_at, lasted_mins, severity, "
+            "what_was_i_doing, COALESCE(part_of_day,'') AS part_of_day "
+            "FROM medical_episodes WHERE pattern = ? "
+            "ORDER BY started_on", (pat,)) or []
+    except Exception:
+        return None
+    if not rows:
+        return None
+    days = [str(r["started_on"])[:10] for r in rows if r.get("started_on")]
+    gaps = []
+    try:
+        import datetime as _d
+        ds = sorted({_d.date.fromisoformat(x) for x in days if x})
+        gaps = [(ds[i] - ds[i - 1]).days for i in range(1, len(ds))]
+    except Exception:
+        ds = []
+    # What he SAID beats what the clock said - but only when there is
+    # enough of it to mean anything.
+    #
+    # The first version announced "Mostli night (1 of 4 he told me)".
+    # One out of four is not "mostly": the majority test counted only
+    # the episodes where he had stated a time (one of them) and then
+    # printed the total (four), so a single data point was reported as
+    # a pattern. The threshold and the number shown have to be computed
+    # on the SAME base, and that base has to be big enough to carry a
+    # claim.
+    #
+    # This line is the headline a doctor reads, so it now says where it
+    # came from: what he told her, or merely when he happened to type.
+    #
+    # The same four facts are also returned on their own below -
+    # usually_part / usually_n / usually_of / usually_from - because the
+    # Krio wording is right for chat and wrong in a PDF a doctor reads,
+    # and the English version must not be built by parsing this string
+    # or by computing the majority a second time somewhere else.
+    said = [str(r.get("part_of_day") or "").strip()
+            for r in rows if (r.get("part_of_day") or "").strip()]
+    part_of_day = None
+    up_part = up_n = up_of = up_from = None
+    hours = []
+    for r in rows:
+        t = str(r.get("started_at") or "")
+        if len(t) >= 13:
+            try:
+                hours.append(int(t[11:13]))
+            except Exception:
+                pass
+
+    # three episodes is the least that can show a tendency at all
+    if len(rows) >= 3:
+        if len(said) >= 3:
+            b = {}
+            for s in said:
+                b[s] = b.get(s, 0) + 1
+            top = max(b, key=lambda k: b[k])
+            if b[top] > len(said) / 2.0:
+                part_of_day = ("%s (%d of di %d yu tɛl mi di tɛm fɔ)"
+                               % (top, b[top], len(said)))
+                up_part, up_n, up_of, up_from = (top, b[top], len(said),
+                                                 "stated")
+        if part_of_day is None and len(hours) >= 3:
+            # inline rather than a nested helper: a generic name like
+            # _bucket adds to the list of function names defined more
+            # than once in app.py, which is already eight long
+            bk = {}
+            for h in hours:
+                _n = ("morning" if 5 <= h < 12 else
+                      "afternoon" if 12 <= h < 17 else
+                      "evening" if 17 <= h < 22 else "night")
+                bk[_n] = bk.get(_n, 0) + 1
+            top = max(bk, key=lambda k: bk[k])
+            if bk[top] > len(hours) / 2.0:
+                part_of_day = ("%s (%d of %d — bɔt dat na from di tɛm yu "
+                               "rayt mi, nɔto wetin yu se)"
+                               % (top, bk[top], len(hours)))
+                up_part, up_n, up_of, up_from = (top, bk[top], len(hours),
+                                                 "clock")
+
+    lasted = [float(r["lasted_mins"]) for r in rows
+              if r.get("lasted_mins") is not None]
+    doing = [str(r["what_was_i_doing"]) for r in rows
+             if (r.get("what_was_i_doing") or "").strip()]
+    return {
+        "pattern": pat, "times": len(rows),
+        "first": days[0] if days else None,
+        "last": days[-1] if days else None,
+        "average_gap_days": (int(round(sum(gaps) / float(len(gaps))))
+                             if gaps else None),
+        "shortest_gap_days": min(gaps) if gaps else None,
+        "usually": part_of_day,
+        "usually_part": up_part,
+        "usually_n": up_n,
+        "usually_of": up_of,
+        "usually_from": up_from,
+        "lasted_mins_range": ([min(lasted), max(lasted)] if lasted else None),
+        "was_doing": doing[:6],
+    }
+
+
+def _ep_mins(v):
+    """2.0 -> "2", 1.5 -> "1.5". Nobody says "it lasted 2.0 minutes"."""
+    try:
+        f = float(v)
+    except Exception:
+        return str(v)
+    return str(int(f)) if abs(f - int(f)) < 0.05 else ("%.1f" % f)
+
+
+def _ep_recent(limit=20):
+    try:
+        return db.query("SELECT * FROM medical_episodes ORDER BY "
+                        "COALESCE(started_at, started_on) DESC, id DESC "
+                        "LIMIT ?", (int(limit),)) or []
+    except Exception:
+        return []
+
+
+def _episodes_for_report():
+    """What the doctor report should show. Patterns first, then the log.
+
+    A doctor does not want fourteen diary entries. They want: this has
+    happened six times since August, usually in the evening, lasting
+    one to three minutes, and it stops on its own."""
+    try:
+        pats = db.query(
+            "SELECT pattern, COUNT(*) n FROM medical_episodes "
+            "WHERE COALESCE(pattern,'') <> '' GROUP BY pattern "
+            "ORDER BY n DESC, MAX(started_on) DESC") or []
+    except Exception:
+        return {"patterns": [], "episodes": []}
+    out = []
+    for p in pats:
+        s = _ep_pattern_summary(p["pattern"])
+        if s:
+            out.append(s)
+    return {"patterns": out, "episodes": _ep_recent(40)}
+
+
+@app.route("/api/episodes", methods=["GET"])
+@require_password
+def episodes_list():
+    _ep_tables()
+    rows = [dict(r) for r in (_ep_recent(
+        int(request.args.get("limit") or 50)) or [])]
+    # What is attached to each one. A tremor on video is worth more to a
+    # doctor than any description of it, so a tab that cannot show the
+    # attachments is not showing the most useful part.
+    #
+    # dict(r) above because db.query does not always hand back something
+    # you can assign into - _law_find_sections converts for the same
+    # reason.
+    try:
+        ids = [r["id"] for r in rows if r.get("id")]
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            docs = db.query(
+                "SELECT id, episode_id, title, kind, file_path, taken_on "
+                "FROM medical_documents WHERE episode_id IN (%s) "
+                "ORDER BY id" % marks, tuple(ids)) or []
+            by = {}
+            for d in docs:
+                d = dict(d)
+                import os as _osd
+                d["exists"] = bool(d.get("file_path")
+                                   and _osd.path.exists(d["file_path"]))
+                by.setdefault(d["episode_id"], []).append(d)
+            for r in rows:
+                r["documents"] = by.get(r["id"], [])
+    except Exception as e:
+        print("EPISODES: attachments -", repr(e), flush=True)
+    for r in rows:
+        if "documents" not in r:
+            r["documents"] = []
+    return {"status": "success", "episodes": rows,
+            "patterns": _episodes_for_report()["patterns"]}
+
+
+@app.route("/api/episodes", methods=["POST"])
+@require_password
+def episodes_add():
+    _ep_tables()
+    d = request.get_json(silent=True) or {}
+    what = (d.get("what") or "").strip()
+    if len(what) < 3:
+        return {"error": "say what happened"}, 400
+    rid, pat, prev = _ep_add(what, **{k: d.get(k) for k in (
+        "body_part", "started_on", "started_at", "still_going",
+        "lasted_mins", "stopped_by_itself", "severity", "where_was_i",
+        "what_was_i_doing", "notes", "pattern")})
+    if not rid:
+        return {"error": "could not save it"}, 400
+    return {"status": "success", "id": rid, "pattern": pat,
+            "times_before": prev,
+            "summary": _ep_pattern_summary(pat) if pat else None}
+
+
+@app.route("/api/episodes/<int:eid>", methods=["PATCH"])
+@require_password
+def episodes_update(eid):
+    _ep_tables()
+    d = request.get_json(silent=True) or {}
+    ok = ("what", "body_part", "pattern", "started_on", "started_at",
+          "ended_at", "still_going", "lasted_mins", "stopped_by_itself",
+          "severity", "where_was_i", "what_was_i_doing", "made_it_better",
+          "made_it_worse", "told_anyone", "notes", "visit_id")
+    sets, vals = [], []
+    for k in ok:
+        if k in d:
+            sets.append("%s = ?" % k)
+            vals.append(d[k])
+    if not sets:
+        return {"error": "nothing to change"}, 400
+    n = _ep_now().strftime("%Y-%m-%d %H:%M:%S")
+    sets.append("updated_at = ?")
+    vals.append(n)
+    vals.append(eid)
+    try:
+        db.execute("UPDATE medical_episodes SET %s WHERE id = ?"
+                   % ", ".join(sets), tuple(vals))
+    except Exception as e:
+        return {"error": str(e)}, 400
+    r = db.query("SELECT * FROM medical_episodes WHERE id = ?", (eid,))
+    return {"status": "success", "episode": (r or [None])[0]}
+
+
+@app.route("/api/episodes/<int:eid>", methods=["DELETE"])
+@require_password
+def episodes_delete(eid):
+    _ep_tables()
+    try:
+        db.execute("DELETE FROM medical_episodes WHERE id = ?", (eid,))
+    except Exception as e:
+        return {"error": str(e)}, 400
+    return {"status": "success", "deleted": eid}
+
+
+@app.route("/api/episodes/patterns", methods=["GET"])
+@require_password
+def episodes_patterns():
+    _ep_tables()
+    return {"status": "success", **_episodes_for_report()}
+
+
+def _episode_from_chat(text):
+    """Record something his body did, from a sentence in chat.
+
+    Gated by _charlie_asking, because "does my hand shake when I am
+    tired?" is a question and must not become a medical record. That
+    guard exists because the dictionary once stored one of his
+    questions as a Krio word."""
+    import re as _re
+    raw = (text or "").strip()
+    low = raw.lower()
+    if not low or len(low) < 6:
+        return None
+
+    try:
+        asking = _charlie_asking(low)
+    except Exception:
+        asking = low.rstrip().endswith("?")
+
+    # reading them back
+    if asking and _re.search(r"\b(episode|episodes|wetin\s+apin\s+to\s+mi|"
+                             r"my\s+(?:shak\w*|tremor|dizz\w*))\b", low):
+        _ep_tables()
+        rep = _episodes_for_report()
+        if not rep["patterns"]:
+            return ("A nɔ get any episode dɔŋ yet. Wen sɔntin apin, tɛl mi "
+                    "lɛk dis: _my hand bin de shake wen a de hol di phone_ "
+                    "en a go kip am wit di tɛm en all.")
+        out = "**Wetin yu bodi bin de du:**\n"
+        for p in rep["patterns"][:6]:
+            out += "\n- **%s** — %d tɛm" % (p["pattern"], p["times"])
+            if p.get("first") and p.get("last") and p["first"] != p["last"]:
+                out += " (%s to %s)" % (p["first"], p["last"])
+            elif p.get("last"):
+                out += " (%s)" % p["last"]
+            if p.get("usually"):
+                out += "\n  Mɔstli %s" % p["usually"]
+            if p.get("average_gap_days") is not None:
+                out += "\n  Bɔt ɛvri %s de" % p["average_gap_days"]
+            if p.get("lasted_mins_range"):
+                a, b = p["lasted_mins_range"]
+                out += ("\n  I last %s min" % _ep_mins(a) if a == b
+                        else "\n  I last %s to %s min"
+                        % (_ep_mins(a), _ep_mins(b)))
+        out += ("\n\n_Dis na fɔ sho yu dɔktɔ. A nɔ de se wetin i min — "
+                "na dɔktɔ wok dat._")
+        return out
+
+    if asking:
+        return None
+
+    # a follow-up about the last one: how long, did it stop
+    if _re.search(_EP_FOLLOW, low):
+        _ep_tables()
+        last = _ep_recent(1)
+        if last:
+            e = last[0]
+            up, said = {}, []
+            # "(?!...ago)" because "30 minutes ago" is WHEN it
+            # happened, not HOW LONG it lasted. Without this the two
+            # are indistinguishable and the wrong one wins.
+            m = _re.search(r"(\d+(?:\.\d+)?)\s*(second|sec|minut|min|"
+                           r"hour|hr)\w*(?!\s*ago)(?![^.]{0,6}ago\b)",
+                           low)
+            if m:
+                v = float(m.group(1))
+                u = m.group(2)
+                mins = v / 60.0 if u.startswith("sec") else \
+                    v * 60.0 if u.startswith(("hour", "hr")) else v
+                up["lasted_mins"] = round(mins, 2)
+                said.append("i last %s min" % _ep_mins(mins))
+            if _re.search(r"\b(stop\w*|go\s+way|don\s+stop|pass)\b", low):
+                up["still_going"] = 0
+                if _re.search(r"\b(by\s+itself|on\s+e\s+own|bai\s+isɛf|"
+                              r"same\s+way|nɔbɔdi\s+du\s+notin)\b", low):
+                    up["stopped_by_itself"] = 1
+                    said.append("i stop by itself")
+                else:
+                    said.append("i stop")
+            if _re.search(r"\b(still\s+de|still\s+going|de\s+go\s+on|"
+                          r"nɔ\s+stop\s+yet)\b", low):
+                up["still_going"] = 1
+                said.append("i de go on still")
+            if up:
+                sets = ", ".join("%s = ?" % k for k in up)
+                vals = list(up.values()) + [
+                    _ep_now().strftime("%Y-%m-%d %H:%M:%S"), e["id"]]
+                try:
+                    db.execute("UPDATE medical_episodes SET %s, "
+                               "updated_at = ? WHERE id = ?" % sets,
+                               tuple(vals))
+                    return ("A add am to di las wan (%s): %s."
+                            % (e.get("pattern") or e.get("what"),
+                               ", ".join(said)))
+                except Exception as ex:
+                    print("EPISODES: follow-up -", repr(ex), flush=True)
+
+    # "it happened last night", "same thing again this morning" - a
+    # repeat he should not have to describe from scratch. This is the
+    # most natural way to report a recurrence and it was being dropped
+    # entirely: no body part and no symptom word, so nothing matched.
+    # It carries the one thing the pattern needs - when.
+    _TIMEREF = (r"yestade|yesterday|las\s*nite|last\s*night|"
+                r"dis\s*m[ɔo]nin|this\s*morning|dis\s*aftanun|"
+                r"this\s*afternoon|dis\s*ivnin|this\s*evening|tonight|"
+                r"tunayt|today|tide|\d{1,2}\s*days?\s*ago|"
+                r"\d{1,2}\s*(?:am|pm)")
+    # "it was doing it again" matched nothing: "doing" was not in the
+    # verb list. That sentence is how a person actually reports a
+    # repeat, and falling through to the model is what produced the
+    # invented count.
+    if (_re.search(r"\b(?:it|e|dat|di same ting|same ting|same thing|"
+                   r"my hand|mi hand|di hand)\s+(?:wa?s?\s+|bin\s+|"
+                   r"de\s+|is\s+)?"
+                   r"(?:apin\w*|happen\w*|kam\s*bak|came?\s*back|"
+                   r"start\w*|doin\w*|do\s*(?:it|am)|du\s*am|"
+                   r"act\w*\s*up|show\w*\s*up|go\s*on)\b|"
+                   r"^again\b|\bhappen\w*\s+again\b|"
+                   r"\b(?:doin|doing)\s+(?:it|am)\s+again\b|"
+                   r"\bthere\s+it\s+(?:go|goes)\b", low)
+            # "same thing yesterday" has no verb at all, and it is a
+            # normal way to say it. Allowed only WITH a time reference,
+            # so "same thing happened with the generator" cannot become
+            # a medical record.
+            or (_re.search(r"\b(?:di same ting|same ting|same thing|"
+                           r"di same wan)\b", low)
+                and _re.search(r"\b(?:" + _TIMEREF + r")\b", low))) \
+            and len(low.split()) <= 12:
+        # "maybe it will happen again" is a worry about the future,
+        # not a report. The wish guard further down only covers the
+        # new-episode path, so this branch needs its own.
+        if _re.search(r"\b(?:will|wil|go|gonna|gon|fit|might|may|could|"
+                      r"if|incase|in case|hope|afraid|scared|worr\w*)\b"
+                      r"[^.]{0,20}\b(?:apin\w*|happen\w*|kam\s*bak|"
+                      r"came?\s*back|start\w*|doin\w*|do\s*it)\b",
+                      low):
+            return None
+
+        # "same thing happened with the generator" matched this and
+        # became a medical record. If the sentence names something
+        # other than a body part, it is not about his body.
+        _other = None
+        for _m2 in _re.finditer(r"\b(?:with|to|for|about|on|pan|f[ɔo])\s+"
+                                r"(?:di|the|my|mi|dat|that)?\s*"
+                                r"([a-z][a-z-]{2,20})", low):
+            _w = _m2.group(1)
+            if _re.fullmatch(_EP_BODY, _w):
+                continue
+            if _re.fullmatch(r"yestade|yesterday|morning|afternoon|"
+                             r"evening|night|today|tide|now|mi|me|him|"
+                             r"her|it|dat|that|dis|this|tɛm|time", _w):
+                continue
+            _other = _w
+            break
+        if _other:
+            return None
+        _ep_tables()
+        _last = _ep_recent(1)
+        if _last and (_last[0].get("pattern") or "").strip():
+            _pat = _last[0]["pattern"]
+            _d, _at, _pod = _ep_when(low, _ep_now())
+            _rid, _pat2, _prev = _ep_add(
+                "same again: %s" % _pat, pattern=_pat, started_on=_d,
+                started_at=_at, part_of_day=_pod)
+            if _rid:
+                _s = _ep_pattern_summary(_pat)
+                _o = "A kɔnt am: **%s**, %d tɛm naw" % (_pat, _s["times"])
+                _o += "\n_%s_" % _at[:16]
+                if _pod:
+                    _o += "  _(%s, lɛk yu se)_" % _pod
+                if _s.get("average_gap_days") is not None:
+                    _o += "\nBɔt ɛvri %s de" % _s["average_gap_days"]
+                if _s.get("usually"):
+                    _o += "\nMɔstli %s" % _s["usually"]
+                _o += ("\n\nHow lɔng i last dis tɛm? Tɛl mi en a go "
+                       "add am.")
+                return _o
+
+    # a new one
+    body = _re.search(r"\b(?:my|mi|di)\s+(" + _EP_BODY + r")\b", low)
+    sym = _re.search(r"\b(" + _EP_WHAT + r")\b", low)
+    selfy = _re.search(_EP_SELF, low)
+    if not ((body and sym) or selfy):
+        return None
+    # not a plan, not a wish, not about someone else
+    if _re.search(r"\b(?:he|she|dem|dɛn|him|her|jeremiah|ami|mama|"
+                  r"mommy|my (?:mother|father|son|daughter|sister|"
+                  r"brother|wife|friend))\b", low):
+        return None
+    # A wish, a worry, a hypothetical or a negation is not something
+    # that happened. Position matters, not distance: a character window
+    # let "i hope my knee does not hurt tomorrow" through, because
+    # "hope ... hurt" is 18 characters apart and the window was 16. And
+    # a plain keyword test would have thrown away "my hand was shaking,
+    # i hope it stops" - which IS an episode. So the disqualifying word
+    # only counts when it comes BEFORE the symptom.
+    _sym = _re.search(r"\b(" + _EP_WHAT + r")\b", low)
+    _wish = _re.search(r"\b(?:hope|wish|want|afraid|scared|worr\w*|pray|"
+                       r"maybe|mebi|in case|incase|if|suppose|should|"
+                       r"fit|go start|might)\b", low)
+    if _sym and _wish and _wish.start() < _sym.start():
+        return None
+    _neg = None
+    for _m in _re.finditer(r"\b(?:no|not|never|nɔ|nɔto|don'?t|doesn'?t|"
+                           r"does not|didn'?t|did not|wasn'?t|was not|"
+                           r"never)\b", low):
+        if _sym and _m.start() < _sym.start() and \
+                _sym.start() - _m.end() <= 30:
+            _neg = _m
+            break
+    if _neg:
+        return None
+
+    _ep_tables()
+    kw = {}
+    _d, _at, _pod = _ep_when(low, _ep_now())
+    kw["started_on"], kw["started_at"] = _d, _at
+    if _pod:
+        kw["part_of_day"] = _pod
+    if body:
+        kw["body_part"] = body.group(1)
+    m = _re.search(r"\b(?:while|wen|when|as)\s+(?:a|i|mi)?\s*"
+                   r"([a-z][a-z' ]{3,46})", low)
+    if m:
+        _doing = m.group(1).strip()
+        # "while i was holding the phone" captures "was holding the
+        # phone", and "wen yu de was holding" is not a sentence. Drop
+        # the auxiliary the capture swallowed.
+        _doing = _re.sub(r"^(?:was|were|bin|been|de|dey|am|is|are)\s+",
+                         "", _doing).strip()
+        if len(_doing) >= 3:
+            kw["what_was_i_doing"] = _doing
+    m = _re.search(r"\b(?:at|na|in)\s+(?:di\s+)?"
+                   r"(home|work|church|gym|market|office|car|bed|"
+                   r"freetown|bo|kenema|nairobi|[a-z' ]{3,24}?)\b", low)
+    if m and len(m.group(1)) > 2:
+        kw["where_was_i"] = m.group(1).strip()
+    if _re.search(r"\b(still\s+de|still\s+going|nɔ\s+stop\s+yet)\b", low):
+        kw["still_going"] = 1
+    m = _re.search(r"(\d+(?:\.\d+)?)\s*(second|sec|minut|min|hour|hr)"
+                   r"\w*(?!\s*ago)(?![^.]{0,6}ago\b)", low)
+    if m:
+        v, u = float(m.group(1)), m.group(2)
+        kw["lasted_mins"] = round(v / 60.0 if u.startswith("sec") else
+                                  v * 60.0 if u.startswith(("hour", "hr"))
+                                  else v, 2)
+
+    # What goes in the "what" column has to BE the symptom.  It was
+    # getting the whole sentence, so the Episodes tab printed
+    #     hand my hand was shaking on monday evening while i was ...
+    # and so did the "What" column of the report a doctor reads, which
+    # is built from e["what"] at 11578.
+    #
+    # His own words are not junk though, so they go to notes - which
+    # that report already prints in its "Other" column.  Nothing is
+    # lost, and the column means what its heading says.
+    #
+    # The pattern is still derived from the RAW text, exactly as
+    # _ep_add was doing it, so "hand - shaking" comes out unchanged
+    # and the chat card and the pattern table are untouched.
+    try:
+        _pat_pre = _ep_pattern_for(raw[:400], kw.get("body_part"))
+    except Exception:
+        _pat_pre = None
+    _symw = None
+    if sym:
+        _symw = sym.group(1)
+    elif _sym:
+        _symw = _sym.group(1)
+    kw.setdefault("notes", raw[:400])
+    if _pat_pre:
+        kw["pattern"] = _pat_pre
+    rid, pat, prev = _ep_add(_symw or _pat_pre or raw[:60], **kw)
+    if not rid:
+        return None
+
+    out = "A kip am: **%s**" % (pat or raw[:60])
+    bits = []
+    if kw.get("body_part"):
+        bits.append(kw["body_part"])
+    if kw.get("lasted_mins"):
+        bits.append("%s min" % _ep_mins(kw["lasted_mins"]))
+    if kw.get("what_was_i_doing"):
+        bits.append("wen yu de %s" % kw["what_was_i_doing"])
+    if bits:
+        out += "  _(%s)_" % ", ".join(bits)
+    _when = kw.get("started_at") or ""
+    out += "\n_%s_" % (_when[:16] if _when else
+                       _ep_now().strftime("%Y-%m-%d %H:%M"))
+    if kw.get("part_of_day"):
+        out += "  _(%s, lɛk yu se)_" % kw["part_of_day"]
+
+    if prev:
+        s = _ep_pattern_summary(pat)
+        out += "\n\n**Dis nɔto di fɔs tɛm** — %d tɛm naw" % s["times"]
+        if s.get("first"):
+            out += ", sins %s" % s["first"]
+        if s.get("usually"):
+            out += "\nMɔstli %s" % s["usually"]
+        if s.get("average_gap_days") is not None:
+            out += "\nBɔt ɛvri %s de" % s["average_gap_days"]
+        out += ("\n\nDis na di kind tin fɔ sho dɔktɔ. If yu kin tek a "
+                "small video wen i de apin, dat wɔt mɔ pas any "
+                "description.")
+    else:
+        out += ("\n\nFɔs tɛm a de kip dis wan. If i apin again, tɛl mi "
+                "en a go kɔnt am.")
+        out += ("\n\nHow lɔng i last, en i stop by itself? Tɛl mi en a go "
+                "add am.")
+    return out
+
+
+
+def _upkeep_from_chat(text):
+    """Upkeep first, then Episodes.
+
+    Wrapper-rename instead of editing inside the 300-line chat chain:
+    the real Upkeep function is tried exactly as before, so no message
+    that works today changes path. Only messages Upkeep ignores reach
+    the episode capture."""
+    try:
+        _r = _upkeep_from_chat_real(text)
+    except Exception as _e:
+        print("upkeep from chat -", repr(_e), flush=True)
+        _r = None
+    if _r:
+        return _r
+    try:
+        return _episode_from_chat(text)
+    except Exception as _e:
+        print("episode from chat -", repr(_e), flush=True)
+        return None
+
+
+# ------------------------------------------------- unsourced law check
+# Asked whether a licence photo works in Ghana, she answered:
+#
+#     "Under Ghanaian law - di Road Traffic Act - an officer expects
+#      you to produce your physical driver's licence, not a photo."
+#
+# Every one of the 362 rows in law_sources is jurisdiction 'SL'. There
+# is no Ghana law in here at all. Two ways that sentence can happen,
+# and both are covered below:
+#
+#   1. _law_from_chat bailed at the question gate, nothing was
+#      retrieved, and the model answered from its own memory.
+#   2. _law_find_sections matched "licence", handed back the real
+#      SIERRA LEONE Road Traffic Act, and the model relabelled it as
+#      Ghana's. Same Act name, wrong country - and a check that only
+#      asked "was anything retrieved?" would wave this through.
+#
+# Charlie agreed that reaching for Gemini beats refusing. The problem
+# is not the fallback, it is that the fallback is dressed exactly like
+# the answers that are real, Act name and all, so there is no way to
+# tell them apart.
+#
+# Prose rules do not hold this. AMI_SCRIPT already had rules against
+# claiming a save and she still said "A don kont am... dat na 9 tem
+# naw" with nothing recorded. What held was _claims_without_doing - a
+# check on her output, in code. This is that, for law.
+
+_LAW_GAVE = {"when": 0.0, "n": 0, "q": ""}
+
+# A STATUTE NAME is a proper noun, so case matters here. Matching this
+# case-insensitively read "E act like e no sabi, but e sabi" as a
+# statute - the same mistake as the ledger's missing word boundary.
+_LCU_NAME = re.compile(
+    r"\b[A-Z][A-Za-z'’\-]*(?:\s+[A-Z(][A-Za-z'’\-)]*){0,5}\s+Act\b"
+    r"|\bAct\b[^.\n]{0,12}\b(?:19|20)\d\d\b"
+    r"|\[?\bNo\.?\s?\d+\s+of\s+(?:19|20)\d\d\b\]?")
+
+# asserting what the law requires. case does not matter for these.
+_LCU_ASSERT = re.compile(
+    r"\bunder\b[^.\n]{0,30}\blaw\b"
+    r"|\baccording to\b[^.\n]{0,30}\b(?:law|act|code|statute)\b"
+    r"|\b(?:di|the)\s+law\s+(?:say|says|require|requires|state|states)\b"
+    r"|\bstatute\b|\bgazette\b|\bcap\.?\s?\d+\b", re.I)
+
+# Naming an Act is not claiming what it says. "Di Child Rights Act
+# training na next week" names one; it asserts nothing. So outside the
+# foreign-jurisdiction case, a bare Act NAME is not enough on its own -
+# it needs a verb that makes it an assertion about what the law
+# requires. Found by running the thing end to end instead of trusting
+# the unit tests, which had no opinion about this sentence.
+_LCU_ACTSAYS = re.compile(
+    r"\bAct\b[^.\n]{0,24}?\b(?:say|says|se|states?|require[sd]?|"
+    r"provide[sd]?|allow[sd]?|prohibit[sd]?|forbid[s]?|mean[s]?|"
+    r"demand[s]?|expect[s]?|make[s]? it)\b"
+    r"|\b(?:under|per|accordin to|according to|as per)\b[^.\n]{0,24}"
+    r"\bAct\b", re.I)
+
+# A bare section number counts only if the reply is about law at all.
+# Without that guard "Section 2 of di kitchen don finish" is a citation.
+_LCU_SEC = re.compile(r"\b(?:s(?:ec|ect|ection)?\.?\s?\d+[A-Za-z]?)\b", re.I)
+_LCU_LAWISH = re.compile(r"\b(?:act|law|lawful|unlawful|legal|illegal|"
+                         r"statute|regulation|cap\.?|court|police|offence|"
+                         r"offense|penalty|fine)\b", re.I)
+
+# GII has a constitution. So does a club and a committee. A country's
+# is a different thing.
+_LCU_CONST = re.compile(r"\bconstitution\b", re.I)
+_LCU_OWNCONST = re.compile(
+    r"\b(?:gii|our|we|company|committee|club|board|chapter|society|"
+    r"association|group|team|organisation|organization|nonprofit|"
+    r"charity)\b[^.\n]{0,24}\bconstitution\b"
+    r"|\bconstitution\s+(?:of|fo|for)\s+(?:gii|di|the)\s+(?:board|"
+    r"committee|club|group|chapter|society|association|company|"
+    r"organisation|organization)\b", re.I)
+
+# Charlie's own situation card says "UK FCDO advice says a clear copy
+# of the passport photo page and visa stamp is usually accepted by
+# police - that is practice, not law." That is a properly labelled
+# Tier-2 practice note, which is the system working. A check that
+# matched a country name anywhere in the reply read it as a claim
+# about British law and stamped "noto Britain own" on two correct
+# answers. So a country only counts when a LEGAL word sits beside it.
+#
+# The dotted forms cannot live inside \b(...)\b: a trailing \b after
+# "U.S." never matches, because "." and " " are both non-word
+# characters. And bare "us" is a pronoun - "tell us di law" is not a
+# claim about American law - so capitalised US is matched separately.
+_LCU_OTHER = re.compile(
+    r"\b(?:ghana(?:ian)?|nigeria(?:n)?|kenya(?:n)?|liberia(?:n)?|"
+    r"guinea(?:n)?|gambia(?:n)?|senegal(?:ese)?|ivorian|ivory coast|"
+    r"mali(?:an)?|togo(?:lese)?|cameroon(?:ian)?|"
+    r"south africa(?:n)?|tanzania(?:n)?|uganda(?:n)?|rwanda(?:n)?|"
+    r"ethiopia(?:n)?|egypt(?:ian)?|morocc(?:o|an)|american|america|"
+    r"usa|united states|british|britain|uk|"
+    r"england|english|canadian|canada|mexican|mexico|"
+    r"european|eu|indian|india|chinese|china|"
+    r"dubai|uae|emirat\w*|qatar|saudi)\b"
+    r"|u\.s\.a?\.?|u\.k\.", re.I)
+
+_LCU_OTHER_CS = re.compile(r"\bUS\b")
+
+# deliberately NOT police, court or fine. "accepted by police" is what
+# dragged "UK FCDO advice" in.
+_LCU_TOK = re.compile(r"\b(?:law|laws|legal|illegal|lawful|unlawful|Act|"
+                      r"Acts|statute|section|constitution|code|gazette)\b",
+                      re.I)
+
+# Demonym to place name, so the sentence reads. Looked up twice: as
+# written, and with the dots taken out, because "U.S." and "u.s.a"
+# and "US" all have to land on the same entry.
+_LCU_PLACE = {
+    "ghanaian": "Ghana", "nigerian": "Nigeria", "kenyan": "Kenya",
+    "liberian": "Liberia", "guinean": "Guinea", "gambian": "Gambia",
+    "senegalese": "Senegal", "ivorian": "Ivory Coast",
+    "malian": "Mali", "togolese": "Togo", "cameroonian": "Cameroon",
+    "south african": "South Africa", "tanzanian": "Tanzania",
+    "ugandan": "Uganda", "rwandan": "Rwanda",
+    "ethiopian": "Ethiopia", "egyptian": "Egypt",
+    "moroccan": "Morocco",
+    "american": "America", "us": "America", "usa": "America",
+    "unitedstates": "America", "united states": "America",
+    "british": "Britain", "uk": "Britain", "britain": "Britain",
+    "english": "England", "english law": "England",
+    "canadian": "Canada", "mexican": "Mexico",
+    "european": "Europe", "eu": "Europe",
+    "indian": "India", "chinese": "China",
+    "emirati": "di UAE", "uae": "di UAE",
+    "saudi": "Saudi Arabia",
+}
+
+
+
+
+def _lcu_place(w):
+    """Demonym to place name, so the sentence reads.
+
+    "A no get English law" and "A no get U.s law" were both wrong, and
+    for different reasons: "english" was missing from the table, and
+    stripping only the TRAILING dot turned "u.s." into "u.s", which
+    matched nothing. Looked up as written, then with every dot removed.
+    """
+    k = str(w or "").strip().lower()
+    if k in _LCU_PLACE:
+        return _LCU_PLACE[k]
+    k2 = k.replace(".", "").replace(" ", "")
+    if k2 in _LCU_PLACE:
+        return _LCU_PLACE[k2]
+    k3 = k.rstrip(".")
+    if k3 in _LCU_PLACE:
+        return _LCU_PLACE[k3]
+    return k3[:1].upper() + k3[1:]
+
+
+def _lcu_flat(s):
+    """Krio uses ɔ and ɛ. A pattern written with ASCII o and e does not
+    match them - the same hole that let "A don kɔnt am" through."""
+    return (str(s or "").replace("ɔ", "o").replace("Ɔ", "O")
+            .replace("ɛ", "e").replace("Ɛ", "E").replace("ŋ", "ng"))
+
+
+def _law_find_sections(*a, **k):
+    """Records that real sections came back, so the output check can
+    tell a citation from an invention.
+
+    A wrapper, not surgery: _law_find_sections_real is 132 lines and
+    has several exits."""
+    import time as _lt
+    out = _law_find_sections_real(*a, **k)
+    try:
+        _LAW_GAVE["when"] = _lt.time()
+        _LAW_GAVE["n"] = len(out or [])
+        _LAW_GAVE["q"] = (str(a[0]) if a else "")[:200].strip().lower()
+    except Exception:
+        pass
+    return out
+
+
+# Home. If he names Sierra Leone himself, the SL sections are the
+# right answer and nothing needs marking.
+_LCU_SALONE = re.compile(r"\b(?:sierra ?leone(?:an)?|salone|freetown|"
+                         r"kenema|makeni|waterloo|lungi|krio|"
+                         r"slp\b|nra\b|ncra\b|nassit)\b", re.I)
+
+# Already carries a mark - do not stack a second one on top.
+_LCU_ALREADY = re.compile(r"A no get .{0,24} law at all pan mi law list"
+                          r"|Dat section na Sierra Leone own"
+                          r"|Yu aks bot .{0,24} bot a no get"
+                          r"|A no get di section fo dis wan", re.I)
+
+def _lcu_foreign(text, win=40):
+    """A foreign country, but only where it is being used to say what
+    the law is.
+
+    The window INCLUDES the match, because "English law" is one match
+    and cutting it out threw away the only law word there was."""
+    for _rx in (_LCU_OTHER, _LCU_OTHER_CS):
+        for _m in _rx.finditer(text or ""):
+            _a = max(0, _m.start() - win)
+            _b = min(len(text), _m.end() + win)
+            if _LCU_TOK.search(text[_a:_b]):
+                return _m
+    return None
+
+
+def _law_claims_unsourced(reply, query=""):
+    """Did she claim legal authority she does not have?
+
+    Read from both sides, because there are two different mismatches:
+
+      the ANSWER names another country's law   - the invention
+      the QUESTION names another country       - and she answers with
+                                                 Sierra Leone statute
+                                                 and no label
+
+    The second is the worse one and the one I missed first time. "Under
+    Ghanaian law" is at least a claim somebody can check. Four sections
+    of the Sierra Leone Road Traffic Act handed over in answer to a
+    Ghana question, with no label, is not.
+
+    On the answer side the country has to sit beside a legal word.
+    Without that, the card's own "UK FCDO advice ... accepted by
+    police" line - a correctly labelled practice note - got read as a
+    claim about British law, and two right answers were stamped "noto
+    Britain own".
+    """
+    import time as _lt
+    if not reply:
+        return reply
+    flat = _lcu_flat(reply)
+    qflat = _lcu_flat(query)
+
+    if _LCU_ALREADY.search(flat):
+        return reply
+
+    # the answer claims a foreign law
+    _oth = _lcu_foreign(flat)
+    # he asked about somewhere else, unless he also named home
+    _qoth = None
+    if not _LCU_SALONE.search(qflat):
+        _qoth = _LCU_OTHER.search(qflat) or _LCU_OTHER_CS.search(qflat)
+
+    hit = None
+    if _oth:
+        # _lcu_foreign has already established that a legal word sits
+        # beside the country, so this IS the claim - it does not need a
+        # second pattern to agree. Requiring one missed "English law
+        # treats a photo as sufficient" (no Act named) and "Under U.S.
+        # law yu need di real card" (_LCU_ASSERT uses [^.\n] between
+        # "under" and "law", which cannot cross the dots in "U.S.").
+        hit = _oth.group(0)
+    else:
+        # he asked about elsewhere - the reply still has to be quoting
+        # law, or "remind me to pack for Ghana" gets marked
+        _rxs = [_LCU_ASSERT, _LCU_ACTSAYS]
+        if _qoth:
+            _rxs.insert(0, _LCU_NAME)
+        for _rx in _rxs:
+            _m = _rx.search(flat)
+            if _m:
+                hit = _m.group(0)
+                break
+    if hit is None and _LCU_CONST.search(flat) \
+            and not _LCU_OWNCONST.search(flat):
+        hit = "constitution"
+    if hit is None:
+        _m = _LCU_SEC.search(flat)
+        if _m and _LCU_LAWISH.search(flat) and _LCU_NAME.search(flat):
+            hit = _m.group(0)
+    if hit is None:
+        return reply
+
+    # Did a real section come back this turn? Two ways to say yes, and
+    # it only takes one, because rewriting a CORRECT answer is the
+    # worse mistake of the two.
+    _q = str(query or "")[:200].strip().lower()
+    _fresh = (_lt.time() - float(_LAW_GAVE.get("when") or 0)) < 90
+    _sourced = bool(_LAW_GAVE.get("n")) and (
+        _fresh or (_q and _q == _LAW_GAVE.get("q")))
+
+    # what he asked about beats what the reply happens to mention
+    _w = None
+    if _qoth:
+        _w = _lcu_place(_qoth.group(0))
+    elif _oth:
+        _w = _lcu_place(_oth.group(0))
+
+    if _w and _sourced and _qoth:
+        mark = ("⚠ **Yu aks bɔt %s, bɔt a nɔ get %s law at all.** Ɔl di "
+                "law we a kwot dɔn ɔnda na **Sierra Leone** law, so i nɔ "
+                "apply pan %s. A de sho yu am bikɔs i kin hɛlp yu tink, "
+                "nɔto bikɔs i na di law dɛ. Fɔ %s, si wan lawyer dɛ."
+                % (_w, _w, _w, _w))
+    elif _w and _sourced:
+        mark = ("⚠ **Dat section na Sierra Leone own, nɔto %s own.** "
+                "A nɔ get %s law at all pan mi law list, so wetin a "
+                "tɛl yu bɔt %s na from wetin a sabi — i kin be rɔng."
+                % (_w, _w, _w))
+    elif _w:
+        mark = ("⚠ **A nɔ get %s law at all pan mi law list.** So dis "
+                "nɔto law a de kwot — na from wetin a sabi, en i kin "
+                "be rɔng." % _w)
+    elif _sourced:
+        return reply
+    else:
+        mark = ("⚠ **A nɔ get di section fɔ dis wan.** So dis nɔto from "
+                "di Act — na from wetin a sabi, en i kin be rɔng. Eni Act "
+                "nem ɔ section number wey a mɛnshɔn dɔn nɔ come from mi "
+                "law list.")
+    try:
+        print("LAW: unsourced claim marked - " + str(hit)[:40], flush=True)
+    except Exception:
+        pass
+    return mark + "\n\n" + str(reply).strip()
+
+
+
+@app.post("/api/chat/orchestrated")
+@require_password
+def orchestrated_chat():
+    """One gate that every answer leaves through.
+
+    orchestrated_chat_real has 29 returns ABOVE the backstop lines at
+    the bottom of it. Measured, not guessed - path_look.py lists them.
+    So the law answer left at line 3590, out of the ledger handler, and
+    the unsourced-law mark never had a chance to run. That is why
+    "does a photo of my licence work in Ghana?" came back carrying four
+    sections of Sierra Leone statute and no label.
+
+    Adding the call at 29 return sites would fix today and break
+    tomorrow, because the next handler someone writes returns early
+    too. A wrapper cannot be bypassed: whatever the inside does, the
+    answer passes through here on its way out.
+
+    WHAT THIS DOES NOT DO, deliberately:
+
+      _claims_without_doing is NOT applied here, even though it has
+      the same problem. It takes a "did something really get saved?"
+      flag, and from out here that flag is unknowable. Passing False
+      would strip the legitimate confirmations off every handler that
+      really did save something - the ledger, the birthday, the todo -
+      which is a worse bug than the one being fixed. It needs a flag
+      the handlers set when they write, and that is its own change.
+
+      The one at 4260 still covers the fall-through path, which is
+      where the invented count came from.
+    """
+    out = orchestrated_chat_real()
+    try:
+        if isinstance(out, tuple):
+            body, rest = (out[0], out[1:])
+        else:
+            body, rest = out, None
+        if isinstance(body, dict) and isinstance(body.get("response"), str):
+            _q = ""
+            try:
+                from flask import request as _ocrq
+                _j = _ocrq.get_json(silent=True) or {}
+                for _k in ("message", "query", "text", "q"):
+                    if isinstance(_j.get(_k), str) and _j.get(_k).strip():
+                        _q = _j[_k]
+                        break
+                if not _q:
+                    for _k in ("message", "query", "text", "q"):
+                        _v = _ocrq.form.get(_k) or _ocrq.args.get(_k)
+                        if _v:
+                            _q = _v
+                            break
+            except Exception:
+                _q = ""
+            _was = body["response"]
+            _now = _law_claims_unsourced(_was, _q)
+            if _now != _was:
+                body = dict(body)
+                body["response"] = _now
+                out = ((body,) + rest) if rest else body
+    except Exception as _oce:
+        print("OUT GATE skipped: " + str(_oce)[:90], flush=True)
+    return out
+
+
+
+def _ep_mins_en(m):
+    """A duration written the way a clinic note writes it."""
+    try:
+        m = float(m)
+    except Exception:
+        return ""
+    if m <= 0:
+        return ""
+    if m < 1:
+        return "%d seconds" % int(round(m * 60))
+    if m < 60:
+        return "1 minute" if abs(m - 1) < 0.01 else ("%g minutes"
+                                                     % round(m, 1))
+    h = int(m // 60)
+    r = int(round(m - h * 60))
+    return ("%d h" % h) + ((" %d min" % r) if r else "")
+
+
+def _ep_usually_en(p):
+    """The "usually" line in English, saying where it came from.
+
+    _ep_pattern_summary writes that line in Krio, which is right in
+    chat and wrong in a document a doctor reads. The provenance - what
+    he SAID versus when he happened to type - is the most important
+    thing in it, so it has to survive translation rather than be
+    quietly dropped. Built from the structured fields, never by parsing
+    the Krio.
+    """
+    p = p or {}
+    part = p.get("usually_part")
+    if not part:
+        return ""
+    n, of = p.get("usually_n"), p.get("usually_of")
+    if not n or not of:
+        return str(part)
+    if p.get("usually_from") == "clock":
+        return ("%s (%d of %d — inferred from when it was recorded, not "
+                "from what the patient said)" % (part, n, of))
+    return "%s (%d of the %d times a time was given)" % (part, n, of)
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000, use_reloader=False)

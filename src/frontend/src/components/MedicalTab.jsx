@@ -48,6 +48,7 @@ const nowTime = () => new Date().toTimeString().slice(0, 5);
 const REPORT_BITS = [
   ['bp', 'Blood pressure'], ['lipids', 'Cholesterol'], ['sugar', 'Blood sugar'],
   ['meds', 'Medications'], ['conditions', 'Conditions'], ['allergies', 'Allergies'],
+  ['episodes', 'Episodes'],
   ['visits', 'Visits'], ['measurements', 'Measurements'], ['weight', 'Weight'],
   ['exercise', 'Exercise'], ['water', 'Water'],
 ];
@@ -75,6 +76,10 @@ export default function MedicalTab() {
   const [doses, setDoses] = useState([]);
   const [sugars, setSugars] = useState([]);
   const [lipids, setLipids] = useState([]);
+  const [episodes, setEpisodes] = useState([]);
+  const [epPatterns, setEpPatterns] = useState([]);
+  const [epEdit, setEpEdit] = useState(null);
+  const [epBusy, setEpBusy] = useState('');
   const [meas, setMeas] = useState([]);
   const [sizes, setSizes] = useState({});
   const [sizeForm, setSizeForm] = useState(null);
@@ -87,6 +92,73 @@ export default function MedicalTab() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({});
 
+  const epReload = async () => {
+    try {
+      const j = await fetch(API + '/api/episodes?limit=100', { headers: AUTH }).then(x => x.json());
+      setEpisodes(j.episodes || []); setEpPatterns(j.patterns || []);
+    } catch (e) { setErr(String(e)); }
+  };
+
+  // PATCH when it already exists, POST when it is new. The backend sets
+  // updated_at on a PATCH, which is what lets a row show when it was
+  // recorded separately from when it was last corrected.
+  const epSave = async (ep) => {
+    try {
+      setEpBusy('saving');
+      const body = { ...ep };
+      ['documents', 'created_at', 'updated_at'].forEach(k => delete body[k]);
+      if (body.lasted_mins === '' ) delete body.lasted_mins;
+      const url = ep.id ? API + '/api/episodes/' + ep.id : API + '/api/episodes';
+      const r = await fetch(url, { method: ep.id ? 'PATCH' : 'POST',
+                                   headers: H, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setErr(j.error || 'Could not save that'); return; }
+      setEpEdit(null); await epReload();
+    } catch (x) { setErr(String(x)); } finally { setEpBusy(''); }
+  };
+
+  const epDelete = async (ep) => {
+    if (!window.confirm('Delete this one? It comes off the doctor record too.')) return;
+    try {
+      await fetch(API + '/api/episodes/' + ep.id, { method: 'DELETE', headers: AUTH });
+      await epReload();
+    } catch (x) { setErr(String(x)); }
+  };
+
+  // AUTH and not H: a multipart body must set its own Content-Type with
+  // the boundary, and naming it ourselves breaks the upload.
+  const epAttach = async (ep, file) => {
+    if (!file) return;
+    try {
+      setEpBusy('up' + ep.id);
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('episode_id', String(ep.id));
+      fd.append('title', file.name);
+      fd.append('kind', String(file.type || '').startsWith('video') ? 'video' : 'photo');
+      const r = await fetch(API + '/api/medical/documents', { method: 'POST', headers: AUTH, body: fd });
+      if (!r.ok) { setErr('Could not attach that file'); return; }
+      await epReload();
+    } catch (x) { setErr(String(x)); } finally { setEpBusy(''); }
+  };
+
+  const epDocDel = async (d) => {
+    if (!window.confirm('Remove ' + (d.title || 'this file') + '?')) return;
+    try {
+      await fetch(API + '/api/medical/documents/' + d.id, { method: 'DELETE', headers: AUTH });
+      await epReload();
+    } catch (x) { setErr(String(x)); }
+  };
+
+  const epMins = (v) => {
+    if (v === null || v === undefined || v === '') return '';
+    const f = Number(v);
+    if (!isFinite(f) || f <= 0) return '';
+    if (f < 1) return Math.round(f * 60) + ' sec';
+    if (f < 60) return (Math.round(f * 10) / 10) + ' min';
+    const h = Math.floor(f / 60), mm = Math.round(f - h * 60);
+    return h + ' h' + (mm ? ' ' + mm + ' min' : '');
+  };
   const load = async () => {
     try {
       const [m, r, c, v, a] = await Promise.all([
@@ -109,6 +181,8 @@ export default function MedicalTab() {
         setSugars(sg.readings || []);
         const lp = await fetch(API + '/api/medical/lipids', { headers: AUTH }).then(x => x.json());
         setLipids(lp.panels || []);
+        const ep = await fetch(API + '/api/episodes?limit=100', { headers: AUTH }).then(x => x.json());
+        setEpisodes(ep.episodes || []); setEpPatterns(ep.patterns || []);
         const ms = await fetch(API + '/api/medical/measurements', { headers: AUTH }).then(x => x.json());
         setMeas(ms.measurements || []);
         const sz = await fetch(API + '/api/medical/sizes', { headers: AUTH }).then(x => x.json());
@@ -267,6 +341,7 @@ export default function MedicalTab() {
         <button style={S.tab(view === 'body')} onClick={() => { setView('body'); setAdding(false); }}>Body</button>
         <button style={S.tab(view === 'lipids')} onClick={() => { setView('lipids'); setAdding(false); }}>Lipids</button>
         <button style={S.tab(view === 'allergies')} onClick={() => { setView('allergies'); setAdding(false); }}>Allergies</button>
+        <button style={S.tab(view === 'episodes')} onClick={() => { setView('episodes'); setAdding(false); setEpEdit(null); }}>Episodes</button>
       </div>
 
       {view === 'overview' && (
@@ -277,6 +352,188 @@ export default function MedicalTab() {
         />
       )}
 
+      {/* ---------------- EPISODES ---------------- */}
+      {view === 'episodes' && (
+        <>
+          <div style={S.card}>
+            <div style={{ fontSize: '12px', color: '#888', lineHeight: 1.6 }}>
+              Things your body did that you noticed. Tell Ami when it happens —
+              <i> my hand was shaking while i was holding my phone</i> — and it
+              lands here. None of it is a diagnosis.
+            </div>
+          </div>
+
+          {epPatterns.length > 0 && (
+            <div style={S.card}>
+              <div style={{ ...S.label, marginTop: 0 }}>What keeps happening</div>
+              {epPatterns.map(p => (
+                <div key={p.pattern} style={{ padding: '8px 0', borderTop: '1px solid #222' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                    {p.pattern}
+                    <span style={{ color: '#888', fontWeight: 400, fontSize: '12px' }}>
+                      {' · ' + p.times + ' tɛm'}
+                    </span>
+                  </div>
+                  {p.usually && (
+                    <div style={{ fontSize: '12px', color: '#a78bfa', marginTop: '3px' }}>
+                      Mɔstli {p.usually}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: '#666', marginTop: '3px' }}>
+                    {p.first && p.last && p.first !== p.last
+                      ? p.first + ' to ' + p.last : (p.last || '')}
+                    {p.average_gap_days != null ? ' · about every ' + p.average_gap_days + ' days' : ''}
+                    {p.lasted_mins_range
+                      ? ' · ' + (p.lasted_mins_range[0] === p.lasted_mins_range[1]
+                          ? epMins(p.lasted_mins_range[0])
+                          : epMins(p.lasted_mins_range[0]) + ' to ' + epMins(p.lasted_mins_range[1]))
+                      : ''}
+                  </div>
+                </div>
+              ))}
+              <div style={S.note}>
+                She needs three before she will call something a pattern.
+              </div>
+            </div>
+          )}
+
+          {!epEdit && (
+            <button style={S.btn('#667eea')}
+                    onClick={() => setEpEdit({ started_on: today(),
+                                               started_at: today() + ' ' + nowTime() + ':00' })}>
+              + Add one by hand
+            </button>
+          )}
+
+          {epEdit && (
+            <div style={S.card}>
+              <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>
+                {epEdit.id ? 'Correcting what was recorded. This changes the doctor record too.'
+                           : 'Easier to just tell Ami, but here it is.'}
+              </div>
+              <input style={S.input} placeholder="What happened — shaking, pain, dizziness"
+                     value={epEdit.what || ''}
+                     onChange={e => setEpEdit({ ...epEdit, what: e.target.value })} />
+              <div style={S.row2}>
+                <input style={S.input} placeholder="Body part"
+                       value={epEdit.body_part || ''}
+                       onChange={e => setEpEdit({ ...epEdit, body_part: e.target.value })} />
+                <input style={S.input} placeholder="Pattern, e.g. hand-shaking"
+                       value={epEdit.pattern || ''}
+                       onChange={e => setEpEdit({ ...epEdit, pattern: e.target.value })} />
+              </div>
+              <div style={S.row2}>
+                <input style={S.input} type="date"
+                       value={String(epEdit.started_on || '').slice(0, 10)}
+                       onChange={e => setEpEdit({ ...epEdit, started_on: e.target.value })} />
+                <input style={S.input} type="number" step="0.5" placeholder="Minutes it lasted"
+                       value={epEdit.lasted_mins === null || epEdit.lasted_mins === undefined ? '' : epEdit.lasted_mins}
+                       onChange={e => setEpEdit({ ...epEdit, lasted_mins: e.target.value })} />
+              </div>
+              <div style={S.row2}>
+                <input style={S.input} placeholder="Where were you"
+                       value={epEdit.where_was_i || ''}
+                       onChange={e => setEpEdit({ ...epEdit, where_was_i: e.target.value })} />
+                <input style={S.input} placeholder="What were you doing"
+                       value={epEdit.what_was_i_doing || ''}
+                       onChange={e => setEpEdit({ ...epEdit, what_was_i_doing: e.target.value })} />
+              </div>
+              <label style={{ fontSize: '13px', color: '#ccc', display: 'flex', gap: '8px',
+                              alignItems: 'center', marginBottom: '10px' }}>
+                <input type="checkbox"
+                       checked={epEdit.stopped_by_itself === 1 || epEdit.stopped_by_itself === true}
+                       onChange={e => setEpEdit({ ...epEdit, stopped_by_itself: e.target.checked ? 1 : 0 })} />
+                It stopped on its own
+              </label>
+              <input style={S.input} placeholder="Anything else worth saying"
+                     value={epEdit.notes || ''}
+                     onChange={e => setEpEdit({ ...epEdit, notes: e.target.value })} />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button style={S.btn('#10b981')} disabled={epBusy === 'saving'}
+                        onClick={() => epSave(epEdit)}>
+                  {epBusy === 'saving' ? 'Saving…' : 'Save'}
+                </button>
+                <button style={S.btn('#2a2a2a')} onClick={() => setEpEdit(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {episodes.length === 0 && !epEdit && (
+            <div style={S.empty}>Nothing recorded yet.</div>
+          )}
+
+          {episodes.map(ep => (
+            <div key={ep.id} style={S.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'flex-start', gap: '8px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                    {[ep.body_part, ep.what].filter(Boolean).join(' ')}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#888', marginTop: '3px' }}>
+                    {String(ep.started_on || '').slice(0, 10)}
+                    {String(ep.started_at || '').length >= 16
+                      ? ' · ' + String(ep.started_at).slice(11, 16) : ''}
+                    {ep.still_going
+                      ? ' · still going'
+                      : (epMins(ep.lasted_mins) ? ' · ' + epMins(ep.lasted_mins) : '')}
+                    {ep.stopped_by_itself === 1 ? ' · stopped on its own' : ''}
+                  </div>
+                  {(ep.what_was_i_doing || ep.where_was_i) && (
+                    <div style={{ fontSize: '12px', color: '#aaa', marginTop: '5px' }}>
+                      {[ep.what_was_i_doing, ep.where_was_i].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  {ep.notes && (
+                    <div style={{ fontSize: '12px', color: '#aaa', marginTop: '5px' }}>{ep.notes}</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexShrink: 0 }}>
+                  <button style={S.icon} onClick={() => setEpEdit({ ...ep })}>✎</button>
+                  <button style={S.icon} onClick={() => epDelete(ep)}>✕</button>
+                </div>
+              </div>
+
+              {(ep.documents || []).length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  {(ep.documents || []).map(d => (
+                    <span key={d.id} style={{ fontSize: '11px', border: '1px solid #2c2c3a',
+                                              borderRadius: '6px', padding: '5px 8px',
+                                              display: 'inline-flex', alignItems: 'center' }}>
+                      {d.exists ? (
+                        <a href={API + '/api/medical/documents/' + d.id + '/view?k=' + encodeURIComponent(AMI_PASSWORD)}
+                           target="_blank" rel="noreferrer"
+                           style={{ color: '#a78bfa', textDecoration: 'none' }}>
+                          {(d.kind === 'video' ? '▶ ' : '🖼 ') + (d.title || 'file')}
+                        </a>
+                      ) : (
+                        <span style={{ color: '#555' }}>{(d.title || 'file') + ' — missing'}</span>
+                      )}
+                      <button style={{ ...S.icon, fontSize: '11px', padding: '0 0 0 6px' }}
+                              onClick={() => epDocDel(d)}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center',
+                            gap: '12px', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '12px', color: '#667eea', cursor: 'pointer' }}>
+                  {epBusy === 'up' + ep.id ? 'Attaching…' : '+ photo or video'}
+                  <input type="file" accept="image/*,video/*" style={{ display: 'none' }}
+                         onChange={evt => { epAttach(ep, evt.target.files && evt.target.files[0]);
+                                            evt.target.value = ''; }} />
+                </label>
+                <span style={{ fontSize: '10px', color: '#555' }}>
+                  {'recorded ' + String(ep.created_at || '').slice(0, 16).replace('T', ' ')}
+                  {ep.updated_at && String(ep.updated_at).slice(0, 16) !== String(ep.created_at || '').slice(0, 16)
+                    ? ' · edited ' + String(ep.updated_at).slice(0, 16).replace('T', ' ') : ''}
+                </span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
       {/* ---------------- READINGS ---------------- */}
       {view === 'readings' && (
         <>
