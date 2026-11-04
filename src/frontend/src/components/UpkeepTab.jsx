@@ -4,7 +4,7 @@ const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 // one honest address. the other tabs have "|| API + ''" in here, which
 // throws a ReferenceError the moment VITE_API_URL is not set - that is
 // the localhost sweep's job, not this file's.
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 const H = { 'X-Ami-Password': AMI_PASSWORD, 'Content-Type': 'application/json' };
 
 // Grouped the way you'd actually think about the compound, not

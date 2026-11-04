@@ -49,6 +49,24 @@ from flask_cors import CORS
 
 import os as _os_db
 AMI_DB = _os_db.getenv("AMI_DB_PATH", "data/ami_memory.db")
+AMI_FILES = _os_db.path.dirname(AMI_DB) or "."
+if not _os_db.path.isabs(AMI_FILES):
+    AMI_FILES = _os_db.path.join(
+        _os_db.path.dirname(_os_db.path.abspath(__file__)), AMI_FILES)
+
+
+def _ami_dir(*parts):
+    """A directory beside the database - so on the volume in production.
+
+    Every upload used to be hardcoded relative to app.py or to the
+    working directory, which on Railway meant the container: the row
+    survived a deploy and the file did not.
+    """
+    _p = _os_db.path.join(AMI_FILES, *parts)
+    _os_db.makedirs(_p, exist_ok=True)
+    return _p
+
+
 AMI_MODEL = _os_db.getenv("AMI_MODEL", "gemini-3.7-flash")
 AMI_MODEL_FALLBACK = _os_db.getenv("AMI_MODEL_FALLBACK", "gemini-2.5-flash")
 
@@ -743,8 +761,8 @@ def run_backup():
     from datetime import datetime as _d
     try:
         here = _os.path.dirname(_os.path.abspath(__file__))
-        data_dir = _os.path.join(here, 'data')
-        db_path = _os.path.join(data_dir, 'ami_memory.db')
+        data_dir = AMI_FILES
+        db_path = AMI_DB
         local_dir = _os.path.join(data_dir, 'backups')
         cloud_dir = _os.path.expanduser('~/Library/Mobile Documents/com~apple~CloudDocs/AmiPA-Backups')
         _os.makedirs(local_dir, exist_ok=True)
@@ -6318,6 +6336,7 @@ def set_current_timezone():
 
 
 @app.post("/api/learning/start")
+@require_password
 def start_learning_path():
     """Start a new learning path"""
     try:
@@ -6333,6 +6352,7 @@ def start_learning_path():
         return {"success": False, "error": str(e)}
 
 @app.get("/api/learning/progress/<subject>")
+@require_password
 def get_learning_progress(subject):
     """Get learning progress for a subject"""
     try:
@@ -6358,6 +6378,7 @@ def get_learning_progress(subject):
         return {"error": str(e)}
 
 @app.get("/api/learning/next-lesson/<subject>")
+@require_password
 def get_next_lesson(subject):
     """Get next lesson for a subject"""
     try:
@@ -6380,6 +6401,7 @@ def get_next_lesson(subject):
         return {"error": str(e)}
 
 @app.post("/api/learning/record-lesson")
+@require_password
 def record_lesson_completed():
     """Record a completed lesson"""
     try:
@@ -6403,6 +6425,7 @@ def record_lesson_completed():
 
 
 @app.get("/api/learning/curriculum/<subject>")
+@require_password
 def get_curriculum(subject):
     import json
     try:
@@ -6417,6 +6440,7 @@ def get_curriculum(subject):
 
 
 @app.get("/api/learning/lesson-content/<subject>/<int:lesson_num>")
+@require_password
 def get_lesson_content(subject, lesson_num):
     """Get formatted lesson content"""
     try:
@@ -6595,6 +6619,7 @@ def _bd_merge(names, day_iso):
 
 
 @app.get("/api/reminders/birthdays-today")
+@require_password
 def get_birthdays_today():
     """Get birthdays today - from the table AND the calendar."""
     try:
@@ -6616,6 +6641,7 @@ def get_birthdays_today():
         return {"success": False, "error": str(e)}
 
 @app.get("/api/reminders/birthdays-tomorrow")
+@require_password
 def get_birthdays_tomorrow():
     """Get birthdays tomorrow - from the table AND the calendar."""
     try:
@@ -7619,6 +7645,7 @@ def get_project_tasks(project_id):
 
 # ATTACHMENTS ENDPOINT
 @app.route('/api/tags', methods=['GET'])
+@require_password
 def get_tags():
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
@@ -7628,6 +7655,7 @@ def get_tags():
     return {'tags': tags}
 
 @app.route('/api/tags', methods=['POST'])
+@require_password
 def create_tag():
     data = request.json or {}
     name = data.get('name', '').strip()
@@ -7690,6 +7718,7 @@ def delete_tag(tag_id):
 
 
 @app.route('/api/ai/generate-description', methods=['POST'])
+@require_password
 def generate_description():
     data = request.json or {}
     title = data.get('title', '')
@@ -7715,6 +7744,7 @@ def generate_description():
 
 # ATTACHMENT ENDPOINTS
 @app.route('/api/tasks/<int:task_id>/attachments', methods=['POST'])
+@require_password
 def upload_task_file(task_id):
     import uuid
     if 'file' not in request.files:
@@ -7723,7 +7753,7 @@ def upload_task_file(task_id):
     if not file.filename:
         return {'error': 'No file'}, 400
     
-    upload_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+    upload_dir = _ami_dir('uploads')
     os.makedirs(upload_dir, exist_ok=True)
     
     unique_name = f"{uuid.uuid4()}_{file.filename}"
@@ -7741,6 +7771,7 @@ def upload_task_file(task_id):
     return {'success': True, 'id': att_id, 'filename': file.filename}
 
 @app.route('/api/tasks/<int:task_id>/attachments', methods=['GET'])
+@require_password
 def list_task_files(task_id):
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
@@ -7751,6 +7782,8 @@ def list_task_files(task_id):
 
 @app.route('/api/attachments/<int:attachment_id>', methods=['GET'])
 def download_task_file(attachment_id):
+    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != AMI_PASSWORD:
+        return {"error": "Unauthorized"}, 401
     conn = sqlite3.connect(AMI_DB)
     c = conn.cursor()
     c.execute('SELECT filename FROM task_attachments WHERE id = ?', (attachment_id,))
@@ -7760,7 +7793,7 @@ def download_task_file(attachment_id):
     if not result:
         return {'error': 'Not found'}, 404
     
-    upload_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+    upload_dir = _ami_dir('uploads')
     filepath = os.path.join(upload_dir, result[0])
     
     if not os.path.exists(filepath):
@@ -9046,7 +9079,7 @@ def upload_attachment(note_id):
         return {"error": "No file selected"}, 400
     
     import os
-    upload_dir = 'data/attachments'
+    upload_dir = _ami_dir('attachments')
     os.makedirs(upload_dir, exist_ok=True)
     
     filename = f"{note_id}_{datetime.now().timestamp()}_{file.filename}"
@@ -11611,7 +11644,7 @@ def add_medical_document():
         f = request.files.get('file')
         if not f:
             return {"error": "No file"}, 400
-        folder = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'medical')
+        folder = _ami_dir('medical')
         _os.makedirs(folder, exist_ok=True)
         safe = "".join(c for c in (f.filename or 'document')
                        if c.isalnum() or c in '._- ').strip()
@@ -13265,7 +13298,7 @@ def exercise_photo_upload(ex_id):
         f = request.files.get('file')
         if not f:
             return {"error": "No file"}, 400
-        folder = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'exercise_photos')
+        folder = _ami_dir('exercise_photos')
         _os.makedirs(folder, exist_ok=True)
         safe = "".join(c for c in (f.filename or 'photo.jpg') if c.isalnum() or c in '._- ').strip()
         name = str(ex_id) + "_" + _d.now().strftime('%Y%m%d%H%M%S') + "_" + safe
@@ -13466,7 +13499,7 @@ def exercise_clip_upload(ex_id):
         ext = (f.filename or '').lower().rsplit('.', 1)[-1] if '.' in (f.filename or '') else ''
         if ext not in ('gif', 'mp4', 'webm', 'mov'):
             return {"error": "GIF, MP4 or WebM only"}, 400
-        folder = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'exercise_photos')
+        folder = _ami_dir('exercise_photos')
         _os.makedirs(folder, exist_ok=True)
         safe = "".join(c for c in (f.filename or 'clip') if c.isalnum() or c in '._- ').strip()
         name = "clip" + str(ex_id) + "_" + _d.now().strftime('%Y%m%d%H%M%S') + "_" + safe
@@ -17241,9 +17274,9 @@ def project_add_document(pid):
         f = request.files.get('file')
         if not f or not f.filename:
             return {"error": "no file"}, 400
-        _os.makedirs('data/project_docs', exist_ok=True)
+        _os.makedirs(_ami_dir('project_docs'), exist_ok=True)
         safe = _dd.now().strftime('%Y%m%d%H%M%S') + "_" + _os.path.basename(f.filename)[:60]
-        path = _os.path.join('data/project_docs', safe)
+        path = _os.path.join(_ami_dir('project_docs'), safe)
         f.save(path)
         db.execute("""INSERT INTO project_documents (venture_id, title, kind, file_path, notes)
                       VALUES (?, ?, ?, ?, ?)""",
@@ -18176,9 +18209,9 @@ def money_quote_photo(qid):
         f = request.files.get('file') or request.files.get('photo')
         if not f or not f.filename:
             return {"error": "no photo"}, 400
-        _os.makedirs('data/job_photos', exist_ok=True)
+        _os.makedirs(_ami_dir('job_photos'), exist_ok=True)
         safe = _dp.now().strftime('%Y%m%d%H%M%S') + "_" + _os.path.basename(f.filename)[:50]
-        path = _os.path.join('data/job_photos', safe)
+        path = _os.path.join(_ami_dir('job_photos'), safe)
         f.save(path)
         q = db.query("SELECT venture_id FROM job_quotes WHERE id = ?", (qid,))
         db.execute("""INSERT INTO job_photos (quote_id, venture_id, file_path, caption, taken_on)
@@ -20051,10 +20084,10 @@ def ledger_add_receipt(eid):
             return {"error": "no file"}, 400
         if not db.query("SELECT id FROM ledger_entries WHERE id = ?", (eid,)):
             return {"error": "no such line"}, 404
-        _or.makedirs('data/receipts', exist_ok=True)
+        _or.makedirs(_ami_dir('receipts'), exist_ok=True)
         safe = (_dr.now().strftime('%Y%m%d%H%M%S') + "_"
                 + _or.path.basename(f.filename)[:50])
-        path = _or.path.join('data/receipts', safe)
+        path = _or.path.join(_ami_dir('receipts'), safe)
         f.save(path)
         db.execute("""INSERT INTO ledger_receipts (entry_id, file_path, caption)
                       VALUES (?, ?, ?)""",

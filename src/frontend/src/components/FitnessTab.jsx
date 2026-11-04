@@ -44,7 +44,7 @@ const S = {
 /* ---- simple figures, drawn rather than fetched ---- */
 function Figure({ kind, size = 46, exId, hasPhoto, hasClip, clipKind, stamp, onPhoto }) {
   const [broken, setBroken] = useState(false);
-  const v = '?k=charlie&v=' + (stamp || '1');
+  const v = '?k=' + encodeURIComponent(AMI_PASSWORD) + '&v=' + (stamp || '1');
   const box = { width: size, height: size, borderRadius: '8px', objectFit: 'cover',
                 flexShrink: 0, background: '#141414', cursor: onPhoto ? 'pointer' : 'default',
                 display: 'block' };

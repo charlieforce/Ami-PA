@@ -931,10 +931,10 @@ export default function MedicalTab() {
                       {v.documents.map(d => (
                         <div key={d.id} style={{ border: '1px solid #2a2a2a', borderRadius: '8px',
                                                  padding: '6px', width: '92px', textAlign: 'center' }}>
-                          <a href={`${API}/api/medical/documents/${d.id}/view?k=charlie`}
+                          <a href={`${API}/api/medical/documents/${d.id}/view?k=${encodeURIComponent(AMI_PASSWORD)}`}
                              target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
                             {d.is_image ? (
-                              <img src={`${API}/api/medical/documents/${d.id}/view?k=charlie`} alt=""
+                              <img src={`${API}/api/medical/documents/${d.id}/view?k=${encodeURIComponent(AMI_PASSWORD)}`} alt=""
                                    style={{ width: '78px', height: '62px', objectFit: 'cover',
                                             borderRadius: '5px', display: 'block', background: '#222' }} />
                             ) : (
