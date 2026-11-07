@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mic capability test</title>
+<style>
+  :root {
+    --bg: #14161a; --card: #1c1f25; --line: #2b2f38;
+    --fg: #e8eaee; --dim: #8b919e;
+    --ok: #35c489; --bad: #f2616b; --warn: #e0a33a; --accent: #6b8afd;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: max(16px, env(safe-area-inset-left, 0px));
+    padding-block: 20px 48px;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 20px }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px; margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--dim); margin: 0 0 10px; font-weight: 600;
+  }
+  .row {
+    display: flex; gap: 10px; justify-content: space-between;
+    align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0 }
+  .row .k { color: var(--dim); font-size: 13px; min-width: 0 }
+  .row .v {
+    font-variant-numeric: tabular-nums; text-align: right;
+    font-size: 13px; word-break: break-word;
+  }
+  .ok { color: var(--ok) } .bad { color: var(--bad) } .warn { color: var(--warn) }
+  button {
+    width: 100%; padding: 15px; font-size: 16px; font-weight: 600;
+    background: var(--accent); color: #0d1016; border: 0;
+    border-radius: 10px; cursor: pointer;
+  }
+  button[disabled] { opacity: .45 }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); font-weight: 500 }
+  .phase {
+    font-size: 13px; color: var(--dim); text-align: center;
+    margin: 12px 0; min-height: 20px;
+  }
+  .bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 10px }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent) }
+  pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--dim); max-height: 220px; overflow-y: auto;
+  }
+  .verdict { font-size: 14px; line-height: 1.55 }
+  .verdict strong { color: var(--fg) }
+</style>
+</head>
+<body>
+
+<h1>Mic capability test</h1>
+<p class="sub">Can this browser record audio and transcribe live speech from the
+same microphone at the same time?</p>
+
+<div class="card">
+  <h2>Before we start</h2>
+  <div id="pre"></div>
+</div>
+
+<button id="go">Start test — then talk for 20 seconds</button>
+<div class="phase" id="phase">Speak normally once it starts. Any words will do.</div>
+<div class="bar"><i id="prog"></i></div>
+
+<div class="card" id="resCard" hidden>
+  <h2>Result</h2>
+  <div id="res"></div>
+</div>
+
+<div class="card" id="verdictCard" hidden>
+  <h2>What this means</h2>
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<div class="card" id="logCard" hidden>
+  <h2>Log</h2>
+  <pre id="log"></pre>
+</div>
+
+<button class="ghost" id="copy" hidden>Copy the whole report</button>
+
+<script>
+(function () {
+  "use strict";
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var log = [];
+  var E = function (id) { return document.getElementById(id); };
+
+  function say(m) {
+    log.push(new Date().toISOString().slice(11, 23) + "  " + m);
+    E("log").textContent = log.join("\n");
+    E("log").scrollTop = E("log").scrollHeight;
+  }
+
+  function row(host, k, v, cls) {
+    var d = document.createElement("div");
+    d.className = "row";
+    var a = document.createElement("span");
+    a.className = "k"; a.textContent = k;
+    var b = document.createElement("span");
+    b.className = "v " + (cls || ""); b.textContent = v;
+    d.appendChild(a); d.appendChild(b);
+    E(host).appendChild(d);
+    return v;
+  }
+
+  // ---------------------------------------------------------- pre-flight
+  var MIMES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4",
+               "audio/ogg;codecs=opus", "audio/aac"];
+  var mime = "";
+  if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+    for (var i = 0; i < MIMES.length; i++) {
+      if (MediaRecorder.isTypeSupported(MIMES[i])) { mime = MIMES[i]; break; }
+    }
+  }
+
+  var secure = window.isSecureContext;
+  row("pre", "Secure context (HTTPS)", secure ? "yes" : "NO", secure ? "ok" : "bad");
+  row("pre", "navigator.mediaDevices",
+      navigator.mediaDevices ? "yes" : "NO",
+      navigator.mediaDevices ? "ok" : "bad");
+  row("pre", "MediaRecorder",
+      window.MediaRecorder ? "yes" : "NO",
+      window.MediaRecorder ? "ok" : "bad");
+  row("pre", "Audio format", mime || "none supported", mime ? "ok" : "bad");
+  row("pre", "SpeechRecognition",
+      SR ? (window.SpeechRecognition ? "yes (standard)" : "yes (webkit)") : "NO",
+      SR ? "ok" : "bad");
+  row("pre", "IndexedDB", window.indexedDB ? "yes" : "NO",
+      window.indexedDB ? "ok" : "bad");
+  row("pre", "Browser", navigator.userAgent.slice(0, 90));
+
+  if (!secure) {
+    E("phase").innerHTML = '<span class="bad">This page is not on HTTPS, so the ' +
+      'microphone will be refused no matter what the code does. Open the https:// ' +
+      'address, not an IP.</span>';
+    E("go").disabled = true;
+  }
+  if (!navigator.mediaDevices || !window.MediaRecorder) { E("go").disabled = true; }
+
+  // ------------------------------------------------------------- the test
+  var PHASE1 = 5000, TOTAL = 20000, SLICE = 1000;
+  var bytes = [], words = [], finals = [], srErrors = [], srEnds = 0,
+      srRestarts = 0, recState = "", idbNote = "", t0 = 0, rec = null,
+      reco = null, stream = null, srStarted = 0, done = false;
+
+  function totalBytes(from, to) {
+    var n = 0;
+    for (var i = 0; i < bytes.length; i++) {
+      if (bytes[i].t >= from && bytes[i].t < to) { n += bytes[i].n; }
+    }
+    return n;
+  }
+
+  // chunks into IndexedDB, as the real thing will have to
+  function idbStore(blobs) {
+    return new Promise(function (resolve) {
+      if (!window.indexedDB) { return resolve("no IndexedDB"); }
+      var req = indexedDB.open("mictest", 1);
+      req.onupgradeneeded = function (e) {
+        e.target.result.createObjectStore("chunks", { autoIncrement: true });
+      };
+      req.onerror = function () { resolve("open failed"); };
+      req.onsuccess = function (e) {
+        var db = e.target.result;
+        var tx = db.transaction("chunks", "readwrite");
+        var os = tx.objectStore("chunks");
+        for (var i = 0; i < blobs.length; i++) { os.add(blobs[i]); }
+        tx.oncomplete = function () {
+          var tx2 = db.transaction("chunks", "readonly");
+          var cr = tx2.objectStore("chunks").count();
+          cr.onsuccess = function () {
+            var n = cr.result;
+            db.close();
+            try { indexedDB.deleteDatabase("mictest"); } catch (x) {}
+            resolve(n + " chunk(s) written and read back");
+          };
+          cr.onerror = function () { db.close(); resolve("count failed"); };
+        };
+        tx.onerror = function () { db.close(); resolve("write failed"); };
+      };
+    });
+  }
+
+  function startSR() {
+    if (!SR) { return; }
+    try {
+      reco = new SR();
+      reco.continuous = true;
+      reco.interimResults = true;
+      reco.lang = "en-US";
+      reco.onresult = function (ev) {
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          var txt = ev.results[i][0].transcript;
+          if (ev.results[i].isFinal) { finals.push(txt.trim()); say("final: " + txt.trim()); }
+          else { words.push(txt); }
+        }
+      };
+      reco.onerror = function (ev) {
+        srErrors.push(ev.error);
+        say("SpeechRecognition error: " + ev.error);
+      };
+      reco.onend = function () {
+        srEnds++;
+        say("SpeechRecognition ended");
+        if (!done) {
+          srRestarts++;
+          try { reco.start(); say("restarted it"); } catch (x) { say("restart threw: " + x.message); }
+        }
+      };
+      reco.start();
+      srStarted = Date.now();
+      say("SpeechRecognition started");
+    } catch (x) {
+      srErrors.push("start threw: " + x.message);
+      say("SpeechRecognition start threw: " + x.message);
+    }
+  }
+
+  E("go").onclick = async function () {
+    E("go").disabled = true;
+    E("logCard").hidden = false;
+    E("resCard").hidden = true;
+    E("verdictCard").hidden = true;
+    say("asking for the microphone");
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (x) {
+      say("getUserMedia refused: " + x.name + " - " + x.message);
+      E("phase").innerHTML = '<span class="bad">Microphone refused: ' + x.name +
+        '</span>';
+      E("go").disabled = false;
+      return;
+    }
+    say("microphone granted, " + stream.getAudioTracks().length + " track(s)");
+
+    var blobs = [];
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime })
+                 : new MediaRecorder(stream);
+    } catch (x) {
+      say("MediaRecorder threw: " + x.message);
+      E("phase").innerHTML = '<span class="bad">MediaRecorder failed to start</span>';
+      return;
+    }
+    rec.ondataavailable = function (e) {
+      if (e.data && e.data.size) {
+        bytes.push({ t: Date.now() - t0, n: e.data.size });
+        blobs.push(e.data);
+      }
+    };
+    rec.onerror = function (e) { say("MediaRecorder error: " + e.error); };
+
+    t0 = Date.now();
+    rec.start(SLICE);
+    say("MediaRecorder started, alone, for " + (PHASE1 / 1000) + "s");
+    E("phase").textContent = "Recording only — keep talking";
+
+    var tick = setInterval(function () {
+      var p = Math.min(1, (Date.now() - t0) / TOTAL);
+      E("prog").style.width = (p * 100) + "%";
+    }, 100);
+
+    setTimeout(function () {
+      E("phase").textContent = "Now both at once — keep talking";
+      startSR();
+    }, PHASE1);
+
+    setTimeout(async function () {
+      done = true;
+      clearInterval(tick);
+      E("prog").style.width = "100%";
+      try { if (reco) { reco.stop(); } } catch (x) {}
+      try { recState = rec.state; rec.stop(); } catch (x) {}
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      say("stopped everything");
+      E("phase").textContent = "Done";
+
+      idbNote = await idbStore(blobs);
+      say("IndexedDB: " + idbNote);
+
+      // ------------------------------------------------------- report
+      var b1 = totalBytes(0, PHASE1);
+      var b2 = totalBytes(PHASE1, TOTAL + 4000);
+      var r1 = b1 / (PHASE1 / 1000);
+      var r2 = b2 / ((TOTAL - PHASE1) / 1000);
+      var kept = r1 > 0 ? (r2 / r1) : 0;
+
+      E("resCard").hidden = false;
+      E("res").innerHTML = "";
+      row("res", "Audio while recording alone", Math.round(r1) + " bytes/sec",
+          r1 > 0 ? "ok" : "bad");
+      row("res", "Audio while both ran", Math.round(r2) + " bytes/sec",
+          kept > 0.5 ? "ok" : "bad");
+      row("res", "Audio kept flowing",
+          r1 > 0 ? Math.round(kept * 100) + "% of the earlier rate" : "no audio at all",
+          kept > 0.5 ? "ok" : "bad");
+      row("res", "Total audio", (blobs.reduce(function (s, b) { return s + b.size; }, 0) / 1024).toFixed(0) + " KB");
+      row("res", "Chunks received", String(bytes.length), bytes.length > 10 ? "ok" : "warn");
+      row("res", "Live text heard", finals.length + " final, " + words.length + " interim",
+          (finals.length + words.length) > 0 ? "ok" : "bad");
+      row("res", "What it heard", finals.join(" ").slice(0, 160) || "nothing");
+      row("res", "Recognition errors", srErrors.join(", ") || "none",
+          srErrors.length ? "warn" : "ok");
+      row("res", "Recognition stopped by itself", srEnds + " time(s), restarted " + srRestarts,
+          srEnds > 2 ? "warn" : "ok");
+      row("res", "MediaRecorder state at the end", recState || "unknown");
+      row("res", "IndexedDB chunking", idbNote,
+          /written and read back/.test(idbNote) ? "ok" : "bad");
+
+      // ------------------------------------------------------ verdict
+      var heard = (finals.length + words.length) > 0;
+      var audioOK = r1 > 0 && kept > 0.5;
+      var v;
+      if (audioOK && heard) {
+        v = "<strong>Both work on this device.</strong> The audio kept recording at " +
+            "full rate while live transcription ran on the same stream, and the " +
+            "words came through. The dual-path design holds: live text as you " +
+            "speak, accurate transcript afterwards.";
+      } else if (audioOK && !heard) {
+        v = "<strong>Recording works; live transcription does not.</strong> The " +
+            "audio is intact, so a record-then-transcribe flow is safe — but no " +
+            "words were recognised" +
+            (srErrors.length ? " (" + srErrors.join(", ") + ")" : "") +
+            ". Live preview would have to be dropped or done another way.";
+      } else if (!audioOK && heard) {
+        v = "<strong>Live transcription took the microphone.</strong> Recognition " +
+            "worked but the audio " + (r1 > 0 ? "stopped when it started" : "never arrived") +
+            ". On this device the two cannot share a stream, so the accurate pass " +
+            "would have nothing to transcribe. The recording has to win and live " +
+            "preview goes.";
+      } else {
+        v = "<strong>Neither worked.</strong> Check the log — if " +
+            "getUserMedia was refused, grant the microphone and run it again.";
+      }
+      if (srEnds > 2) {
+        v += " Recognition also stopped on its own " + srEnds + " times in 15 " +
+             "seconds, so a long dictation would need restarting continuously — " +
+             "workable, but it drops words at each seam.";
+      }
+      E("verdictCard").hidden = false;
+      E("verdict").innerHTML = v;
+
+      E("copy").hidden = false;
+      E("go").disabled = false;
+      E("go").textContent = "Run it again";
+    }, TOTAL);
+  };
+
+  E("copy").onclick = function () {
+    var out = ["Mic capability test", new Date().toISOString(), "",
+               navigator.userAgent, ""];
+    document.querySelectorAll(".card").forEach(function (c) {
+      if (c.hidden) { return; }
+      out.push("== " + c.querySelector("h2").textContent + " ==");
+      c.querySelectorAll(".row").forEach(function (r) {
+        out.push("  " + r.querySelector(".k").textContent + ": " +
+                 r.querySelector(".v").textContent);
+      });
+      var vd = c.querySelector(".verdict");
+      if (vd) { out.push("  " + vd.textContent); }
+      var pre = c.querySelector("pre");
+      if (pre) { out.push(pre.textContent); }
+      out.push("");
+    });
+    var txt = out.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () {
+        E("copy").textContent = "Copied — paste it into the chat";
+      }, function () { fallback(txt); });
+    } else { fallback(txt); }
+  };
+
+  function fallback(txt) {
+    var ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.style.cssText = "width:100%;height:240px;margin-top:10px;background:#1c1f25;color:#e8eaee;border:1px solid #2b2f38;border-radius:8px;padding:8px";
+    document.body.appendChild(ta);
+    ta.select();
+    E("copy").textContent = "Select the text below and copy it";
+  }
+})();
+</script>
+</body>
+</html>
