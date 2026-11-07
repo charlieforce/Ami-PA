@@ -515,10 +515,10 @@
   border-top: none;
   /* these rules below were dead for months - left off deliberately
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  scrollbar-width: none; */
 }
 
-.mobile-nav::-webkit-scrollbar {
+/* .mobile-nav::-webkit-scrollbar {
   display: none;
 }
 
