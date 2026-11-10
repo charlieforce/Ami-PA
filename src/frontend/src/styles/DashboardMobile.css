@@ -90,7 +90,7 @@
 .mobile-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: 60px;
+  padding-top: 0;   /* the header is sticky (642) and holds its own space */
   padding-bottom: 200px;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
