@@ -20,6 +20,7 @@
  */
 
 import { useState } from 'react';
+import './NoteAudio.css';
 
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
@@ -82,10 +83,10 @@ export default function NoteAudio({ note, onRemoved }) {
       </div>
 
       <audio
+        className="na-audio"
         controls
         preload="none"
         src={src}
-        style={{ width: '100%', display: 'block' }}
         onError={() => setProblem('The recording could not be loaded.')}
       />
 

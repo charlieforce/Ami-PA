@@ -1,0 +1,33 @@
+/* NoteAudio.css - a dark audio player.
+ *
+ * The browser's default <audio> control is a white pill, which against
+ * this app reads as a piece of someone else's interface dropped into
+ * the middle of a note.
+ *
+ * The first version of this file inverted the control's glyphs one at a
+ * time through ::-webkit- pseudo-elements. That worked for play, mute
+ * and the sliders and missed the overflow (⋮) button, which Chrome only
+ * exposes under ::-internal-, and author stylesheets are not allowed to
+ * reach ::-internal- at all. So one glyph stayed dark-on-dark and there
+ * was no way to reach it by that route.
+ *
+ * color-scheme is the mechanism actually intended for this: it asks the
+ * browser to render its own control dark, and every part of it comes
+ * along - including the one that cannot be selected. Fewer rules, no
+ * inversion, and nothing to miss.
+ *
+ * Firefox honours color-scheme too, so its control follows as well,
+ * which the pseudo-element approach never would have.
+ *
+ * Every selector starts with .na-, as with VoiceDictation.css. Nothing
+ * here can reach the rest of the app.
+ */
+
+.na-audio {
+  width: 100%;
+  display: block;
+  border-radius: 8px;
+
+  /* the whole point of this file */
+  color-scheme: dark;
+}
