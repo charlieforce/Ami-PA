@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import NoteAnalysisPanel from '../components/NoteAnalysisPanel';
+import NoteAudio from '../components/NoteAudio';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
@@ -474,6 +475,8 @@ export default function RecentNotesDisplay() {
           <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8', color: '#ccc', marginBottom: '30px', fontSize: '14px' }}>
             {selectedNote.content || selectedNote.preview}
           </p>
+
+          <NoteAudio note={selectedNote} />
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button

@@ -8934,7 +8934,7 @@ def get_notes_list():
     _lim = min(int(request.args.get('limit') or 40), 100)
     _before = request.args.get('before')
     _sql = ("SELECT id, title, substr(COALESCE(content,''),1,160), capture_type, "
-            "created_at, summary, sentiment, priority, linked_projects FROM notes "
+            "created_at, summary, sentiment, priority, linked_projects, voice_url FROM notes "
             "WHERE COALESCE(deleted_at,'') = '' ")
     _args = []
     if _before:
@@ -8949,7 +8949,7 @@ def get_notes_list():
     
     notes = []
     for row in rows:
-        notes.append({"id": row[0], "title": row[1], "preview": row[2][:100] + "..." if len(row[2]) > 100 else row[2], "capture_type": row[3], "created_at": row[4], "summary": json.loads(row[5]) if row[5] else None, "sentiment": row[6], "priority": row[7], "linked_projects": json.loads(row[8]) if row[8] else []})
+        notes.append({"id": row[0], "title": row[1], "preview": row[2][:100] + "..." if len(row[2]) > 100 else row[2], "capture_type": row[3], "created_at": row[4], "summary": json.loads(row[5]) if row[5] else None, "sentiment": row[6], "priority": row[7], "linked_projects": json.loads(row[8]) if row[8] else [], "voice_url": row[9]})
     
     return {"notes": notes, "status": "success"}, 200
 
@@ -8984,6 +8984,7 @@ def get_single_note(note_id):
         "capture_type": row[3],
         "created_at": row[4],
         "updated_at": row[5],
+        "voice_url": row[6],
         "analysis": {
             "summary": safe_load(row[7]),
             "tasks": safe_load(row[8]) or [],
