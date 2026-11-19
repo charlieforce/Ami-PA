@@ -1,9 +1,35 @@
-import { useState, useEffect, useRef } from 'react';
-import { startVoiceInput } from '../../services/VoiceService';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import VoiceDictation, { discardSession } from '../../components/VoiceDictation';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
 
 import '../NoteFormStyles.css';
+
+/* Dictation rewritten 19 November.  What changed and why:
+ *
+ *   startVoiceInput (VoiceService) gave live text and kept NO audio, so a
+ *   misheard name could never be checked against anything.  Now the audio
+ *   is recorded alongside, chunked to IndexedDB so a backgrounded phone
+ *   cannot lose it, and sent to /api/ami/transcribe for an accurate pass
+ *   that replaces the rough one.  If that fails the live text stays.
+ *
+ *   voiceStartContentRef captured `content` when the mic opened and then
+ *   wrote startContent + finalText - so ANYTHING TYPED WHILE DICTATING
+ *   WAS DISCARDED.  Now functional updates, and the transcript replaces
+ *   only its own insertion, and only if it is still there untouched.
+ *
+ *   The final-result callback set isListening(false), making dictation
+ *   one-shot: pause for breath and it ended.  The new component restarts
+ *   recognition itself and keeps recording throughout.
+ *
+ *   value={content + tempInterimText} put the interim guess into the
+ *   textarea's value while onChange wrote only to content.  The interim
+ *   now lives in the dictation panel, so the box holds only real text.
+ *
+ * The upload helper below is deliberately local for now.  It is wanted in
+ * BrainstormForm and QuickNotesForm too, and gets lifted into one shared
+ * place when those are done - rather than becoming a fourth copy first.
+ */
 
 export default function MeetingNotesForm({ onSave, onAnalysed }) {
   const [title, setTitle] = useState('');
@@ -35,21 +61,17 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
   const [saving, setSaving] = useState(false);
   const [checkingGrammar, setCheckingGrammar] = useState(false);
   const [transforming, setTransforming] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [tempInterimText, setTempInterimText] = useState('');
+  const [dictationStatus, setDictationStatus] = useState('');
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
-  const voiceRecognitionRef = useRef(null);
-  const voiceStartContentRef = useRef('');
-
-
+  const insertedRef = useRef('');
 
   useEffect(() => {
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
       setVoices(availableVoices);
-      const americanFemale = availableVoices.findIndex(v => 
-        (v.lang.includes('en-US')) && 
+      const americanFemale = availableVoices.findIndex(v =>
+        (v.lang.includes('en-US')) &&
         (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('woman'))
       );
       if (americanFemale !== -1) setSelectedVoiceIndex(americanFemale);
@@ -58,39 +80,73 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
     loadVoices();
   }, []);
 
-  const handleVoiceInput = () => {
-    if (isListening) {
-      handleStopVoice();
+  /* ---------------------------------------------------------- dictation */
+
+  const onDictationComplete = useCallback(async ({ session, text: live, interim, blob }) => {
+    const draft = [live, interim].filter(Boolean).join(' ').trim();
+
+    /* The note has to be usable before the transcript arrives, so the live
+     * text goes in immediately. */
+    if (draft) {
+      insertedRef.current = draft;
+      setContent(prev => (prev ? prev + ' ' : '') + draft);
+    }
+
+    if (!blob) {
+      setDictationStatus(draft ? '' : 'Nothing was recorded.');
       return;
     }
-    setIsListening(true);
-    setTempInterimText('');
-    voiceStartContentRef.current = content;
-    
-    const result = startVoiceInput(
-      (finalText) => {
-        setContent(voiceStartContentRef.current + (voiceStartContentRef.current ? ' ' : '') + finalText);
-        setTempInterimText('');
-        setIsListening(false);
-      },
-      (error) => {
-        console.error('Voice error:', error);
-        setTempInterimText('');
-        setIsListening(false);
-      },
-      (interimText) => {
-        setTempInterimText(interimText);
-      }
-    );
-    voiceRecognitionRef.current = result;
-  };
 
-  const handleStopVoice = () => {
-    setIsListening(false);
-    if (voiceRecognitionRef.current) {
-      voiceRecognitionRef.current.stop();
+    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+
+    try {
+      const formData = new FormData();
+      /* Safari records mp4, not webm. The old code hardcoded webm, which
+       * mislabels the file for whatever reads it next. */
+      const ext = (blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      formData.append('audio', blob, `meeting.${ext}`);
+
+      const response = await fetch(API + '/api/ami/transcribe', {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setDictationStatus(draft
+          ? `Kept the live text — transcription failed (${response.status}).`
+          : `Transcription failed (${response.status}).`);
+        return;
+      }
+
+      const data = await response.json();
+      const accurate = (data.transcript || '').trim();
+      if (!accurate) {
+        setDictationStatus(draft ? 'Kept the live text.' : 'Nothing was heard.');
+        return;
+      }
+
+      const mine = insertedRef.current;
+      setContent(prev =>
+        (mine && prev.includes(mine))
+          ? prev.replace(mine, accurate)
+          : (prev ? prev + ' ' : '') + accurate
+      );
+      insertedRef.current = '';
+      setDictationStatus('');
+
+      /* Only now are the local chunks redundant. Until this point they are
+       * the only copy that survives a crash. */
+      discardSession(session);
+    } catch (err) {
+      console.error(err);
+      setDictationStatus(draft
+        ? 'Kept the live text — could not reach Ami.'
+        : 'Could not reach Ami to transcribe that.');
     }
-  };
+  }, []);
+
+  /* ------------------------------------------------------------ speech */
 
   const speakText = () => {
     if (speaking) {
@@ -139,8 +195,6 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
       setCheckingGrammar(false);
     }
   };
-
-  
 
   const handleTextTransform = async (transformType, textToTransform) => {
     if (!textToTransform.trim()) {
@@ -291,6 +345,8 @@ const handleSave = async () => {
         setMeetingTime('');
         setDuration('');
         setNextMeeting('');
+        setDictationStatus('');
+        insertedRef.current = '';
         onSave?.();
       } else {
         alert('Error saving note');
@@ -330,7 +386,7 @@ const handleSave = async () => {
         </div>
       )}
       <h2>📝 Meeting Notes</h2>
-      
+
       <input
         type="text"
         placeholder="Meeting Title"
@@ -339,9 +395,22 @@ const handleSave = async () => {
         className="form-input"
       />
 
+      <div style={{ background: '#17171f', border: '1px solid #2a2a38',
+                    borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+        <VoiceDictation
+          onComplete={onDictationComplete}
+          onError={(e) => setDictationStatus(e.message)}
+        />
+        {dictationStatus && (
+          <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#9aa0b4' }}>
+            {dictationStatus}
+          </p>
+        )}
+      </div>
+
       <textarea
         placeholder="Meeting notes..."
-        value={content + tempInterimText}
+        value={content}
         onChange={(e) => setContent(e.target.value)}
         className="form-textarea"
         spellCheck="true"
@@ -356,7 +425,7 @@ const handleSave = async () => {
           className="form-textarea"
           style={{ minHeight: '120px' }}
         />
-        <button onClick={() => { if (transcript.trim()) { setContent(content + '\n\n---TRANSCRIPT---\n' + transcript); setTranscript(''); } }} style={{ marginTop: '8px', padding: '8px 12px', background: '#666', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}>✅ Add Transcript</button>
+        <button onClick={() => { if (transcript.trim()) { setContent(prev => prev + '\n\n---TRANSCRIPT---\n' + transcript); setTranscript(''); } }} style={{ marginTop: '8px', padding: '8px 12px', background: '#666', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}>✅ Add Transcript</button>
       </div>
 
       <div className="meeting-fields">
@@ -405,7 +474,6 @@ const handleSave = async () => {
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <button onClick={speakText} style={{ padding: '10px 14px', background: speaking ? '#10b981' : '#10b981', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{speaking ? '⏹️' : '🔊'}</button>
-        <button onClick={handleVoiceInput} style={{ padding: '10px 14px', background: isListening ? '#ef4444' : '#667eea', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>{isListening ? '⏹️ STOP' : '🎤'}</button>
         <button onClick={() => handleGrammarCheck(content)} disabled={checkingGrammar} style={{ padding: '10px 14px', background: checkingGrammar ? '#888' : '#10b981', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{checkingGrammar ? '⏳ Checking...' : '✅ Grammar'}</button>
         <button onClick={() => handleTextTransform('expand', content)} disabled={transforming} style={{ padding: '10px 14px', background: transforming ? '#888' : '#3b82f6', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{transforming ? '⏳ Expanding...' : '📝 Expand'}</button>
         <button onClick={() => handleTextTransform('professional', content)} disabled={transforming} style={{ padding: '10px 14px', background: transforming ? '#888' : '#3b82f6', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{transforming ? '⏳ Processing...' : '💼 Professional'}</button>

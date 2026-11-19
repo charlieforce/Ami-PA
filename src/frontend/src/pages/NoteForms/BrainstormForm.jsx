@@ -1,8 +1,25 @@
-import { useState, useEffect, useRef } from 'react';
-import { startVoiceInput } from '../../services/VoiceService';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import VoiceDictation, { discardSession } from '../../components/VoiceDictation';
 import '../NoteFormStyles.css';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
+
+/* 19 November: dictation moved from startVoiceInput to VoiceDictation -
+ * live text as before, plus the audio kept and an accurate transcript
+ * pass.  See MeetingNotesForm for the full account of what that fixes.
+ *
+ * AND a real crash, fixed here: handleGrammarCheck and handleTextTransform
+ * both called setStory(), which does not exist in this file - there is no
+ * `story` state.  Pressing Grammar or any transform in Brainstorm threw a
+ * ReferenceError and did nothing.  They set `challenge`, which is the
+ * text those buttons were operating on all along.
+ *
+ * The upload block below is the same one in MeetingNotesForm.  Three
+ * copies is how this codebase ended up with four SpeechRecognition
+ * implementations, so it comes out into one shared place after the
+ * deploy - deliberately not today, with Monday this close and Meeting
+ * already working.
+ */
 
 export default function BrainstormForm({ onSave, onAnalysed }) {
   const [title, setTitle] = useState('');
@@ -12,14 +29,10 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
   const [saving, setSaving] = useState(false);
   const [checkingGrammar, setCheckingGrammar] = useState(false);
   const [transforming, setTransforming] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [tempInterimText, setTempInterimText] = useState('');
+  const [dictationStatus, setDictationStatus] = useState('');
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
-  const voiceRecognitionRef = useRef(null);
-  const voiceStartContentRef = useRef('');
-
-
+  const insertedRef = useRef('');
 
   useEffect(() => {
     const loadVoices = () => {
@@ -32,29 +45,66 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
     loadVoices();
   }, []);
 
-  const handleVoiceInput = () => {
-    if (isListening) { handleStopVoice(); return; }
-    setIsListening(true);
-    setTempInterimText('');
-    voiceStartContentRef.current = challenge;
-    const result = startVoiceInput((finalText) => {
-      setChallenge(voiceStartContentRef.current + (voiceStartContentRef.current ? ' ' : '') + finalText);
-      setTempInterimText('');
-      setIsListening(false);
-    }, (error) => {
-      console.error('Voice error:', error);
-      setTempInterimText('');
-      setIsListening(false);
-    }, (interimText) => {
-      setTempInterimText(interimText);
-    });
-    voiceRecognitionRef.current = result;
-  };
+  /* ---------------------------------------------------------- dictation */
 
-  const handleStopVoice = () => {
-    setIsListening(false);
-    if (voiceRecognitionRef.current) voiceRecognitionRef.current.stop();
-  };
+  const onDictationComplete = useCallback(async ({ session, text: live, interim, blob }) => {
+    const draft = [live, interim].filter(Boolean).join(' ').trim();
+
+    if (draft) {
+      insertedRef.current = draft;
+      setChallenge(prev => (prev ? prev + ' ' : '') + draft);
+    }
+
+    if (!blob) {
+      setDictationStatus(draft ? '' : 'Nothing was recorded.');
+      return;
+    }
+
+    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+
+    try {
+      const formData = new FormData();
+      const ext = (blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      formData.append('audio', blob, `brainstorm.${ext}`);
+
+      const response = await fetch(API + '/api/ami/transcribe', {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setDictationStatus(draft
+          ? `Kept the live text — transcription failed (${response.status}).`
+          : `Transcription failed (${response.status}).`);
+        return;
+      }
+
+      const data = await response.json();
+      const accurate = (data.transcript || '').trim();
+      if (!accurate) {
+        setDictationStatus(draft ? 'Kept the live text.' : 'Nothing was heard.');
+        return;
+      }
+
+      const mine = insertedRef.current;
+      setChallenge(prev =>
+        (mine && prev.includes(mine))
+          ? prev.replace(mine, accurate)
+          : (prev ? prev + ' ' : '') + accurate
+      );
+      insertedRef.current = '';
+      setDictationStatus('');
+      discardSession(session);
+    } catch (err) {
+      console.error(err);
+      setDictationStatus(draft
+        ? 'Kept the live text — could not reach Ami.'
+        : 'Could not reach Ami to transcribe that.');
+    }
+  }, []);
+
+  /* ------------------------------------------------------------ speech */
 
   const speakText = () => {
     if (speaking) {
@@ -96,7 +146,6 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
     setIdeas(ideas.filter((_, idx) => idx !== i));
   };
 
-  
   const handleGrammarCheck = async (textToCheck) => {
     if (!textToCheck.trim()) {
       alert('Please write something first!');
@@ -111,7 +160,7 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
       });
       const data = await response.json();
       if (response.ok) {
-        setStory(data.corrected);
+        setChallenge(data.corrected);     // was setStory - undefined, threw
       }
     } catch (err) {
       console.error(err);
@@ -131,7 +180,7 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
       });
       const data = await response.json();
       if (response.ok) {
-        setStory(data.transformed);
+        setChallenge(data.transformed);   // was setStory - undefined, threw
       }
     } catch (err) {
       console.error(err);
@@ -206,6 +255,8 @@ const handleSave = async () => {
         setTitle('');
         setChallenge('');
         setIdeas(['']);
+        setDictationStatus('');
+        insertedRef.current = '';
         onSave?.();
       }
     } catch (err) {
@@ -217,18 +268,31 @@ const handleSave = async () => {
 
   return (
     <div className="brainstorm-clean">
-      <input 
-        type="text" 
-        placeholder="Brainstorm Title" 
-        value={title} 
-        onChange={(e) => setTitle(e.target.value)} 
+      <input
+        type="text"
+        placeholder="Brainstorm Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
         className="brain-title"
       />
-      
-      <textarea 
-        placeholder="What's the challenge?" 
-        value={challenge + tempInterimText} 
-        onChange={(e) => setChallenge(e.target.value)} 
+
+      <div style={{ background: '#17171f', border: '1px solid #2a2a38',
+                    borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+        <VoiceDictation
+          onComplete={onDictationComplete}
+          onError={(e) => setDictationStatus(e.message)}
+        />
+        {dictationStatus && (
+          <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#9aa0b4' }}>
+            {dictationStatus}
+          </p>
+        )}
+      </div>
+
+      <textarea
+        placeholder="What's the challenge?"
+        value={challenge}
+        onChange={(e) => setChallenge(e.target.value)}
         className="brain-textarea"
       />
 
@@ -252,7 +316,6 @@ const handleSave = async () => {
       <button onClick={addIdea} className="add-btn">+ Add Idea</button>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <button onClick={speakText} style={{ padding: '10px 14px', background: speaking ? '#10b981' : '#10b981', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{speaking ? '⏹️' : '🔊'}</button>
-        <button onClick={handleVoiceInput} style={{ padding: '10px 14px', background: isListening ? '#ef4444' : '#667eea', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>{isListening ? '⏹️ STOP' : '🎤'}</button>
         <button onClick={() => handleGrammarCheck(challenge)} disabled={checkingGrammar} style={{ padding: '10px 14px', background: checkingGrammar ? '#888' : '#10b981', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}>{checkingGrammar ? '⏳ Checking...' : '✅ Grammar'}</button>
         <button onClick={() => handleTextTransform('expand', challenge)} disabled={transforming} style={{ padding: '10px 14px', background: transforming ? '#888' : '#3b82f6', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}>📝 Expand</button>
         <button onClick={() => handleTextTransform('professional', challenge)} disabled={transforming} style={{ padding: '10px 14px', background: transforming ? '#888' : '#3b82f6', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}>💼 Professional</button>

@@ -1,8 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
-import { startVoiceInput } from '../../services/VoiceService';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import VoiceDictation, { discardSession } from '../../components/VoiceDictation';
 import '../NoteFormStyles.css';
 const AMI_PASSWORD = import.meta.env.VITE_API_PASSWORD || 'charlie';
 const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : ''));
+
+/* 19 November: dictation moved from startVoiceInput to VoiceDictation.
+ * Live text as before, plus the audio kept and an accurate transcript
+ * pass; and typing during dictation is no longer discarded.  See
+ * MeetingNotesForm for the full account.
+ *
+ * Quick Notes is the one most likely to be used one-handed walking
+ * somewhere, which is exactly the case where a backgrounded tab used to
+ * lose everything - so the IndexedDB chunking matters most here.
+ */
 
 export default function QuickNotesForm({ onSave }) {
   const [notes, setNotes] = useState([]);
@@ -10,13 +20,11 @@ export default function QuickNotesForm({ onSave }) {
   const [newContent, setNewContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [wentTo, setWentTo] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [tempInterimText, setTempInterimText] = useState('');
+  const [dictationStatus, setDictationStatus] = useState('');
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   const [speaking, setSpeaking] = useState(false);
-  const voiceRecognitionRef = useRef(null);
-  const voiceStartContentRef = useRef('');
+  const insertedRef = useRef('');
 
   useEffect(() => {
     fetchQuickNotes();
@@ -74,6 +82,8 @@ export default function QuickNotesForm({ onSave }) {
 
         setNewTitle('');
         setNewContent('');
+        setDictationStatus('');
+        insertedRef.current = '';
         fetchQuickNotes();
         onSave?.();
       }
@@ -107,7 +117,6 @@ export default function QuickNotesForm({ onSave }) {
 
   const charCount = newContent.length;
 
-
   useEffect(() => {
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
@@ -119,29 +128,64 @@ export default function QuickNotesForm({ onSave }) {
     loadVoices();
   }, []);
 
-  const handleVoiceInput = () => {
-    if (isListening) { handleStopVoice(); return; }
-    setIsListening(true);
-    setTempInterimText('');
-    voiceStartContentRef.current = newContent;
-    const result = startVoiceInput((finalText) => {
-      setNewContent(voiceStartContentRef.current + (voiceStartContentRef.current ? ' ' : '') + finalText);
-      setTempInterimText('');
-      setIsListening(false);
-    }, (error) => {
-      console.error('Voice error:', error);
-      setTempInterimText('');
-      setIsListening(false);
-    }, (interimText) => {
-      setTempInterimText(interimText);
-    });
-    voiceRecognitionRef.current = result;
-  };
+  /* ---------------------------------------------------------- dictation */
 
-  const handleStopVoice = () => {
-    setIsListening(false);
-    if (voiceRecognitionRef.current) voiceRecognitionRef.current.stop();
-  };
+  const onDictationComplete = useCallback(async ({ session, text: live, interim, blob }) => {
+    const draft = [live, interim].filter(Boolean).join(' ').trim();
+
+    if (draft) {
+      insertedRef.current = draft;
+      setNewContent(prev => (prev ? prev + ' ' : '') + draft);
+    }
+
+    if (!blob) {
+      setDictationStatus(draft ? '' : 'Nothing was recorded.');
+      return;
+    }
+
+    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+
+    try {
+      const formData = new FormData();
+      const ext = (blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      formData.append('audio', blob, `quicknote.${ext}`);
+
+      const response = await fetch(API + '/api/ami/transcribe', {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setDictationStatus(draft
+          ? `Kept the live text — transcription failed (${response.status}).`
+          : `Transcription failed (${response.status}).`);
+        return;
+      }
+
+      const data = await response.json();
+      const accurate = (data.transcript || '').trim();
+      if (!accurate) {
+        setDictationStatus(draft ? 'Kept the live text.' : 'Nothing was heard.');
+        return;
+      }
+
+      const mine = insertedRef.current;
+      setNewContent(prev =>
+        (mine && prev.includes(mine))
+          ? prev.replace(mine, accurate)
+          : (prev ? prev + ' ' : '') + accurate
+      );
+      insertedRef.current = '';
+      setDictationStatus('');
+      discardSession(session);
+    } catch (err) {
+      console.error(err);
+      setDictationStatus(draft
+        ? 'Kept the live text — could not reach Ami.'
+        : 'Could not reach Ami to transcribe that.');
+    }
+  }, []);
 
   const speakText = () => {
     if (speaking) {
@@ -174,7 +218,7 @@ export default function QuickNotesForm({ onSave }) {
         </div>
       )}
       <h2>📌 Quick Notes</h2>
-      
+
       <div className="create-note-simple">
         <input
           type="text"
@@ -183,10 +227,23 @@ export default function QuickNotesForm({ onSave }) {
           onChange={(e) => setNewTitle(e.target.value)}
           className="quick-title"
         />
-        
+
+        <div style={{ background: '#17171f', border: '1px solid #2a2a38',
+                      borderRadius: '10px', padding: '10px 12px', marginBottom: '10px' }}>
+          <VoiceDictation
+            onComplete={onDictationComplete}
+            onError={(e) => setDictationStatus(e.message)}
+          />
+          {dictationStatus && (
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#9aa0b4' }}>
+              {dictationStatus}
+            </p>
+          )}
+        </div>
+
         <textarea
           placeholder="Your quick note..."
-          value={newContent + tempInterimText}
+          value={newContent}
           onChange={(e) => setNewContent(e.target.value)}
           className="quick-textarea"
         />
@@ -195,7 +252,6 @@ export default function QuickNotesForm({ onSave }) {
           <span>{charCount} characters</span>
         </div>
 
-        <button onClick={handleVoiceInput} style={{ padding: '10px 14px', background: isListening ? '#ef4444' : '#667eea', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px', fontWeight: 'bold' }}>{isListening ? '⏹️ STOP' : '🎤'}</button>
         <button onClick={speakText} style={{ padding: '10px 14px', background: speaking ? '#667eea' : '#10b981', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '12px' }}>{speaking ? '⏹️' : '🔊'}</button>
         <button onClick={createNote} disabled={loading} className="create-btn">
           {loading ? '⏳' : '💾'} Save Note
