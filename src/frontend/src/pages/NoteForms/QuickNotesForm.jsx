@@ -25,10 +25,36 @@ export default function QuickNotesForm({ onSave }) {
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   const [speaking, setSpeaking] = useState(false);
   const insertedRef = useRef('');
+  /* The recording waits here until the note exists and has an id. */
+  const pendingAudioRef = useRef(null);
 
   useEffect(() => {
     fetchQuickNotes();
   }, []);
+
+  const uploadVoice = async (noteId) => {
+    const pending = pendingAudioRef.current;
+    if (!pending || !noteId) return;
+    try {
+      const fd = new FormData();
+      const ext = (pending.blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      fd.append('audio', pending.blob, `note.${ext}`);
+      const r = await fetch(`${API}/api/notes/${noteId}/voice`, {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: fd,
+      });
+      if (r.ok) {
+        discardSession(pending.session);
+        pendingAudioRef.current = null;
+      } else {
+        setDictationStatus(`Note saved — the recording could not be kept (${r.status}).`);
+      }
+    } catch (e) {
+      console.error(e);
+      setDictationStatus('Note saved — the recording could not be kept.');
+    }
+  };
 
   const fetchQuickNotes = async () => {
     try {
@@ -67,6 +93,10 @@ export default function QuickNotesForm({ onSave }) {
       });
 
       if (response.ok) {
+        /* createNote never read the id of the note it had just made, so
+         * there was nothing to attach the audio to. */
+        const saved = await response.json().catch(() => ({}));
+        await uploadVoice(saved.id || saved.note_id);
         // put it where it belongs - a reminder, a task, a birthday, or
         // something she simply knows. the note is kept either way.
         try {
@@ -143,7 +173,14 @@ export default function QuickNotesForm({ onSave }) {
       return;
     }
 
-    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+    /* Held BEFORE transcription is attempted: the audio is kept whether or
+     * not Gemini can read it. */
+    const hadOne = !!pendingAudioRef.current;
+    pendingAudioRef.current = { session, blob };
+
+    setDictationStatus(hadOne
+      ? 'Tidying up… (this replaces the earlier recording)'
+      : (draft ? 'Tidying up the transcript…' : 'Transcribing…'));
 
     try {
       const formData = new FormData();
@@ -178,7 +215,7 @@ export default function QuickNotesForm({ onSave }) {
       );
       insertedRef.current = '';
       setDictationStatus('');
-      discardSession(session);
+      /* Chunks stay until the audio is uploaded against a saved note. */
     } catch (err) {
       console.error(err);
       setDictationStatus(draft

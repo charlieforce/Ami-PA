@@ -9064,6 +9064,148 @@ def delete_single_note(note_id):
 
 
 
+# ---- _AMI_VOICE_STORE_1119 -------------------------------------------
+# Keeping the recording, not just the words. A transcript can be redone
+# from audio you still have; audio you did not save is gone. Modelled on
+# exercise_photo_upload (store) and exercise_clip (serve).
+
+_VOICE_MAX = 60 * 1024 * 1024   # deliberately larger than transcribe's 18MB:
+                                # a meeting too long for Gemini is still worth
+                                # keeping. ~5 hours at the 24 kbps we record.
+
+_VOICE_EXT = {
+    'audio/webm': '.webm', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a',
+    'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/x-m4a': '.m4a',
+}
+
+
+def _voice_ext(mime, filename):
+    """An extension we chose, never one the browser sent us."""
+    base = (mime or '').split(';')[0].strip().lower()
+    if base in _VOICE_EXT:
+        return _VOICE_EXT[base]
+    low = (filename or '').lower()
+    for e in ('.webm', '.ogg', '.m4a', '.mp3', '.wav'):
+        if low.endswith(e):
+            return e
+    return '.webm'
+
+
+def _voice_path(stored):
+    """Where a recording actually is, from what the row holds.  _AMI_VOICE_PORTABLE_1119
+
+    New rows hold a bare filename and are resolved against _ami_dir, so
+    they are correct on this machine and on the volume.  Rows written
+    before this change hold a full path; those are honoured as-is so
+    nothing already saved stops working.
+    """
+    import os as _ovp
+    s = (stored or '').strip()
+    if not s:
+        return None
+    if _ovp.path.isabs(s) or _ovp.sep in s:
+        return s
+    return _ovp.path.join(_ami_dir('voice'), s)
+
+
+@app.post("/api/notes/<int:note_id>/voice")
+@require_password
+def note_voice_store(note_id):
+    """Attach a recording to a note. The note is saved first and this
+    follows, so an abandoned dictation never leaves a file behind."""
+    try:
+        import os as _os
+        from datetime import datetime as _d
+
+        row = db.query("SELECT id, voice_url FROM notes WHERE id = ?", (note_id,))
+        if not row:
+            return {"error": "no such note"}, 404
+
+        f = request.files.get('audio') or request.files.get('file')
+        if not f:
+            return {"error": "No file"}, 400
+
+        raw = f.read()
+        if not raw:
+            return {"error": "empty recording"}, 400
+        if len(raw) > _VOICE_MAX:
+            return {"error": "that recording is too large to keep"}, 400
+
+        folder = _ami_dir('voice')
+        _os.makedirs(folder, exist_ok=True)
+        name = "%d_%s%s" % (note_id,
+                            _d.now().strftime('%Y%m%d%H%M%S'),
+                            _voice_ext(f.mimetype, f.filename))
+        path = _os.path.join(folder, name)
+        with open(path, 'wb') as _out:
+            _out.write(raw)
+
+        old = (row[0].get('voice_url') or '').strip()
+        # _AMI_VOICE_PORTABLE_1119: the FILENAME, not the path. _ami_dir('voice')
+        # is src/data/voice here and /data/voice on the volume, so a full
+        # path is a row that only resolves on the machine that wrote it.
+        db.execute("UPDATE notes SET voice_url = ?, updated_at = ? WHERE id = ?",
+                   (name, _d.now().isoformat(), note_id))
+
+        # replace rather than accumulate, as exercise_photo_upload does
+        if old and old != path:
+            try:
+                _os.remove(old)
+            except Exception:
+                pass
+
+        return {"status": "success", "bytes": len(raw)}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.get("/api/notes/<int:note_id>/voice")
+def note_voice_play(note_id):
+    # an <audio> tag cannot send a header, so the password comes in the
+    # address here - the same bargain the medical documents already make
+    import os as _osv
+    if (request.args.get('k') or request.headers.get('X-Ami-Password')) != AMI_PASSWORD:
+        return {"error": "no"}, 401
+    try:
+        from flask import send_file
+        r = db.query("SELECT voice_url FROM notes WHERE id = ?", (note_id,))
+        if not r or not (r[0].get('voice_url') or '').strip():
+            return {"error": "none"}, 404
+        p = _voice_path(r[0]['voice_url'])   # _AMI_VOICE_PORTABLE_1119
+        if not p or not _osv.path.exists(p):
+            # the row outlived the file: a deploy before the volume existed,
+            # or a cleared recording. Say so plainly rather than 500.
+            return {"error": "the recording is gone"}, 404
+        return send_file(p, conditional=True)
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+@app.delete("/api/notes/<int:note_id>/voice")
+@require_password
+def note_voice_delete(note_id):
+    """Drop the audio, keep the note. This is what the six-month review
+    will call: the words and the summary always survive."""
+    try:
+        import os as _os
+        r = db.query("SELECT voice_url FROM notes WHERE id = ?", (note_id,))
+        if not r:
+            return {"error": "no such note"}, 404
+        p = _voice_path((r[0].get('voice_url') or '').strip())  # _AMI_VOICE_PORTABLE_1119
+        db.execute("UPDATE notes SET voice_url = NULL WHERE id = ?", (note_id,))
+        if p:
+            try:
+                _os.remove(p)
+            except Exception:
+                pass
+        return {"status": "success"}
+    except Exception as e:
+        return {"error": str(e)}, 400
+
+
+# ---- end _AMI_VOICE_STORE_1119 ---------------------------------------
+
+
 @app.route('/api/notes/<int:note_id>/attachments', methods=['POST'])
 def upload_attachment(note_id):
     """Upload attachment to note"""
@@ -9665,7 +9807,16 @@ def search_notes():
         sql += ' AND capture_type = ?'
         params.append(capture_type)
     
-    sql += f' ORDER BY {sort_by} {order}'
+    # {sort_by} and {order} came straight from the query string. SQLite
+    # will not run a second statement here, so this was never a DROP
+    # TABLE - but ORDER BY accepts expressions, which is enough for an
+    # error oracle. An allowlist costs nothing.  _AMI_VOICE_STORE_1119
+    _SORTABLE = {'created_at', 'updated_at', 'title', 'capture_type',
+                 'priority', 'id'}
+    if sort_by not in _SORTABLE:
+        sort_by = 'created_at'
+    order = 'ASC' if str(order).upper() == 'ASC' else 'DESC'
+    sql += ' ORDER BY ' + sort_by + ' ' + order
     
     c.execute(sql, params)
     rows = c.fetchall()

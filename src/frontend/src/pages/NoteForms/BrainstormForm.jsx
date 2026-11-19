@@ -33,6 +33,10 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   const insertedRef = useRef('');
+  /* The recording waits here until the note exists and has an id.
+   * Uploading sooner would leave an orphaned file on the volume for every
+   * dictation that was started and abandoned. */
+  const pendingAudioRef = useRef(null);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -60,7 +64,14 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
       return;
     }
 
-    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+    /* Held BEFORE transcription is attempted: the audio is kept whether or
+     * not Gemini can read it. */
+    const hadOne = !!pendingAudioRef.current;
+    pendingAudioRef.current = { session, blob };
+
+    setDictationStatus(hadOne
+      ? 'Tidying up… (this replaces the earlier recording)'
+      : (draft ? 'Tidying up the transcript…' : 'Transcribing…'));
 
     try {
       const formData = new FormData();
@@ -95,7 +106,7 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
       );
       insertedRef.current = '';
       setDictationStatus('');
-      discardSession(session);
+      /* Chunks stay until the audio is uploaded against a saved note. */
     } catch (err) {
       console.error(err);
       setDictationStatus(draft
@@ -209,6 +220,30 @@ export default function BrainstormForm({ onSave, onAnalysed }) {
     }
   };
 
+  const uploadVoice = async (noteId) => {
+    const pending = pendingAudioRef.current;
+    if (!pending || !noteId) return;
+    try {
+      const fd = new FormData();
+      const ext = (pending.blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      fd.append('audio', pending.blob, `note.${ext}`);
+      const r = await fetch(`${API}/api/notes/${noteId}/voice`, {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: fd,
+      });
+      if (r.ok) {
+        discardSession(pending.session);
+        pendingAudioRef.current = null;
+      } else {
+        setDictationStatus(`Note saved — the recording could not be kept (${r.status}).`);
+      }
+    } catch (e) {
+      console.error(e);
+      setDictationStatus('Note saved — the recording could not be kept.');
+    }
+  };
+
 const handleSave = async () => {
     if (!title.trim() || !challenge.trim()) {
       alert('Need title and challenge!');
@@ -252,6 +287,7 @@ const handleSave = async () => {
         } catch (e) {
           console.error('Analysis failed:', e);
         }
+        await uploadVoice(newId);
         setTitle('');
         setChallenge('');
         setIdeas(['']);

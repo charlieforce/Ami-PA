@@ -65,6 +65,10 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   const insertedRef = useRef('');
+  /* The recording waits here until the note exists and has an id.
+   * Uploading sooner would leave an orphaned file on the volume for every
+   * dictation that was started and abandoned. */
+  const pendingAudioRef = useRef(null);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -97,7 +101,15 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
       return;
     }
 
-    setDictationStatus(draft ? 'Tidying up the transcript…' : 'Transcribing…');
+    /* Held BEFORE transcription is attempted, deliberately: the audio is
+     * kept whether or not Gemini can read it. A meeting too long to
+     * transcribe is still worth having. */
+    const hadOne = !!pendingAudioRef.current;
+    pendingAudioRef.current = { session, blob };
+
+    setDictationStatus(hadOne
+      ? 'Tidying up… (this replaces the earlier recording)'
+      : (draft ? 'Tidying up the transcript…' : 'Transcribing…'));
 
     try {
       const formData = new FormData();
@@ -134,10 +146,9 @@ export default function MeetingNotesForm({ onSave, onAnalysed }) {
       );
       insertedRef.current = '';
       setDictationStatus('');
-
-      /* Only now are the local chunks redundant. Until this point they are
-       * the only copy that survives a crash. */
-      discardSession(session);
+      /* The chunks are NOT discarded here. They stay until the audio has
+       * been uploaded against a saved note, so a crash between
+       * transcribing and saving still leaves the recording recoverable. */
     } catch (err) {
       console.error(err);
       setDictationStatus(draft
@@ -287,6 +298,30 @@ const handleBulletPoints = async () => {
   }
 };
 
+  const uploadVoice = async (noteId) => {
+    const pending = pendingAudioRef.current;
+    if (!pending || !noteId) return;
+    try {
+      const fd = new FormData();
+      const ext = (pending.blob.type || '').includes('mp4') ? 'm4a' : 'webm';
+      fd.append('audio', pending.blob, `note.${ext}`);
+      const r = await fetch(`${API}/api/notes/${noteId}/voice`, {
+        method: 'POST',
+        headers: { 'X-Ami-Password': AMI_PASSWORD },
+        body: fd,
+      });
+      if (r.ok) {
+        discardSession(pending.session);
+        pendingAudioRef.current = null;
+      } else {
+        setDictationStatus(`Note saved — the recording could not be kept (${r.status}).`);
+      }
+    } catch (e) {
+      console.error(e);
+      setDictationStatus('Note saved — the recording could not be kept.');
+    }
+  };
+
 const handleSave = async () => {
     if (!title.trim() || !content.trim()) {
       alert('Please fill in title and content');
@@ -339,6 +374,7 @@ const handleSave = async () => {
         } catch (e) {
           console.error('Analysis failed:', e);
         }
+        await uploadVoice(newId);
         setTitle('');
         setContent('');
         setAttendees('');
